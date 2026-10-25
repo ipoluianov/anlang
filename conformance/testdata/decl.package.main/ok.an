@@ -1,0 +1,9 @@
+// want: ok
+
+package main
+
+import "an/fmt"
+
+func main() {
+	fmt.Println("Hello, World!")
+}

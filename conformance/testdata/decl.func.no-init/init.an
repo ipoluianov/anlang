@@ -1,0 +1,7 @@
+// want: decl.func.no-init
+
+package main
+
+func init() {}
+
+func main() {}

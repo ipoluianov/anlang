@@ -57,20 +57,15 @@ func greet() {
 	}
 }
 
+// TestCheckErrors checks diagnostics without rule identifiers. Errors
+// with rule identifiers are tested by the conformance suite
+// (conformance/testdata).
 func TestCheckErrors(t *testing.T) {
 	tests := []struct {
 		src  string
 		rule string
 		msg  string
 	}{
-		{"package main\nfunc f() {}", "decl.package.main", "no func main"},
-		{"package lib\nfunc main() {}", "decl.package.main", "package lib"},
-		{"package main\nfunc main() int {}", "decl.package.main", "no parameters and no results"},
-		{"package main\nfunc init() {}\nfunc main() {}", "decl.func.no-init", "init"},
-		{"package main\nfunc main() {}\nfunc main() {}", "decl.func.go", "redeclared"},
-		{"package main\nprofile kernel\nfunc main() {}", "decl.profile.names", "unknown profile"},
-		{"package main\nimport \"fmt\"\nfunc main() {}", "decl.import.paths", "must start with an/"},
-		{"package main\nimport _ \"an/fmt\"\nfunc main() {}", "decl.import.no-blank-dot", "blank imports"},
 		{"package main\nimport \"an/fmt\"\nfunc main() {}", "", "imported and not used"},
 		{"package main\nfunc main() { g() }", "", "undefined: g"},
 		{"package main\nimport \"an/fmt\"\nfunc main() { fmt.Println(1) }", "", "not supported yet"},
@@ -85,14 +80,5 @@ func TestCheckErrors(t *testing.T) {
 		if e.Rule != tt.rule || !strings.Contains(e.Msg, tt.msg) {
 			t.Errorf("%q: got [%s] %s, want [%s] containing %q", tt.src, e.Rule, e.Msg, tt.rule, tt.msg)
 		}
-	}
-}
-
-func TestCheckProfileMismatch(t *testing.T) {
-	_, errs := check(t,
-		"package main\nprofile core\nfunc main() {}",
-		"package main\nprofile app\nfunc f() {}")
-	if len(errs) == 0 || errs[0].Rule != "decl.profile.package" {
-		t.Errorf("got %v, want decl.profile.package", errs)
 	}
 }

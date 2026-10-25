@@ -9,6 +9,7 @@ package types
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -39,6 +40,8 @@ type funcInfo struct {
 }
 
 // fileScope holds the imports of one file: local name to import path.
+// The path is "" for an import that was rejected, so its uses are not
+// reported again.
 type fileScope struct {
 	imports map[string]string
 	used    map[string]bool
@@ -133,6 +136,9 @@ func (c *checker) check() {
 				continue
 			}
 			if hasSignature(fd) {
+				if fd.Name.Name == "main" {
+					continue // reported above
+				}
 				c.errorf(fd.Name.Pos(), "", "functions with parameters or results: %s", unsupported)
 				continue
 			}
@@ -155,12 +161,17 @@ func (c *checker) checkPackageClauses() {
 		if f.Name.Name != "main" {
 			c.errorf(f.Name.Pos(), "decl.package.main", "package %s in the project root: a program is built from package main", f.Name.Name)
 		}
+		seen := map[string]bool{}
 		for _, p := range f.Profiles() {
 			switch p.Name {
 			case "core", "app", "ui":
 			default:
 				c.errorf(p.Pos(), "decl.profile.names", "unknown profile %s: want core, app or ui", p.Name)
 			}
+			if seen[p.Name] {
+				c.errorf(p.Pos(), "decl.profile.names", "profile %s repeated in the profile clause", p.Name)
+			}
+			seen[p.Name] = true
 		}
 		if f.Profile == nil {
 			continue
@@ -174,11 +185,15 @@ func (c *checker) checkPackageClauses() {
 	}
 }
 
+// profileSet returns the set of profile names in a canonical spelling.
 func profileSet(ps []*syntax.Name) string {
 	var names []string
 	for _, p := range ps {
-		names = append(names, p.Name)
+		if !slices.Contains(names, p.Name) {
+			names = append(names, p.Name)
+		}
 	}
+	slices.Sort(names)
 	return strings.Join(names, ", ")
 }
 
@@ -192,36 +207,55 @@ func (c *checker) imports(f *syntax.File) *fileScope {
 	s := &fileScope{imports: map[string]string{}, used: map[string]bool{}, specs: map[string]*syntax.ImportSpec{}}
 	for _, spec := range f.Imports {
 		path, err := strconv.Unquote(spec.Path.Value)
-		if err != nil || path == "" {
-			c.errorf(spec.Path.Pos(), "decl.import.paths", "invalid import path %s", spec.Path.Value)
-			continue
-		}
-		std := strings.HasPrefix(path, "an/")
-		own := strings.HasPrefix(path, c.pkg.Module+"/")
-		if !std && !own {
-			c.errorf(spec.Path.Pos(), "decl.import.paths", "import path %q must start with an/ (standard library) or %s/ (this module)", path, c.pkg.Module)
-			continue
-		}
-		if !knownPackages[path] {
-			c.errorf(spec.Path.Pos(), "", "package %q: %s", path, unsupported)
-			continue
-		}
 		name := path[strings.LastIndex(path, "/")+1:]
 		if spec.Name != nil {
-			if spec.Name.Name == "_" {
-				c.errorf(spec.Name.Pos(), "decl.import.no-blank-dot", "blank imports are removed in Anlang: imports have no side effects")
-				continue
-			}
 			name = spec.Name.Name
+		}
+		switch name {
+		case "_":
+			c.errorf(spec.Name.Pos(), "decl.import.no-blank-dot", "blank imports are removed in Anlang: imports have no side effects")
+			continue
+		case ".":
+			continue // reported by the parser
 		}
 		if prev, ok := s.specs[name]; ok {
 			c.errorf(spec.Pos(), "decl.import.name", "%s redeclared in this file (previous import at %s)", name, prev.Pos())
 			continue
 		}
-		s.imports[name] = path
 		s.specs[name] = spec
+		if !c.importPath(spec, path, err) {
+			s.imports[name] = ""
+			s.used[name] = true
+			continue
+		}
+		s.imports[name] = path
 	}
 	return s
+}
+
+// importPath checks the import path of spec and reports whether this
+// compiler can compile uses of the package.
+func (c *checker) importPath(spec *syntax.ImportSpec, path string, err error) bool {
+	if err != nil || path == "" {
+		c.errorf(spec.Path.Pos(), "decl.import.paths", "invalid import path %s", spec.Path.Value)
+		return false
+	}
+	elems := strings.Split(path, "/")
+	std := elems[0] == "an" && len(elems) > 1
+	own := elems[0] == c.pkg.Module
+	if !std && !own {
+		c.errorf(spec.Path.Pos(), "decl.import.paths", "import path %q must start with an/ (standard library) or %s/ (this module)", path, c.pkg.Module)
+		return false
+	}
+	if i := slices.IndexFunc(elems, func(e string) bool { return !validPathElem(e) }); i >= 0 {
+		c.errorf(spec.Path.Pos(), "decl.import.paths", "invalid element %q in import path %q: want [a-z][a-z0-9_]*", elems[i], path)
+		return false
+	}
+	if !knownPackages[path] {
+		c.errorf(spec.Path.Pos(), "", "package %q: %s", path, unsupported)
+		return false
+	}
+	return true
 }
 
 func (c *checker) body(scope *fileScope, b *syntax.BlockStmt, fn *ir.Func) {
@@ -269,6 +303,9 @@ func (c *checker) call(scope *fileScope, call *syntax.CallExpr, fn *ir.Func) {
 			return
 		}
 		scope.used[pkgIdent.Name] = true
+		if path == "" {
+			return // the import was rejected
+		}
 		c.stdCall(path, f.Sel, call, fn)
 	default:
 		c.errorf(call.Pos(), "", "call of this form: %s", unsupported)
@@ -315,6 +352,19 @@ func (c *checker) stdCall(path string, sel *syntax.Name, call *syntax.CallExpr, 
 	c.nData++
 	c.prog.Data = append(c.prog.Data, d)
 	fn.Body = append(fn.Body, &ir.PrintStdout{Data: d})
+}
+
+// validPathElem reports whether e is a valid import path element.
+func validPathElem(e string) bool {
+	if e == "" || e[0] < 'a' || e[0] > 'z' {
+		return false
+	}
+	for _, r := range e {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '_' {
+			return false
+		}
+	}
+	return true
 }
 
 func hasSignature(fd *syntax.FuncDecl) bool {

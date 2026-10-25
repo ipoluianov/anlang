@@ -185,6 +185,7 @@ Provisional technical choices accepted as written on 2026-10-25. The rule text i
 | 7 | 03-declarations | File suffixes with `_` in architecture names | Suffixes are matched against the end of the file name instead of splitting at `_`, so `main_x86_64.an` and `main_linux_x86_64.an` select correctly (**decl.file.suffix**); found while implementing the build driver |
 | 8 | 02-types | Separator of variant fields | Commas, as in a parameter list: `TooLong{word string, max int}` (**type.enum.fields**) |
 | 9 | 20-toolchain | Canonical formatting | gofmt style with tabs for the part shared with Go, imports sorted, layout of Anlang constructs; the canonical form is a fixed point of formatting; heuristics decide by the output layout where gofmt is not idempotent (**tool.fmt.style**, **tool.fmt.fixed-point**, **tool.fmt.differences**); anlang.mod values aligned at column 9 (**tool.mod.format**) |
+| 10 | 23-conformance | Layout of the conformance suite on disk | `conformance/testdata/<rule>/`: single-file tests `<name>.an` of module `conf` and project tests `<name>/`; the expected rule set in one `// want:` comment, further rules in `// checks:`; diagnostics without a rule never match (**conf.suite.layout**) |
 
 ## 2. Deferred to implementation
 
@@ -210,6 +211,5 @@ Questions that are not design decisions. Each is decided at the roadmap step giv
 | 16 | 17-ui | `Background` on Android | 65 |
 | 17 | 22-compiler | Textual IR format | 6 |
 | 18 | 22-compiler | General-purpose allocator for `app` | 25 |
-| 19 | 23-conformance | Layout of the conformance suite on disk | 1 |
-| 20 | 23-conformance | Performance thresholds | 26 |
-| 21 | 20-toolchain | Reformatting of doc comments by anlang fmt (gofmt reformats them with go/doc/comment) | 40 |
+| 19 | 23-conformance | Performance thresholds | 26 |
+| 20 | 20-toolchain | Reformatting of doc comments by anlang fmt (gofmt reformats them with go/doc/comment) | 40 |

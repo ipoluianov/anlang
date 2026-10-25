@@ -1,0 +1,7 @@
+// want: decl.func.go
+
+package main
+
+func main() {}
+
+func main() {}

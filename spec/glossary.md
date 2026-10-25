@@ -61,6 +61,7 @@ Terms used in the specification and their Russian equivalents. Use these terms i
 | lowering | понижение | Translation of IR to architecture-specific form |
 | manifest | манифест | Application description constant (`app.Desc`) |
 | module | модуль | Project root, named in `anlang.mod` |
+| negative test | отрицательный тест | Conformance test that is expected to be rejected with a given set of rule identifiers |
 | novelty inventory | перечень новизны | Closed list of all differences from Go |
 | open reference | открытая ссылка | Part of an effect summary that stands for the effects of all implementations stored in data structures |
 | oracle | оракул | Independent implementation used as a reference in tests |
@@ -71,10 +72,12 @@ Terms used in the specification and their Russian equivalents. Use these terms i
 | peripheral | периферия | Hardware block of a device: timer, UART, GPIO pin |
 | permission | разрешение | Platform permission derived from effects |
 | platform | платформа | Environment description: effects provided, ABI, entry point |
+| positive test | положительный тест | Conformance test that is expected to compile without errors |
 | precondition / postcondition | предусловие / постусловие | `requires` / `ensures` clause |
 | priority ceiling | потолок приоритета | Highest priority of all users of a lock, computed at compile time |
 | priority ceiling protocol | протокол потолка приоритетов | Locking discipline where a lock raises its holder to the lock's priority ceiling |
 | profile | профиль | Package-level set of effect restrictions: `core`, `app`, `ui` |
+| project test | тест-проект | Conformance test that is a whole project directory with its own `anlang.mod` |
 | proof obligation | обязательство доказательства | Condition the solver must prove |
 | range-over-func | range-over-func | `for … range f` over an iterator function, as in Go 1.23 |
 | reference program | эталонная программа | Program with known observable behavior on a target |
@@ -85,6 +88,7 @@ Terms used in the specification and their Russian equivalents. Use these terms i
 | secret-dependent | зависящий от секрета | Value or control flow computed from the contents of a `Secret[T]` |
 | semantic diff | семантический дифф | Difference in API, effects and contracts between two versions of code |
 | side table (debug) | отдельная отладочная таблица | Debug information kept outside the binary image, used to resolve stack traces |
+| single-file test | однофайловый тест | Conformance test that is one source file of package `main` |
 | sink | приёмник | Function that accepts only validated data: SQL text, path, HTML, shell command |
 | solver | решатель | Built-in prover for contracts |
 | standard library | стандартная библиотека | Packages under `an/`, shipped with the toolchain |

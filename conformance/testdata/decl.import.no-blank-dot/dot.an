@@ -1,0 +1,9 @@
+// want: decl.import.no-blank-dot
+
+package main
+
+import . "an/fmt"
+
+func main() {
+	Println()
+}

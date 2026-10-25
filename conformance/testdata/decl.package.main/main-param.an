@@ -1,0 +1,5 @@
+// want: decl.package.main
+
+package main
+
+func main(n int) {}

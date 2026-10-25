@@ -1,0 +1,7 @@
+// want: decl.profile.names
+
+package main
+
+profile kernel
+
+func main() {}

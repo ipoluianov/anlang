@@ -14,6 +14,7 @@ import (
 
 	"an/arch/x86_64"
 	"an/format"
+	"an/ir"
 	"an/link/elf"
 	"an/modfile"
 	"an/syntax"
@@ -140,37 +141,9 @@ func (p *Project) Build(target string) (string, []error) {
 		return "", []error{fmt.Errorf("target %s is not supported yet by this compiler (spec/24-roadmap.md, step %d)", target, t.Step)}
 	}
 
-	files, err := SelectFiles(p.Root, t)
-	if err != nil {
-		return "", []error{err}
-	}
-	if len(files) == 0 {
-		return "", []error{fmt.Errorf("%s: no Anlang source files for target %s", p.Root, target)}
-	}
-
-	var parsed []*syntax.File
-	var errs []*syntax.Error
-	for _, name := range files {
-		src, err := os.ReadFile(filepath.Join(p.Root, name))
-		if err != nil {
-			return "", []error{err}
-		}
-		f, ferrs := syntax.Parse(name, src)
-		errs = append(errs, ferrs...)
-		if len(ferrs) == 0 {
-			errs = append(errs, format.Canonical(name, src)...)
-		}
-		if f != nil {
-			parsed = append(parsed, f)
-		}
-	}
+	prog, errs := p.Check(target)
 	if len(errs) > 0 {
-		return "", asErrors(errs)
-	}
-
-	prog, errs := types.Check(&types.Package{Module: p.Mod.Module, Files: parsed})
-	if len(errs) > 0 {
-		return "", asErrors(errs)
+		return "", errs
 	}
 
 	text, entry, err := x86_64.GenLinux(prog)
@@ -187,6 +160,65 @@ func (p *Project) Build(target string) (string, []error) {
 		return "", []error{err}
 	}
 	return out, nil
+}
+
+// Check selects the source files of the program in the project root for
+// one target, parses and type-checks them, and returns the program's IR.
+// Diagnostics are returned as *syntax.Error; other errors (an unknown
+// target, unreadable files) as plain errors.
+func (p *Project) Check(target string) (*ir.Program, []error) {
+	t, ok := LookupTarget(target)
+	if !ok {
+		return nil, []error{fmt.Errorf("unknown target %q (target.select.resolve)", target)}
+	}
+	files, err := SelectFiles(p.Root, t)
+	if err != nil {
+		return nil, []error{err}
+	}
+	if len(files) == 0 {
+		return nil, []error{fmt.Errorf("%s: no Anlang source files for target %s", p.Root, target)}
+	}
+	var srcs []Source
+	for _, name := range files {
+		data, err := os.ReadFile(filepath.Join(p.Root, name))
+		if err != nil {
+			return nil, []error{err}
+		}
+		srcs = append(srcs, Source{Name: name, Data: data})
+	}
+	prog, errs := CheckSources(p.Mod.Module, srcs)
+	if len(errs) > 0 {
+		return nil, asErrors(errs)
+	}
+	return prog, nil
+}
+
+// Source is a source file: its name for diagnostics and its contents.
+type Source struct {
+	Name string
+	Data []byte
+}
+
+// CheckSources parses srcs, checks that they are in canonical form and
+// type-checks them as package main of module. If any error is found,
+// the program is nil.
+func CheckSources(module string, srcs []Source) (*ir.Program, []*syntax.Error) {
+	var parsed []*syntax.File
+	var errs []*syntax.Error
+	for _, src := range srcs {
+		f, ferrs := syntax.Parse(src.Name, src.Data)
+		errs = append(errs, ferrs...)
+		if len(ferrs) == 0 {
+			errs = append(errs, format.Canonical(src.Name, src.Data)...)
+		}
+		if f != nil {
+			parsed = append(parsed, f)
+		}
+	}
+	if len(errs) > 0 {
+		return nil, errs
+	}
+	return types.Check(&types.Package{Module: module, Files: parsed})
 }
 
 // SelectFiles returns the names of the source files in dir that belong

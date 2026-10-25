@@ -1,0 +1,7 @@
+// want: decl.import.paths
+
+package main
+
+import "an/Fmt"
+
+func main() {}

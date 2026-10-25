@@ -14,6 +14,26 @@ Most of the compiler is expected to be written by AI. Checks of `anlang` itself 
 
 **conf.suite.implementation-rules** — For every normative implementation requirement (rules that constrain the toolchain), the suite SHOULD contain an automated check, unless the requirement is checked by another kind of test in this file.
 
+**conf.suite.layout** — The suite is stored in the directory `conformance/testdata/` of the toolchain sources, in the following form, so that both compilers of **conf.suite.shared** read the same files:
+
+1. Each subdirectory of `testdata/` is named by a rule identifier and holds the tests filed under that rule.
+2. A file `<name>.an` in a rule directory is a single-file test: the source file of package `main` of a project whose module name is `conf`.
+3. A subdirectory `<name>/` of a rule directory is a project test: a project root with its `anlang.mod` and source files, built for the first target listed in `anlang.mod`.
+4. The expectation is written exactly once among the test's files, as a line comment `// want: ok` for a positive test or `// want: <rule> {<rule>}` for a negative test, listing the expected set of rule identifiers of **conf.suite.expectation**.
+5. A comment `// checks: <rule> {<rule>}` lists further rules the test checks (**conf.suite.naming**). A negative test MUST name the rule of its directory in `want` or `checks`.
+6. A diagnostic without a rule identifier never matches an expectation, so a negative test passes only if every error names a rule.
+7. Test files MUST be in canonical form (**lex.source.canonical**) unless they test that rule.
+
+```go
+// want: decl.func.no-init
+
+package main
+
+func init() {}
+
+func main() {}
+```
+
 ## 23.2 Reference programs
 
 **conf.reference** — For each supported target, the suite MUST contain reference programs with their expected observable behavior (output, pin changes with timing, UART output, screen contents, exit status). Each MUST produce that behavior in the built-in emulator of the target (see [20-toolchain](20-toolchain.md), 20.10).
@@ -65,5 +85,4 @@ Most of the compiler is expected to be written by AI. Checks of `anlang` itself 
 ## 23.11 Open issues
 
 
-1. **Layout of the conformance suite on disk.** Deferred to implementation — step 1. Implementation-defined, provided **conf.suite.naming** holds.
-2. **Performance thresholds.** Deferred to implementation — step 26. Set per benchmark once host targets exist.
+1. **Performance thresholds.** Deferred to implementation — step 26. Set per benchmark once host targets exist.

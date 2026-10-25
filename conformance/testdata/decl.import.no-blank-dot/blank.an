@@ -1,0 +1,7 @@
+// want: decl.import.no-blank-dot
+
+package main
+
+import _ "an/fmt"
+
+func main() {}

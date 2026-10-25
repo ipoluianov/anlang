@@ -16,10 +16,10 @@ var ruleID = regexp.MustCompile(`\b(?:lex|type|decl|expr|stmt|mem|eff|contract|c
 // ruleDef matches the definition of a rule in a spec file.
 var ruleDef = regexp.MustCompile(`(?m)^\s*(?:[-*>]|\d+\.)?\s*\*\*([a-z0-9.-]+)\*\*`)
 
-// TestRuleIDsExist checks that every rule identifier quoted in a Go
-// string literal of the compiler is defined in the specification, so a
-// diagnostic never points to a rule that does not exist.
-func TestRuleIDsExist(t *testing.T) {
+// specRules returns the rule identifiers defined in the English spec
+// files.
+func specRules(t *testing.T) map[string]bool {
+	t.Helper()
 	defined := map[string]bool{}
 	specs, _ := filepath.Glob("../spec/*.md")
 	for _, f := range specs {
@@ -31,12 +31,22 @@ func TestRuleIDsExist(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, m := range ruleDef.FindAllStringSubmatch(string(data), -1) {
-			defined[m[1]] = true
+			if ruleID.FindString(m[1]) == m[1] {
+				defined[m[1]] = true
+			}
 		}
 	}
 	if len(defined) < 100 {
 		t.Fatalf("found only %d rule definitions in ../spec", len(defined))
 	}
+	return defined
+}
+
+// TestRuleIDsExist checks that every rule identifier quoted in a Go
+// string literal of the compiler is defined in the specification, so a
+// diagnostic never points to a rule that does not exist.
+func TestRuleIDsExist(t *testing.T) {
+	defined := specRules(t)
 
 	quoted := regexp.MustCompile(`"([a-z0-9.-]+)"`)
 	err := filepath.WalkDir("..", func(path string, d os.DirEntry, err error) error {

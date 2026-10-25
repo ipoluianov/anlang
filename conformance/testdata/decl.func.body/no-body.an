@@ -1,0 +1,7 @@
+// want: decl.func.body
+
+package main
+
+func f()
+
+func main() {}

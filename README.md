@@ -38,9 +38,9 @@ cd examples/hello
 | `ir` | intermediate representation |
 | `arch/x86_64` | x86-64 code generation and the Linux runtime routines |
 | `link/elf` | ELF writer |
-| `conformance` | checks that tie the code to the specification |
+| `conformance` | the conformance suite (`conformance/testdata/<rule>/`, spec/23-conformance.md, **conf.suite.layout**) and checks that tie the code to the specification |
 
-Tests: `go test ./...` (add `-short` to skip the corpus tests over the Go sources). Fuzzing: `go test ./format -run '^$' -fuzz FuzzFormat`.
+Tests: `go test ./...` (add `-short` to skip the corpus tests over the Go sources). Rules without conformance tests: `go test ./conformance -run Coverage -v`. Fuzzing: `go test ./format -run '^$' -fuzz FuzzFormat`.
 
 ## License
 
