@@ -1,0 +1,18 @@
+// Command hellodos prints a greeting as a DOS .COM program.
+//
+// The string is converted to code page 866 at compile time, so the
+// Cyrillic text shows correctly in DOS. dos.Print takes a dstring:
+// the terminating '$' required by int 21h, function 09h, is appended
+// at compile time as well.
+package main
+
+profile core
+
+import (
+    "kern/dos"
+    "kern/encoding"
+)
+
+func main() {
+    dos.Print(encoding.CP866("Привет из Kern!\r\n"))
+}

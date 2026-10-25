@@ -230,17 +230,20 @@ A generator turns an external description — an SVD file, a system call table �
 
 **ct.gen.program** — A generator is a `main` package of the project in profile `app`. The build runs it on the host.
 
-**ct.gen.declared** — Every generator MUST be declared together with its input files and its output directory. The declaration syntax belongs to `kern.mod` (see [20-toolchain](20-toolchain.md)).
+**ct.gen.declared** — Every generator MUST be declared together with its input files and its output package by a `generate` directive in `kern.mod` (see [20-toolchain](20-toolchain.md), **tool.mod.generate**).
 
-**ct.gen.effects** — A generator's effect set MUST NOT contain I/O effects other than `ReadInput` and `WriteOutput`, and MUST NOT contain `Clock`, `Random` or `Foreign`. `ReadInput` permits reading only the declared input files; `WriteOutput` permits writing only inside the declared output directory. Violations are compile errors of the generator, and an implementation MUST also enforce them when the generator runs.
+**ct.gen.effects** — A generator's effect set MUST NOT contain I/O effects other than `ReadInput` and `WriteOutput`, and MUST NOT contain `Clock`, `Random` or `Foreign`. `ReadInput` permits reading only the declared input files; `WriteOutput` permits writing only the files of the declared output package. Violations are compile errors of the generator, and an implementation MUST also enforce them when the generator runs.
 
 **ct.gen.deterministic** — A generator MUST produce byte-identical output for identical inputs. An implementation MUST rerun a generator only when the hash of its source, its inputs or the compiler version changes, and MUST reuse cached output otherwise.
 
 **ct.gen.output** — Generator output MUST be Kern source in canonical formatting (see [01-lexical](01-lexical.md)). Each generated file MUST begin with a comment that names the generator and the hash of its inputs. Generated files are ordinary source code: they are type-checked, effect-checked and readable like any other file.
 
-**ct.gen.no-edit** — A generated file MUST NOT be edited by hand. If the content of a generated file does not match what the generator produces, the build fails.
+**ct.gen.cache** — Generator output is not part of the project and is not committed. The build produces it into the build cache, keyed by the hash of the generator's source, its inputs and the compiler version (**ct.gen.deterministic**).
+
+**ct.gen.package** — The output package is importable by its declared import path like a project package. `kern gen -show <package>` prints its source ([20-toolchain](20-toolchain.md), **tool.cmd.gen**).
+
+**ct.gen.conflict** — A directory in the project with the path of a declared output package is a compile error (**tool.mod.generate.unique**).
 
 ## Open issues
 
-1. **Concrete evaluation limits.** *Provisional:* implementation-defined, fixed per compiler version and edition; whether a project may raise them in `kern.mod` is open.
-2. **Generator declaration and output location.** *Provisional:* declared in `kern.mod`; whether generated output is committed to the repository or kept only in the build cache is open.
+1. **Concrete evaluation limits.** Deferred to implementation — step 10. Implementation-defined, fixed per compiler version and edition; whether a project may raise them in `kern.mod` is decided there.

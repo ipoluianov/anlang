@@ -214,8 +214,3 @@ Recognition of `interrupt`, `trap` and `gpu` follows **lex.context.positions** (
 ## 3.11 Visibility
 
 **decl.visibility.go** — Exported identifiers and the scope rules are as in Go. Enum variants follow **type.enum.variant-export** ([02-types](02-types.md)).
-
-## Open issues
-
-1. **Channels at package level.** Provisional: not allowed (**decl.var.package-kinds**).
-2. **Handler names.** Provisional: not declared in any scope (**decl.handler.name**).

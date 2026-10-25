@@ -52,7 +52,7 @@ weather/
 
 ```
 KernModFile      = { newline } { Directive { newline } } .
-Directive        = ModuleDirective | EditionDirective | TargetsDirective | EffectsDirective .
+Directive        = ModuleDirective | EditionDirective | TargetsDirective | EffectsDirective | GenerateDirective .
 
 ModuleDirective  = "module" ModuleName newline .
 ModuleName       = ascii_lower { ascii_lower | decimal_digit | "_" } .
@@ -71,6 +71,12 @@ path_element     = ascii_lower { ascii_lower | decimal_digit | "_" } .
 EffectSet        = "{" [ EffectName { "," EffectName } ] "}" .
 EffectName       = identifier .
 
+GenerateDirective = "generate" GeneratorPath InputPattern { InputPattern } "->" OutputPath newline .
+GeneratorPath    = ImportPath .
+InputPattern     = PackageDir [ "/" FilePattern ] | FilePattern .
+FilePattern      = { path_char | "*" } .
+OutputPath       = ImportPath .
+
 ascii_lower      = "a" … "z" .
 ```
 
@@ -88,7 +94,11 @@ Tokens are separated by spaces or tabs; `newline` is a line feed. `decimal_digit
 
 **tool.mod.effects.names** — Every effect name in `kern.mod` MUST name an effect known in the program: a built-in effect, an effect of the target's device description or an effect declared with `effect.Declare` (see [07-effects](07-effects.md)).
 
-**tool.mod.format** — `kern fmt` MUST also format `kern.mod` canonically: directives in the order `module`, `kern`, `targets`, `effects`; effect rules sorted by pattern; effect names sorted.
+**tool.mod.generate** — `kern.mod` MAY contain any number of `generate` directives. Each declares a generator ([10-compile-time](10-compile-time.md), §10.8): the generator package (a `main` package of the project), its input files as patterns relative to the project root, and the import path of the output package, which MUST be a path under the module name. Example: `generate gen/svdgen boards/stm32/*.svd -> myprogram/device`.
+
+**tool.mod.generate.unique** — Two `generate` directives MUST NOT name the same output package, and the output package MUST NOT be a directory that exists in the project.
+
+**tool.mod.format** — `kern fmt` MUST also format `kern.mod` canonically: directives in the order `module`, `kern`, `targets`, `effects`, `generate`; effect rules sorted by pattern; effect names sorted; `generate` directives sorted by output path.
 
 ### 20.3.3 Example
 
@@ -179,6 +189,7 @@ AUTH-4  After five failed attempts, login is locked for 15 minutes
 | `kern doc [-html] [packages]` | Documentation |
 | `kern dev [-target T]` | Run with hot reload |
 | `kern port -from go\|c <source> <dest>` | Port code from Go or C |
+| `kern gen -show <package>` | Print the source of a generated package |
 | `kern serve` | Environment protocol server (see [21-protocol](21-protocol.md)) |
 | `kern lsp` | Language Server Protocol server (see [21-protocol](21-protocol.md)) |
 
@@ -193,6 +204,8 @@ AUTH-4  After five failed attempts, login is locked for 15 minutes
 **tool.cmd.size** — `kern size` MUST report, for each package, the flash (code and constant data) and RAM (static data) it contributes, and, for `main`, each task and each interrupt handler, the computed maximum stack depth or the fact that a reserve was needed (see [19-runtime](19-runtime.md), **rt.stack.report**).
 
 **tool.cmd.query** — `kern query` MUST answer the queries of the semantic API: the callers of a function; the effects reachable from a point and the call chain that introduces each; what breaks if a type or function changes; which contract condition is not proven and why. The same queries are available as the `query` operation of the protocol (see [21-protocol](21-protocol.md)).
+
+**tool.cmd.gen** — `kern gen -show <package>` MUST run the generator of the given output package if its cached output is stale, and print the generated source files in canonical formatting. Without `-show`, `kern gen` MUST bring all generated packages up to date in the build cache without building the program.
 
 **tool.cmd.flash** — `kern flash` MUST first build the target as `kern build` does, then write the image of the `core` target to a device through a debug probe (SWD or JTAG) or, for targets with the UF2 format, by writing the UF2 file.
 
@@ -332,13 +345,3 @@ API:
 Effects:
   ! Parse: {} → {Network}                    NEW EFFECT
 ```
-
-## 20.16 Open issues
-
-1. **Exit statuses.** `kern.md` does not specify them. Provisional choice: **tool.exit-status** (0 / 1 / 2).
-2. **Test references in `REQUIREMENTS`.** The example uses bare names. Provisional choice: bare names must be unique in the project; otherwise qualify with the package directory.
-3. **Requirement identifier syntax.** Provisional choice: uppercase letters and digits, a hyphen, a number (`AUTH-3`).
-4. **Release vs. development builds.** See [19-runtime](19-runtime.md), **rt.dev.builds**.
-5. **How `kern diff` receives two versions.** `kern.md` says "two versions of code" without saying how they are given. Provisional choice: two directories. Integration with version control is not specified, since the environment does not depend on git.
-6. **Edition migration trigger.** Provisional choice: `kern fmt -edition <E>`.
-7. **`kern flash` and building.** Not specified. Provisional choice: it builds first, as `kern build` (**tool.cmd.flash**).

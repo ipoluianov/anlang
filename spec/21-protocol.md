@@ -241,9 +241,3 @@ interface RequirementsResult {
 - formatting, with the result of `kern fmt`.
 
 **proto.lsp.encoding** — `kern lsp` MUST support the UTF-16 position encoding and SHOULD offer UTF-8 when the client supports it.
-
-## 21.7 Open issues
-
-1. **Position encoding in `kern serve`.** Provisional choice: 1-based line and 1-based byte column, as in Go's `token.Position`.
-2. **Fix guarantee.** The plan's acceptance criterion says an applied fix "gives compilable code". Provisional choice: **proto.diag.fix** — the diagnostic disappears and no new error appears.
-3. **Debugger protocol.** Provisional choice: the methods in 21.4.6; compatibility with the Debug Adapter Protocol is not required.

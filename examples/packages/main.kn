@@ -1,0 +1,49 @@
+// Command myprogram shows how a program uses its own nested packages.
+//
+// Project packages are imported by paths under the module name from
+// kern.mod (myprogram/...); the standard library lives under kern/....
+package main
+
+import (
+    "kern/errors"
+    "kern/fmt"
+    "kern/strings"
+
+    "myprogram/mydictionary"
+)
+
+func main() {
+    var dict mydictionary.Dictionary // the zero value is an empty, usable dictionary
+
+    if err := dict.Add("  Kern ", "a language where AI writes and the machine checks"); err != nil {
+        fmt.Println("error:", err)
+        return
+    }
+
+    // Test for one variant of the package's error enum.
+    if err := dict.Add("   ", "nothing"); errors.Is(err, mydictionary.EmptyWord) {
+        fmt.Println("skipped an empty word")
+    }
+
+    // Handle every variant: adding a variant to mydictionary.Error
+    // makes this switch fail to compile until it is handled here.
+    if err := dict.Add(strings.Repeat("a", 100), "too long"); err != nil {
+        if de, ok := errors.As[mydictionary.Error](err); ok {
+            switch de {
+            case mydictionary.EmptyWord:
+                fmt.Println("empty word")
+            case mydictionary.TooLong{word, max}:
+                fmt.Println("word of", len(word), "bytes, limit", max)
+            }
+        }
+    }
+
+    if def, ok := dict.Lookup("KERN"); ok {
+        fmt.Println("kern:", def)
+    }
+    if _, ok := dict.Lookup("go"); !ok {
+        fmt.Println("go: not found")
+    }
+
+    fmt.Println("words:", dict.Len())
+}

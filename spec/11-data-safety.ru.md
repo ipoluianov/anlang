@@ -167,9 +167,3 @@ func Search(r http.Request) (http.Response, error) {
 **safe.pkg.log** — `kern/log` ДОЛЖЕН форматировать аргументы по правилам `kern/fmt`, включая **safe.secret.print**. В `core` он НЕ ДОЛЖЕН выделять память (**std.core.no-hidden-alloc**).
 
 **safe.pkg.html** — `kern/html` ДОЛЖЕН отрисовывать по **safe.untrusted.html**. `html.Trusted` — его тип для разметки, которая вставляется без экранирования.
-
-## Открытые вопросы
-
-1. **Какое чтение файлов даёт `Untrusted`.** *Предварительно:* текстовые и структурные декодеры оборачивают результат, чтение сырых байтов — нет (**safe.untrusted.sources**).
-2. **Приёмники-оболочки.** *Предварительно:* API запуска команды оболочки одной строкой нет вовсе (**safe.untrusted.shell**).
-3. **Объявление `ExposeSecret`.** `kern.md` перечисляет его среди своих эффектов. *Предварительно:* объявлен через `effect.Declare` в `kern/secret`; общий механизм — в [07-effects](07-effects.ru.md).

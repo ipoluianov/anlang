@@ -1,0 +1,65 @@
+// Package mydictionary stores definitions of words.
+//
+// Its import path is myprogram/mydictionary: the module name followed
+// by the directory. The package name must equal the last path element.
+package mydictionary
+
+import (
+    "kern/fmt"
+
+    "myprogram/mydictionary/internal/normalize"
+)
+
+// MaxWordLen is the longest word, in bytes, that Add accepts.
+const MaxWordLen = 64
+
+// Error is an error returned by this package.
+//
+// Package errors are an enum: callers can test one variant with
+// errors.Is or handle every variant with an exhaustive switch.
+type Error enum {
+    EmptyWord
+    TooLong{word string, max int}
+}
+
+func (e Error) Error() string {
+    switch e {
+    case EmptyWord:
+        return "mydictionary: empty word"
+    case TooLong{word, max}:
+        return fmt.Sprintf("mydictionary: %q is longer than %d bytes", word, max)
+    }
+}
+
+// Dictionary maps words to their definitions. Words are compared after
+// normalization, so "Kern", " kern" and "KERN" are the same word.
+//
+// The zero value is an empty dictionary ready to use.
+type Dictionary struct {
+    entries map[string]string // unexported: visible only in this package
+}
+
+// Add stores the definition of word, replacing a previous one.
+// It changes the caller's dictionary through the inout receiver.
+func (d inout Dictionary) Add(word, definition string) error {
+    key := normalize.Word(word)
+    if key == "" {
+        return EmptyWord
+    }
+    if len(key) > MaxWordLen {
+        return TooLong{word: key, max: MaxWordLen}
+    }
+    d.entries[key] = definition // writing to a nil map is allowed in Kern
+    return nil
+}
+
+// Lookup returns the definition of word and whether it was found.
+func (d Dictionary) Lookup(word string) (string, bool) {
+    def, ok := d.entries[normalize.Word(word)]
+    return def, ok
+}
+
+// Len returns the number of words in the dictionary.
+func (d Dictionary) Len() int {
+    return len(d.entries)
+}

@@ -35,6 +35,7 @@ This file specifies how the standard library is organized and which packages it 
 | `kern/math`, `kern/bits`, `kern/wrap`, `kern/conv`, `kern/decimal`, `kern/fixed`, `kern/simd` | numbers | yes | yes | yes |
 | `kern/hash`, `kern/crc`, `kern/crypto` | hashes and cryptography | yes | yes | yes |
 | `kern/strings`, `kern/unicode`, `kern/encoding` | text and encodings | yes | yes | yes |
+| `kern/errors` | error values | yes | yes | yes |
 | `kern/fmt` | formatting | without allocation | yes | yes |
 | `kern/containers` | arrays, queues, maps | fixed size | yes | yes |
 | `kern/json`, `kern/cbor`, `kern/binary` | data formats | streaming | yes | yes |
@@ -90,7 +91,7 @@ The specification refers to further standard library packages. They are part of 
 
 ### 18.3.3 Required identifiers
 
-**std.api.required** — The packages below MUST export at least the identifiers listed. Their semantics are specified in the file named. Identifiers marked *provisional* are pending decision ([open-issues](open-issues.md)).
+**std.api.required** — The packages below MUST export at least the identifiers listed. Their semantics are specified in the file named. Identifiers marked *provisional* are deferred to implementation; the roadmap step that fixes them is listed in [open-issues](open-issues.md).
 
 | Package | Identifiers | Specified in |
 | --- | --- | --- |
@@ -105,15 +106,71 @@ The specification refers to further standard library packages. They are part of 
 | `kern/secret` | `New`, `Equal`, `Expose`, `Map`, `ConstantTime`; effect `ExposeSecret` | [11-data-safety](11-data-safety.md) |
 | `kern/untrusted` | `Accept` | [11-data-safety](11-data-safety.md) |
 | `kern/interrupts` | `Enable` | [14-embedded](14-embedded.md) |
-| `kern/mm` | `PhysAddr`, `VirtAddr` (*provisional* location) | [15-os](15-os.md) |
+| `kern/bios` | `BootDrive` | [15-os](15-os.md) |
+| `kern/mm` | `PhysAddr`, `VirtAddr` | [15-os](15-os.md) |
 | `kern/sched`, `kern/kernel` | kernel thread type with declared stack size, per-CPU data (*provisional* names) | [15-os](15-os.md) |
 | `kern/gpu` | `Out[T]` with a constructor taking a length and a read-back method (*provisional* names), `Dispatch`, `GlobalID`, `GlobalSize`; `Atomic[T]`, `Shared[T]` as future work | [16-gpu](16-gpu.md) |
 | `kern/ui` | `Node`, constructors of nodes, native view node (*provisional*) | [17-ui](17-ui.md) |
 | `kern/app` | `Desc` and the mapping from effects to platform permissions | [17-ui](17-ui.md) |
+| `kern/errors` | `New`, `Is`, `As` | this file, §18.3.5 |
+| `kern/fmt` | `Print`, `Println`, `Printf`; `Fprint`, `Fprintln`, `Fprintf`; `Sprint`, `Sprintln`, `Sprintf` | this file, §18.3.4 |
 
-## 18.4 Open issues
+### 18.3.4 Printing
 
-1. **Full package list.** `kern.md` leaves the composition of the standard library open. Provisional choice: the packages in 18.3 and 18.3.1 are the complete required set; others MAY be added in later editions.
-2. **Location of `kern/runtime`.** `kern.md` says the runtime is shipped as source but gives no import path. Provisional choice: `kern/runtime`, not importable by user code (see [19-runtime](19-runtime.md)).
-3. **`kern/html` and `kern/log` profiles.** They are used in examples but not listed in the profile table. Provisional choice: `kern/log` in all profiles (without allocation in `core`); `kern/html` in `app` and `ui`.
-4. **`kern/simd`** is used in [02-types](02-types.md) but missing from the profile table in `kern.md`. Provisional choice: available in all profiles, as shown in 18.3.
+**std.fmt.print** — `fmt.Print`, `fmt.Println` and `fmt.Printf` write to the standard output of the program and return no results. If the write fails, they panic. Their effects therefore include `Console` and `Panic`.
+
+**std.fmt.fprint** — `fmt.Fprint`, `fmt.Fprintln` and `fmt.Fprintf` take an `io.Writer` as the first argument and return `(n int, err error)`, as in Go. The error is subject to **stmt.error.unused** ([05-statements](05-statements.md)).
+
+**std.fmt.sprint** — `fmt.Sprint`, `fmt.Sprintln` and `fmt.Sprintf` return a `string` and have no `Console` effect.
+
+**Note** — Printing to standard output is the common case, and a write error there is rare and rarely recoverable, so it panics instead of returning an error that every caller would have to discard. Writing to an arbitrary `io.Writer`, such as a file or a network connection, returns the error, because there it must be handled.
+
+```go
+fmt.Println("Hello, World!")                // no result; panics if stdout fails
+
+if _, err := fmt.Fprintln(f, "line"); err != nil {
+    return err
+}
+```
+
+### 18.3.5 Errors
+
+**std.errors.api** — `errors.New` and `errors.Is` behave as in Go. `fmt.Errorf` with `%w` wraps errors as in Go.
+
+**std.errors.as** — Kern has no pointers, so `errors.As` has the comma-ok form `func As[T error](err error) (T, bool)`: it returns the first error in the chain of `err` whose dynamic type is `T`, and `true`; otherwise the zero value of `T` and `false`. `T` therefore requires a zero value (**type.zero.param-constraint**, [02-types](02-types.md)).
+
+**std.errors.const** — `errors.New` with a constant argument is compile-time evaluable (**ct.eval.evaluable**, [10-compile-time](10-compile-time.md)). Sentinel errors are therefore declared as constants, because package-level variables are restricted (**decl.var.package-kinds**, [03-declarations](03-declarations.md)).
+
+**std.errors.value** — The error returned by `errors.New` has no hidden identity: two such errors are equal if and only if their texts are equal. `errors.Is` compares with `==`, unwrapping as in Go.
+
+```go
+const ErrEmptyWord = errors.New("mydictionary: empty word")
+```
+
+**Note** — Equal texts in different packages give equal errors. The convention, as in Go, is to start the text with the package name.
+
+**std.errors.enum** — The recommended form for errors that a package returns to its callers is an `enum` type with an `Error() string` method. Its identity comes from the type: values of different enum types are never equal, values of one type are equal under **type.enum.comparable** ([02-types](02-types.md)). Callers test for a variant with `errors.Is` or handle all variants with an exhaustive `switch` after `errors.As`; adding a variant then breaks every incomplete `switch`.
+
+```go
+// Error is an error of package mydictionary.
+type Error enum {
+    EmptyWord
+    TooLong{word string, max int}
+}
+
+func (e Error) Error() string {
+    switch e {
+    case EmptyWord:          return "mydictionary: empty word"
+    case TooLong{word, max}: return fmt.Sprintf("mydictionary: %q is longer than %d", word, max)
+    }
+}
+
+// caller
+if errors.Is(err, mydictionary.EmptyWord) { ... }
+
+if de, ok := errors.As[mydictionary.Error](err); ok {
+    switch de { ... }             // exhaustive over the variants
+}
+```
+
+**Note** — `kern port` translates a Go sentinel `var ErrX = errors.New("...")` into `const ErrX = errors.New("...")`; the meaning is unchanged as long as no two sentinels share a text.

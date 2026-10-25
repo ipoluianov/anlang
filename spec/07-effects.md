@@ -14,7 +14,7 @@ Effects never appear in function signatures. Programs constrain effects only at 
 
 **eff.model.foreign** — The effect `Foreign` means "may perform any action". For every constraint check (§7.6) a set that contains `Foreign` is treated as containing every effect.
 
-**Note** — `kern.md` writes base effects without a qualifier (`effect.Without(Alloc, Panic)`, `ffi.Effects{File}`). See Open issues, item 1.
+**Note** — `kern.md` writes base effects without a qualifier (`effect.Without(Alloc, Panic)`, `ffi.Effects{File}`). Inside Kern source the qualified form is canonical (**eff.model.names**).
 
 ## 7.2 Base effects
 
@@ -252,11 +252,3 @@ effects (
 **eff.report.tools** — The implementation MUST make the effect summary of every function available through `kern doc`, `kern query` and the environment protocol ([20-toolchain](20-toolchain.md), [21-protocol](21-protocol.md)), including for each effect the call chain to its source.
 
 **eff.report.diff** — `kern diff` MUST report effects that one version of a function has and the other does not ([20-toolchain](20-toolchain.md)).
-
-## 7.12 Open issues
-
-1. **Exact profile effect sets.** `kern.md` describes profiles informally ("core: no heap, no OS dependency"; "app: no interrupts, no privileged instructions"; "ui: no direct hardware access"). Provisional: the table of **eff.profile.allowed**; OS-backed effects in `core` are limited only by the target's `Provides` (DOS provides `File`).
-2. **Open references for function values.** `kern.md` specifies open references for interfaces stored in data structures. For function values stored in data structures the provisional rule resolves by function type over the whole program (**eff.infer.rules** 4, 7, **eff.attr.resolve**), which is sound but coarse.
-3. **Precision of `Alloc` for copy-on-write writes.** A write to a slice or string may copy a shared buffer. Provisional: `Alloc` is added wherever the rules of [06-memory](06-memory.md) say an operation may copy; implementations do not refine it (**eff.infer.determinism**).
-4. **`Without` on functions with parametric references.** Provisional: checked at the declaration without parametric references and again at each call with arguments substituted (**eff.without.check**).
-5. **Target check for non-platform effects.** Resolved by delegation: the target check is owned by [13-targets](13-targets.md) §13.3 (**eff.target.check**); computational effects are not checked against the target.

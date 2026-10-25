@@ -64,5 +64,6 @@ Most of the compiler is expected to be written by AI. Checks of `kern` itself ar
 
 ## 23.11 Open issues
 
-1. **Layout of the conformance suite on disk.** Not specified in `kern.md`. Provisional choice: implementation-defined, provided **conf.suite.naming** holds.
-2. **Performance thresholds.** Not specified. Provisional choice: set per benchmark by the project maintainers.
+
+1. **Layout of the conformance suite on disk.** Deferred to implementation — step 1. Implementation-defined, provided **conf.suite.naming** holds.
+2. **Performance thresholds.** Deferred to implementation — step 26. Set per benchmark once host targets exist.

@@ -162,7 +162,7 @@ func (o Option[T]) Get() (T, bool)
 
 `None` and `Some` are predeclared in the universe block (§2.17).
 
-**type.option.get** — `o.Get()` returns the value of `Some` and `true`, or the zero value of `T` and `false` for `None`. If `T` has no zero value (§2.12), `Get` is not available and `o` MUST be inspected with `switch`.
+**type.option.get** — `o.Get()` returns the value of `Some` and `true`, or the zero value of `T` and `false` for `None`. `Get` uses the zero value of `T`, so `T` requires a zero value (**type.zero.param-constraint**): for an `Option[T]` whose `T` has no zero value, `Get` is rejected and `o` MUST be inspected with `switch`.
 
 **type.option.none-assign** — `None` is assignable to every type `Option[T]`. Its type argument is taken from the assignment context; if there is none, the program MUST be rejected.
 
@@ -276,7 +276,30 @@ A variable, field, result, element or non-variadic parameter of type `any` MUST 
 - **type.zero.make** — `make([]T, n)` and `make([]T, n, m)` are rejected unless `n` is the constant 0; `make` with a capacity remains allowed.
 - **type.zero.map-index** — For a map with element type `T`, the single-value index expression `m[k]` is rejected; only the comma-ok form `v, ok := m[k]` is allowed, and `v` is usable only where `ok` is true.
 - **type.zero.chan-receive** — For a channel with element type `T`, the single-value receive `<-ch` is rejected; only the comma-ok form `v, ok := <-ch` is allowed, because a receive from a closed channel yields the zero value.
-- **type.zero.generic** — A type parameter is not known to have a zero value. Inside a generic function, `var x P` for a type parameter `P` is allowed only if the constraint of `P` guarantees a zero value. **Note** — How a constraint expresses this is an open issue.
+
+**Zero values of type parameters.** No constraint expresses "has a zero value"; the requirement is inferred, like an effect summary ([07-effects](07-effects.md)).
+
+**type.zero.param-use** — Inside a generic function or method, operations that produce the zero value of a type parameter `P` (`var x P` without initializer, a composite literal omitting a field of type `P`, `make([]P, n)`, the single-value forms of map index and channel receive, `Option[P].Get`) are allowed.
+
+**type.zero.param-constraint** — Such an operation gives `P` the inferred constraint *requires a zero value*. The constraint propagates: if a generic passes its own type parameter `Q` as the argument for a parameter that requires a zero value, `Q` requires a zero value too. The constraint is part of the generic's summary and is computed per package, like effect summaries.
+
+**type.zero.param-instantiation** — Instantiating a type parameter that requires a zero value with a type that has no zero value (**type.zero.none**) is a compile error. The diagnostic is reported at the instantiation site and MUST show the chain from the instantiation to the operation that uses the zero value.
+
+**type.zero.param-tools** — `kern doc` and `kern query` MUST show the inferred constraint of each type parameter ([20-toolchain](20-toolchain.md)).
+
+```go
+func Find[T any](xs []T, pred func(T) bool) (T, bool) {
+    for _, x := range xs {
+        if pred(x) {
+            return x, true
+        }
+    }
+    var zero T                 // T: requires a zero value (inferred)
+    return zero, false
+}
+
+_, _ = Find(shapes, isBig)     // error: Shape has no zero value; Find uses the zero value of T at find.kn:7
+```
 
 **Note** — For enum types, the author controls this through the order of variants.
 
@@ -373,13 +396,3 @@ Functions:
 **type.universe.removed** — The Go built-ins `new`, `complex`, `real`, `imag` and `recover` are not predeclared.
 
 **Note** — Recovery from panics is not part of the language: a panic is handled as the target's `OnPanic` specifies, and a panic in a task propagates to its parent ([09-concurrency](09-concurrency.md), [19-runtime](19-runtime.md)).
-
-## Open issues
-
-1. **Unexported variants of exported enums.** Provisional: allowed; external `switch` needs `default` (**type.enum.variant-export**).
-2. **Byte-order types outside `layout` structs.** Provisional: usable anywhere, as distinct integer types (**type.endian**).
-3. **Run-time conversion to `cstring`/`dstring`.** Provisional: explicit conversion with copy and panic on an embedded terminator (**type.string.terminator-conv**). `kern.md` also shows `ffi.CString(path)`; whether both are needed is open.
-4. **Float-to-integer conversion.** Provisional: panics when not representable (**type.conv.float-int**).
-5. **Overflow in `fixed` and integer `simd` types.** Provisional: checked as for integers.
-6. **Constraint guaranteeing a zero value.** Provisional: none exists; `var x P` for a type parameter `P` is rejected (**type.zero.generic**).
-7. **Fields allowed in `layout` structs.** Provisional: only fixed-size plain data (**type.layout.fields**).

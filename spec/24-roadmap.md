@@ -112,7 +112,7 @@ The plan covers the whole environment. It is split into small steps, each of whi
 | # | Step | Done when |
 | --- | --- | --- |
 | 51 | AVR with pointers to flash and RAM | reference programs in the AVR interpreter |
-| 52 | RISC-V 32 and 64, MSP430; formats MZ (.EXE) and UF2 | reference programs in the interpreters; UF2 flashes on RP2040 |
+| 52 | RISC-V 32 and 64, MSP430, ARMv6-M (RP2040); formats MZ (.EXE) and UF2 | reference programs in the interpreters; UF2 flashes on RP2040 |
 | 53 | WCET: cycle model, `wcet.Within` | the estimate is never below the time measured in an interpreter with an exact cycle model, over the whole set |
 | 54 | OS: `trap`, `Privileged`, `PhysAddr`/`VirtAddr`, `abi.Table` | negative tests for the kernel/user boundary |
 | 55 | Boot targets: BIOS, Multiboot, UEFI, Device Tree | a minimal kernel boots in QEMU and handles page faults and system calls |

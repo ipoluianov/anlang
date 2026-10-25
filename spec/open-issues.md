@@ -1,6 +1,6 @@
 # Open issues
 
-Consolidated index of the "Open issues" subsections of all spec files. Section 1 records the decisions taken during integration; section 2 lists what is still open. The file's own "Open issues" subsection is authoritative for details.
+Consolidated index of the "Open issues" subsections of all spec files. Section 1 records all decisions; section 2 lists questions deferred to implementation. No design question is open.
 
 ## 1. Resolved
 
@@ -59,124 +59,107 @@ Decisions of 2026-10-25. The rule text in the spec files is normative; these ite
 | 34 | 21-protocol | Protocol method names and shapes | Invented names in 21.4 (`initialize`, `check`, `query`, `prove`, `test`, `run`, `debug/*`, `diff`, `requirements`, `shutdown`) |
 | 35 | 01-lexical | Novelty inventory | Provisional entries added to §1.8: `assert`, variant constructors, static type switch, `meta.Reject`, composite constants, predeclared `Secret`/`Untrusted`, deferred effects |
 
-## 2. Open: minor and technical
+### 1.3 Accepted technical decisions
 
-### 01-lexical
+Provisional technical choices accepted as written on 2026-10-25. The rule text in the spec files is normative.
+
+#### 01-lexical
 - Non-canonical formatting: error in every build (**lex.source.canonical**).
 - A call `requires(x)` at the start of a body is a contract clause; write `(requires)(x)` otherwise.
 - `layout` is written in the leading clause region of the struct field list.
 - Untyped rune constants default to `i32`.
 
-### 02-types
+#### 02-types
 - Unexported variants of exported enums allowed; external `switch` needs `default` (**type.enum.variant-export**).
 - Byte-order types usable anywhere (**type.endian**).
-- Run-time conversion to `cstring`/`dstring` copies and panics on an embedded terminator; relation to `ffi.CString` open (**type.string.terminator-conv**).
+- Run-time conversion to `cstring`/`dstring` copies and panics on an embedded terminator; `ffi.CString(s)` is equivalent to `cstring(s)` (**type.string.terminator-conv**, **ffi.mem.cstring**).
 - Float-to-integer conversion panics when not representable (**type.conv.float-int**).
 - `fixed` and integer `simd` overflow checked as for integers.
-- No constraint guarantees a zero value; `var x P` for a type parameter is rejected (**type.zero.generic**).
 - `layout` structs hold only fixed-size plain data (**type.layout.fields**).
 
-### 03-declarations
+#### 03-declarations
 - No channels at package level (**decl.var.package-kinds**).
 - Handler names are not declared in any scope (**decl.handler.name**).
 
-### 04-expressions
+#### 04-expressions
 - `<<` on checked integers discards bits as in Go (**expr.int.shift**).
 - Float-to-integer conversion out of range is overflow (**expr.float.to-int**).
 - Integer `simd` lanes checked; `fixed` `*` and `/` truncate toward zero (**expr.known.fixed**).
 - A `...any` parameter is usable only in `for const`, `len` and forwarding (**expr.call.any-forward**).
 
-### 05-statements
+#### 05-statements
 - `default` permitted in variant switches (**stmt.switch.variant.default**).
 - Deferred calls returning errors need an explicit discard.
 - Dead stores of errors not covered by **stmt.error.unused**.
-- `asm` syntax provisional (**stmt.asm.syntax**).
 - `inout` operand path in `defer` fixed at the statement; access begins when the call runs (**stmt.defer.inout-args**).
 
-### 06-memory
+#### 06-memory
 - Changing the length of an `inout` subslice panics (**mem.inout.subslice**).
 - Arena API adds `Get`, `Delete`; stale handles panic.
 - Arenas in `core` need `Alloc` to grow; a fixed-capacity arena may be added.
 - Values are released no later than the end of the scope of their last copy.
 
-### 07-effects
+#### 07-effects
 - Exact forbidden effects per profile (**eff.profile.allowed**).
 - Function values stored in data structures resolved by function type over the whole program.
 - `Alloc` added wherever an operation may copy (**eff.infer.determinism**).
 - `Without` on functions with parametric references checked at declaration and at each call (**eff.without.check**).
 
-### 08-contracts
+#### 08-contracts
 - `result` only for exactly one unnamed result (**contract.expr.result**).
 - Type invariants with exported fields checked at boundaries.
 
-### 09-concurrency
+#### 09-concurrency
 - `task.LockThread` lasts until the task ends (**conc.os.lock-thread**).
 - `RWMutex.RLock()` yields a copy (**conc.sync.rwmutex**).
 
-### 10-compile-time
-- Concrete evaluation limits implementation-defined; project override open.
-- Generator declaration in `kern.mod` and whether generated output is committed; `kern.mod` grammar in 20-toolchain does not include generators yet.
-
-### 11-data-safety
+#### 11-data-safety
 - Text and structured decoders return `Untrusted`; raw byte reads do not (**safe.untrusted.sources**).
 - No shell-string API (**safe.untrusted.shell**).
 - `ExposeSecret` declared with `effect.Declare` in `kern/secret`.
 
-### 12-ffi
+#### 12-ffi
 - Calling an unavailable optional library panics (**ffi.lib.optional**).
 - Unresolved C-library symbols in object files are a build error (**ffi.static.unresolved**).
 - C strings returned as `ffi.Handle`, copied with `ffi.GoString`.
-- Binding form for JNI table entries open.
 - At least 1024 callbacks, never freed; foreign threads run callbacks as tasks (**ffi.callback.lifetime**, **ffi.callback.context**).
 
-### 13-targets
-- Formats of architecture and platform descriptions only by required content.
+#### 13-targets
 - All formats in `Formats` are produced (**target.format.all**).
 - Placement: first `Exec` and first non-`Exec` region.
 - `main` profiles per platform: table in 13.4.
 - Project target packages found by directory name (**target.select.resolve**).
 - `target.Pointers` fields `Flat`, `Near`, `Far`, `Program`.
 
-### 14-embedded
-- Interrupt priorities from the device description; override unspecified.
+#### 14-embedded
 - Unhandled vectors panic via `OnPanic`.
-- Multi-core microcontrollers not specified; **emb.shared.mutex** applies to single-core targets.
 - CPU clock: `Clock` field of `target.Desc`.
-- Response-time analysis is future work.
 
-### 15-os
+#### 15-os
 - `PhysAddr`, `VirtAddr` in `kern/mm`; width per target.
-- Names of kernel thread, per-CPU and spin lock types.
-- Validation of user memory in system calls; whether kernels receive it as `Untrusted`.
 - Default memory order `SeqCst` (**os.smp.atomic**).
 - Boot entry signatures per boot platform (**os.boot.entry**).
 
-### 16-gpu
-- Creating and reading `gpu.Out[T]` buffers: names open.
+#### 16-gpu
 - Launch size in contracts: `gpu.GlobalSize()` (**gpu.dispatch.requires**).
-- `f64` and floating point guarantees on GPUs.
-- Windows compute via Vulkan/`spirv`; Direct3D shaders unspecified.
 - GPU functions allowed in any package that allows `core` (**gpu.subset.profile**).
 
-### 17-ui
+#### 17-ui
 - Background limits compared with the platform description (**ui.cap.background**).
-- Form of the state migration function.
-- Native view API.
 - Effect-to-permission table informative; normative mapping in `kern/app`.
-- `Background` on Android.
 
-### 18-stdlib
+#### 18-stdlib
 - Required set: 18.3 plus 18.3.1 and 18.3.3.
 - `kern/runtime` not importable.
 - `kern/log` in all profiles, `kern/html` in `app` and `ui`.
 - `kern/simd` in all profiles.
 
-### 19-runtime
+#### 19-runtime
 - Release vs development builds (**rt.dev.builds**).
 - Panic exit status non-zero.
 - Stack size rounded to target alignment.
 
-### 20-toolchain
+#### 20-toolchain
 - Exit statuses 0 / 1 / 2 (**tool.exit-status**).
 - Test references in `REQUIREMENTS`: bare names unique, otherwise qualified.
 - Requirement identifiers like `AUTH-3`.
@@ -184,15 +167,45 @@ Decisions of 2026-10-25. The rule text in the spec files is normative; these ite
 - Edition migration via `kern fmt -edition`.
 - `kern flash` builds first (**tool.cmd.flash**).
 
-### 21-protocol
+#### 21-protocol
 - Positions: 1-based line, 1-based byte column.
 - Fix guarantee: diagnostic disappears and no new error appears (**proto.diag.fix**).
 - Own debugger methods, no Debug Adapter Protocol.
 
-### 22-compiler
-- Textual IR format unspecified.
-- General-purpose allocator for `app` unspecified.
+### 1.4 New decisions
 
-### 23-conformance
-- Suite layout on disk implementation-defined.
-- Performance thresholds set per benchmark.
+| # | File | Question | Decision |
+| --- | --- | --- | --- |
+| 1 | 02-types, 01-lexical | Zero value of a type parameter | `var x T` and other zero-value uses are allowed; they give `T` the inferred constraint "requires a zero value", propagated like effect summaries; instantiating it with a type without a zero value is an error at the instantiation site with the chain to the use; `kern doc` and `kern query` show the constraint (**type.zero.param-use**, **type.zero.param-constraint**, **type.zero.param-instantiation**, **type.zero.param-tools**) |
+| 2 | 10-compile-time, 20-toolchain | Generators | Declared in `kern.mod` by `generate <generator> <inputs> -> <output package>`; output is not committed, it is produced into the build cache keyed by the hash of generator and inputs; the output package is importable like a project package; `kern gen -show` prints it; a project directory with the output path is an error (**tool.mod.generate**, **tool.mod.generate.unique**, **tool.cmd.gen**, **ct.gen.declared**, **ct.gen.cache**, **ct.gen.package**, **ct.gen.conflict**) |
+| 3 | 18-stdlib | Printing to standard output | `fmt.Print`, `Println`, `Printf` return no results and panic if the write fails (effects `Console`, `Panic`); `fmt.Fprint*` to an `io.Writer` return `(int, error)` as in Go (**std.fmt.print**, **std.fmt.fprint**, **std.fmt.sprint**) |
+| 4 | 18-stdlib | Error identity | `errors.New` errors compare by value (equal text, equal error); `errors.As` has the comma-ok form `As[T](err) (T, bool)`; the recommended form for a package's errors is an `enum` with `Error() string`, identity from the type (**std.errors.value**, **std.errors.as**, **std.errors.enum**) |
+| 5 | 13-targets, 15-os | BIOS boot sector target | Target `kern/target/bios-boot` (i8086, `core`); format `target.BootSector`: image at `0x7C00`, at most 510 bytes, padded, signature `0x55 0xAA`, 512-byte file; entry `func main()` with `DS=ES=SS=0`, `SP=0x7C00`; `bios.BootDrive()`; returning from `main` halts (**os.boot.bios**) |
+| 6 | 13-targets | Standard targets and their names | Naming rules (OS: `<platform>-<arch>`; DOS/BIOS by output; boot: `<environment>-<arch>`; microcontrollers by chip; mobile by platform; `web`) and the list of 22 required targets with the roadmap step of each; architecture `armv6m` added for `rp2040` (**target.std.name**, **target.std.required**) |
+
+## 2. Deferred to implementation
+
+Questions that are not design decisions. Each is decided at the roadmap step given ([24-roadmap](24-roadmap.md)); the file's own "Open issues" subsection has the details.
+
+| # | File | Question | Step |
+| --- | --- | --- | --- |
+| 1 | 05-statements | `asm` syntax | 12 |
+| 2 | 10-compile-time | Concrete compile-time evaluation limits and project override | 10 |
+| 3 | 12-ffi | Binding form for JNI table entries | 65 |
+| 4 | 13-targets | Format of architecture descriptions | 11 |
+| 5 | 13-targets | Field names of platform descriptions | 13 |
+| 6 | 14-embedded | Overriding interrupt priorities | 33 |
+| 7 | 14-embedded | Multi-core microcontrollers | 52 |
+| 8 | 14-embedded | Response-time analysis | 53 |
+| 9 | 15-os | Names and APIs of kernel thread, per-CPU and spin lock types | 54 |
+| 10 | 15-os | User memory in system calls and `Untrusted` | 54 |
+| 11 | 16-gpu | Creating and reading `gpu.Out[T]` buffers | 64 |
+| 12 | 16-gpu | Floating point guarantees and `f64` on GPUs | 64 |
+| 13 | 16-gpu | Direct3D shader targets | 64 |
+| 14 | 17-ui | Native view API | 62 |
+| 15 | 17-ui | Form of the state migration function | 63 |
+| 16 | 17-ui | `Background` on Android | 65 |
+| 17 | 22-compiler | Textual IR format | 6 |
+| 18 | 22-compiler | General-purpose allocator for `app` | 25 |
+| 19 | 23-conformance | Layout of the conformance suite on disk | 1 |
+| 20 | 23-conformance | Performance thresholds | 26 |

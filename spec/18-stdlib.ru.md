@@ -35,6 +35,7 @@
 | `kern/math`, `kern/bits`, `kern/wrap`, `kern/conv`, `kern/decimal`, `kern/fixed`, `kern/simd` | числа | да | да | да |
 | `kern/hash`, `kern/crc`, `kern/crypto` | хэши и криптография | да | да | да |
 | `kern/strings`, `kern/unicode`, `kern/encoding` | текст и кодировки | да | да | да |
+| `kern/errors` | значения ошибок | да | да | да |
 | `kern/fmt` | форматирование | без аллокаций | да | да |
 | `kern/containers` | массивы, очереди, словари | фиксированного размера | да | да |
 | `kern/json`, `kern/cbor`, `kern/binary` | форматы данных | потоковые | да | да |
@@ -90,7 +91,7 @@
 
 ### 18.3.3 Обязательные идентификаторы
 
-**std.api.required** — Пакеты ниже ДОЛЖНЫ экспортировать как минимум перечисленные идентификаторы. Их семантика задана в указанном файле. Идентификаторы с пометкой *предварительно* ждут решения ([open-issues](open-issues.ru.md)).
+**std.api.required** — Пакеты ниже ДОЛЖНЫ экспортировать как минимум перечисленные идентификаторы. Их семантика задана в указанном файле. Идентификаторы с пометкой *предварительно* отложены до реализации; шаг плана, на котором они фиксируются, указан в [open-issues](open-issues.ru.md).
 
 | Пакет | Идентификаторы | Где задано |
 | --- | --- | --- |
@@ -105,15 +106,71 @@
 | `kern/secret` | `New`, `Equal`, `Expose`, `Map`, `ConstantTime`; эффект `ExposeSecret` | [11-data-safety](11-data-safety.ru.md) |
 | `kern/untrusted` | `Accept` | [11-data-safety](11-data-safety.ru.md) |
 | `kern/interrupts` | `Enable` | [14-embedded](14-embedded.ru.md) |
-| `kern/mm` | `PhysAddr`, `VirtAddr` (*предварительно* это место) | [15-os](15-os.ru.md) |
+| `kern/bios` | `BootDrive` | [15-os](15-os.ru.md) |
+| `kern/mm` | `PhysAddr`, `VirtAddr` | [15-os](15-os.ru.md) |
 | `kern/sched`, `kern/kernel` | тип потока ядра с объявленным размером стека, данные на процессор (*предварительно*, имена не заданы) | [15-os](15-os.ru.md) |
 | `kern/gpu` | `Out[T]` с конструктором по длине и методом чтения результата (*предварительно*, имена не заданы), `Dispatch`, `GlobalID`, `GlobalSize`; `Atomic[T]`, `Shared[T]` — на будущее | [16-gpu](16-gpu.ru.md) |
 | `kern/ui` | `Node`, конструкторы узлов, узел нативного вида (*предварительно*) | [17-ui](17-ui.ru.md) |
 | `kern/app` | `Desc` и соответствие эффектов разрешениям платформ | [17-ui](17-ui.ru.md) |
+| `kern/errors` | `New`, `Is`, `As` | этот файл, §18.3.5 |
+| `kern/fmt` | `Print`, `Println`, `Printf`; `Fprint`, `Fprintln`, `Fprintf`; `Sprint`, `Sprintln`, `Sprintf` | этот файл, §18.3.4 |
 
-## 18.4 Открытые вопросы
+### 18.3.4 Печать
 
-1. **Полный список пакетов.** `kern.md` оставляет состав стандартной библиотеки открытым. Предварительное решение: пакеты из 18.3 и 18.3.1 — полный обязательный набор; другие МОГУТ добавляться в следующих редакциях.
-2. **Расположение `kern/runtime`.** `kern.md` говорит, что рантайм поставляется исходниками, но не задаёт путь импорта. Предварительное решение: `kern/runtime`, недоступный для импорта из пользовательского кода (см. [19-runtime](19-runtime.ru.md)).
-3. **Профили `kern/html` и `kern/log`.** Они используются в примерах, но отсутствуют в таблице профилей. Предварительное решение: `kern/log` во всех профилях (в `core` без аллокаций); `kern/html` в `app` и `ui`.
-4. **`kern/simd`** используется в [02-types](02-types.ru.md), но отсутствует в таблице профилей в `kern.md`. Предварительное решение: доступен во всех профилях, как показано в 18.3.
+**std.fmt.print** — `fmt.Print`, `fmt.Println` и `fmt.Printf` пишут в стандартный вывод программы и ничего не возвращают. Если запись не удалась, они вызывают панику. Поэтому их эффекты включают `Console` и `Panic`.
+
+**std.fmt.fprint** — `fmt.Fprint`, `fmt.Fprintln` и `fmt.Fprintf` принимают `io.Writer` первым аргументом и возвращают `(n int, err error)`, как в Go. На ошибку распространяется **stmt.error.unused** ([05-statements](05-statements.ru.md)).
+
+**std.fmt.sprint** — `fmt.Sprint`, `fmt.Sprintln` и `fmt.Sprintf` возвращают `string` и не имеют эффекта `Console`.
+
+**Примечание** — Печать в стандартный вывод — самый частый случай, а сбой записи там редок и обычно неисправим, поэтому он вызывает панику, а не возвращает ошибку, которую каждому вызывающему пришлось бы отбрасывать. Запись в произвольный `io.Writer`, например в файл или сетевое соединение, возвращает ошибку, потому что там её нужно обрабатывать.
+
+```go
+fmt.Println("Hello, World!")                // no result; panics if stdout fails
+
+if _, err := fmt.Fprintln(f, "line"); err != nil {
+    return err
+}
+```
+
+### 18.3.5 Ошибки
+
+**std.errors.api** — `errors.New` и `errors.Is` ведут себя как в Go. `fmt.Errorf` с `%w` оборачивает ошибки, как в Go.
+
+**std.errors.as** — Указателей в Kern нет, поэтому `errors.As` имеет форму «значение, ok»: `func As[T error](err error) (T, bool)`. Она возвращает первую ошибку в цепочке `err`, динамический тип которой — `T`, и `true`; иначе — нулевое значение `T` и `false`. Поэтому `T` требует нулевого значения (**type.zero.param-constraint**, [02-types](02-types.ru.md)).
+
+**std.errors.const** — `errors.New` с константным аргументом вычислима при компиляции (**ct.eval.evaluable**, [10-compile-time](10-compile-time.ru.md)). Поэтому ошибки-маркеры объявляются константами: переменные уровня пакета ограничены (**decl.var.package-kinds**, [03-declarations](03-declarations.ru.md)).
+
+**std.errors.value** — У ошибки, которую возвращает `errors.New`, нет скрытой идентичности: две такие ошибки равны тогда и только тогда, когда равны их тексты. `errors.Is` сравнивает через `==`, разворачивая обёртки, как в Go.
+
+```go
+const ErrEmptyWord = errors.New("mydictionary: empty word")
+```
+
+**Примечание** — Одинаковые тексты в разных пакетах дают равные ошибки. Как и в Go, принято начинать текст с имени пакета.
+
+**std.errors.enum** — Рекомендуемая форма ошибок, которые пакет возвращает вызывающим, — тип `enum` с методом `Error() string`. Идентичность ему даёт тип: значения разных типов `enum` никогда не равны, значения одного типа равны по **type.enum.comparable** ([02-types](02-types.ru.md)). Вызывающий проверяет вариант через `errors.Is` или разбирает все варианты исчерпывающим `switch` после `errors.As`; тогда новый вариант ломает каждый неполный `switch`.
+
+```go
+// Error is an error of package mydictionary.
+type Error enum {
+    EmptyWord
+    TooLong{word string, max int}
+}
+
+func (e Error) Error() string {
+    switch e {
+    case EmptyWord:          return "mydictionary: empty word"
+    case TooLong{word, max}: return fmt.Sprintf("mydictionary: %q is longer than %d", word, max)
+    }
+}
+
+// caller
+if errors.Is(err, mydictionary.EmptyWord) { ... }
+
+if de, ok := errors.As[mydictionary.Error](err); ok {
+    switch de { ... }             // exhaustive over the variants
+}
+```
+
+**Примечание** — `kern port` переводит Go-шную ошибку-маркер `var ErrX = errors.New("...")` в `const ErrX = errors.New("...")`; смысл не меняется, пока тексты маркеров не совпадают.

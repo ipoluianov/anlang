@@ -185,8 +185,7 @@ interrupt TIM2() {
 
 ## Open issues
 
-1. **Interrupt priorities.** `kern.md` does not say how interrupt priorities are configured. Provisional: priorities come from the device description; overriding them is not yet specified.
-2. **Unhandled vectors.** Provisional: bound to a default handler that panics with `OnPanic`.
-3. **Multi-core microcontrollers (RP2040, ESP32).** The priority ceiling protocol alone does not exclude parallel access from another core. Provisional: **emb.shared.mutex** applies only to single-core targets; multi-core `core` targets are not yet specified.
-4. **CPU clock frequency for WCET.** `kern.md` does not say where it comes from. Provisional: the `Clock` field of `target.Desc` ([13-targets](13-targets.md) §13.2); changing the clock at run time is not modelled.
-5. **Response-time analysis.** Checking that all tasks meet their deadlines (WCET plus task periods and preemption) is future work and is not specified.
+
+1. **Overriding interrupt priorities.** Deferred to implementation — step 33. Priorities come from the device description; a way to override them is designed with task priorities.
+2. **Multi-core microcontrollers (RP2040, ESP32).** Deferred to implementation — step 52. **emb.shared.mutex** applies to single-core targets; multi-core `core` targets are specified with the RP2040 target.
+3. **Response-time analysis.** Deferred to implementation — step 53. Checking that all tasks meet their deadlines (WCET plus task periods and preemption) is designed together with WCET.

@@ -235,10 +235,3 @@ var screen = unsafe.Map[[2000]Cell](i8086.Far(0xB800, 0))   // DOS text video me
 | `ui` | as `app`, plus immutable state trees with structural sharing |
 
 **mem.alloc.effect** — An operation that may allocate heap memory — growing a slice or map beyond capacity, creating a copy of a shared buffer, `arena.Arena[T].New` when the arena must grow, placing a synchronization object on the heap — gives the containing function the effect `Alloc`. In the `core` profile such an operation is a compile-time error unless the implementation proves that it does not allocate.
-
-## Open issues
-
-1. **Changing the length of an `inout` subslice.** Provisional choice: element modification only; changing the length panics (**mem.inout.subslice**).
-2. **Arena API.** `kern.md` shows only `New` and `Edit`. Provisional choice: `Get`, `Delete` and the stale-handle behavior in §7.
-3. **Arenas in `core`.** `kern.md` lists arenas for `app` and fixed-size pools for `core`. Provisional choice: `kern/arena` requires `Alloc` when growing; a fixed-capacity arena for `core` may be added to the standard library.
-4. **Release order.** `kern.md` does not specify when a value is released within a scope. Provisional choice: no later than the end of the scope of its last copy; the exact point is not observable except through `Secret` zeroing ([11-data-safety](11-data-safety.md)).

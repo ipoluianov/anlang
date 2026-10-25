@@ -6,7 +6,7 @@ A build target combines three independent descriptions: an **architecture**, a *
 
 | Layer | Describes | Examples |
 | --- | --- | --- |
-| Architecture | instructions, registers, word size, pointer kinds, calling conventions, timing | `i8086`, `x86_64`, `armv7m`, `avr`, `msp430`, `riscv32`, `riscv64`, `arm64`, `wasm32` |
+| Architecture | instructions, registers, word size, pointer kinds, calling conventions, timing | `i8086`, `x86_64`, `armv6m`, `armv7m`, `avr`, `msp430`, `riscv32`, `riscv64`, `arm64`, `wasm32` |
 | Platform | what the environment provides: effects, ABI, entry point, dynamic loading | `dos`, `bare`, `linux`, `windows`, `macos`, `ios`, `android`, `web` |
 | Format | structure of the output file | `flat` (.COM), `mz` (.EXE), ELF, PE, Mach-O, wasm, BIN, Intel HEX, UF2 |
 
@@ -145,7 +145,7 @@ An *architecture description* consists of three components, all Kern data:
 | `i8086` | 16 | 16 | `Near` 16, `Far` 32 (segment:offset) |
 | `avr` | 16 | 16 | `Near` 16 (RAM), `Program` 16 or 24 (flash, read by special instructions) |
 | `msp430` | 16 | 16 | `Flat` 16 |
-| `armv7m`, `riscv32`, `wasm32` | 32 | 32 | `Flat` 32 |
+| `armv6m`, `armv7m`, `riscv32`, `wasm32` | 32 | 32 | `Flat` 32 |
 | `x86_64`, `arm64`, `riscv64` | 64 | 64 | `Flat` 64 |
 
 **Note** — Portable code uses sized types (`i8` … `i64`, `u8` … `u64`) by default.
@@ -195,6 +195,7 @@ const Description = target.Desc{
 | Format | Value | Requirements |
 | --- | --- | --- |
 | flat (.COM) | `target.Flat{Origin, MaxSize}` | raw image without header or relocations, loaded at `Origin`; execution starts at the first byte; the image MUST NOT exceed `MaxSize` bytes; for DOS `.COM`, `Origin` is `0x100` and `MaxSize` is `65280` |
+| boot sector | `target.BootSector` | raw image loaded at `0x7C00`, at most 510 bytes, padded with zero bytes to 510 bytes and followed by the boot signature `0x55 0xAA`; the file is exactly 512 bytes; execution starts at the first byte |
 | MZ (.EXE) | `target.MZ` | DOS executable with MZ header and relocation table |
 | ELF | `target.ELF` | executable on Linux; on `bare`, load segments at region addresses for debuggers and flashing tools |
 | PE | `target.PE` | Windows executable |
@@ -234,13 +235,46 @@ const Description = target.Desc{
 
 **target.multi.output** — The outputs of target `t` are placed in `out/<t>/`.
 
+## 13.13 Standard targets
+
+**target.std.name** — Target names of the standard library follow these rules:
+
+1. A target for an operating system is named `<platform>-<architecture>`: `linux-x86_64`, `windows-x86_64`.
+2. DOS and BIOS targets are named after the kind of output: `dos-com`, `dos-exe`, `bios-boot`.
+3. Other boot targets are named `<boot environment>-<architecture>`: `multiboot-x86_64`, `uefi-arm64`, `devicetree-riscv64`.
+4. A microcontroller target is named after the chip, in lower case without separators: `stm32f103c8`, `rp2040`.
+5. A mobile target is named after the platform and builds all its architectures into one package: `android`, `ios`, `ios-sim`.
+6. The browser target is `web`.
+
+Architecture names inside target names keep their own spelling (`x86_64`).
+
+**target.std.required** — The implementation MUST provide the following target packages under `kern/target/`. The step column is the roadmap step that introduces the target ([24-roadmap](24-roadmap.md)); a target is required from the release that completes that step.
+
+| Target | Architecture | Platform | Formats | Step |
+| --- | --- | --- | --- | --- |
+| `dos-com` | `i8086` | `dos` | `Flat{Origin: 0x100, MaxSize: 65280}` | 13 |
+| `stm32f103c8` | `armv7m` (Cortex-M3) | `bare` | ELF, BIN, Intel HEX | 15–16 |
+| `web` | `wasm32` | `web` | wasm | 18 |
+| `linux-x86_64` | `x86_64` | `linux` | ELF | 26 |
+| `linux-arm64` | `arm64` | `linux` | ELF | 27 |
+| `macos-arm64` | `arm64` | `macos` | Mach-O | 27 |
+| `windows-x86_64` | `x86_64` | `windows` | PE | 28 |
+| `atmega328p` | `avr` | `bare` | ELF, Intel HEX | 51 |
+| `dos-exe` | `i8086` | `dos` | MZ | 52 |
+| `rp2040` | `armv6m` (Cortex-M0+) | `bare` | ELF, UF2 | 52 |
+| `esp32c3` | `riscv32` | `bare` | ELF, BIN | 52 |
+| `msp430g2553` | `msp430` | `bare` | ELF, Intel HEX | 52 |
+| `bios-boot` | `i8086` | BIOS boot sector | `BootSector` | 55 |
+| `multiboot-x86_64` | `x86_64` | Multiboot | ELF | 55 |
+| `uefi-x86_64`, `uefi-arm64`, `uefi-riscv64` | as named | UEFI | PE (UEFI application) | 55 |
+| `devicetree-arm64`, `devicetree-riscv64` | as named | Device Tree | ELF, BIN | 55 |
+| `android` | `arm64`, `x86_64` | `android` | APK, AAB | 65 |
+| `ios`, `ios-sim` | `arm64`; `arm64`, `x86_64` | `ios` | `.ipa`; `.app` | 66 |
+
+**Note** — The `rp2040` has two cores; until multi-core microcontrollers are specified ([14-embedded](14-embedded.md)), the target runs on core 0 only. A project adds other chips and boards as its own target packages (**target.pkg.location**).
+
 ## Open issues
 
-1. **Format of architecture descriptions.** `kern.md` lists it as a planning question: the structure of the constants and the notation of instruction semantics. *Provisional:* only the required content is specified (13.5.1).
-2. **Format of platform descriptions.** *Provisional:* a `platform.Platform` constant with the content listed in **target.platform.desc**; field names are open.
-3. **Classification of environment effects.** *Provisional:* the list in **target.effects.environment**, owned by this file.
-4. **Several formats.** `kern.md` lists several formats per target without saying which are produced. *Provisional:* all of them (**target.format.all**).
-5. **Placement in several memory regions.** *Provisional:* first `Exec` region and first non-`Exec` region; explicit placement of data in other regions is open.
-6. **Profiles allowed for `main` per platform.** `kern.md` does not specify them. *Provisional:* the table in 13.4.
-7. **Search for project target packages by name.** *Provisional:* any package in the module whose directory name matches and that declares `Description` (**target.select.resolve**).
-8. **Field names in `target.Pointers` and `target.Desc`.** `kern.md` shows `Near` and `Far` only. *Provisional:* `Flat`, `Near`, `Far`, `Program`.
+
+1. **Format of architecture descriptions.** Deferred to implementation — step 11. Only the required content is specified (13.5.1); the structure of the constants and the notation of instruction semantics are fixed with the i8086 description.
+2. **Field names of platform descriptions.** Deferred to implementation — step 13. The content is specified by **target.platform.desc**; field names are fixed with the first platform (`dos`).

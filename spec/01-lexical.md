@@ -97,7 +97,7 @@ The novelty inventory is the closed list of everything Kern adds to Go. Adding a
 | keywords | `enum`, `inout`, `profile` |
 | contextual words | `requires`, `ensures`, `invariant`, `interrupt`, `trap`, `gpu`, `layout`, `asm` |
 | syntactic constructs | `for const`; external function `func f(...) T = expr`; `asm` block; patterns in `case` (`case Circle{r}:`); variants in an `enum` body |
-| semantics without new syntax | `nil` without dereference; `inout` iteration variable in range-over-func; `...any` as a compile-time tuple; synchronization types as handles; `inout` arguments in `go`; `const` from function calls |
+| semantics without new syntax | `nil` without dereference; `inout` iteration variable in range-over-func; `...any` as a compile-time tuple; synchronization types as handles; `inout` arguments in `go`; `const` from function calls; inferred zero-value constraint of type parameters (**type.zero.param-constraint**) |
 | compiler-known types with operators | `simd`, `fixed`, `wrap` |
 | decided 2026-10-25 ([open-issues](open-issues.md)) | predeclared function `assert` ([08-contracts](08-contracts.md)); variants with data as constructor functions ([02-types](02-types.md)); static type switch on type-parameter values and `...any` elements, and `meta.Reject` ([10-compile-time](10-compile-time.md)); constants of composite types ([10-compile-time](10-compile-time.md)); predeclared `Secret` and `Untrusted` ([11-data-safety](11-data-safety.md)); deferred effects of `Cmd` constructors ([07-effects](07-effects.md), [17-ui](17-ui.md)) |
 
@@ -124,10 +124,3 @@ The following Go features are removed or restricted. Each is specified in the fi
 | goroutines | structured tasks | [09-concurrency](09-concurrency.md) |
 | run-time reflection | compile-time only | [10-compile-time](10-compile-time.md) |
 | cgo | external functions in the style of purego | [12-ffi](12-ffi.md) |
-
-## Open issues
-
-1. **Non-canonical formatting as an error.** Should a non-canonical file be an error in every build or only a warning during development? Provisional: error (**lex.source.canonical**).
-2. **Contextual word in leading position used as an ordinary name.** A call `requires(x)` at the start of a function body is parsed as a contract clause. Provisional: accepted; such a call must be written elsewhere or as `(requires)(x)`.
-3. **Position of `layout`.** `kern.md` does not say where `layout packed` is written. Provisional: in the leading clause region of the struct field list, like a type invariant.
-4. **Default type of untyped rune constants.** Provisional: `i32`, since `rune` is not predeclared.

@@ -99,6 +99,7 @@ Stage 1 requires host targets (x86-64 and arm64) and the `app` allocator; see [2
 
 ## 22.10 Open issues
 
-1. **Textual IR format.** Listed as open in `kern.md`. Provisional choice: not specified; the IR interpreter and tests use an implementation-defined text form until a later edition fixes it.
-2. **Format of architecture descriptions.** Listed as open in `kern.md`; owned by [13-targets](13-targets.md).
-3. **General-purpose allocator for `app`.** Own or ported. Provisional choice: not specified; any allocator that satisfies [06-memory](06-memory.md) and passes the fuzzing of [23-conformance](23-conformance.md).
+
+1. **Textual IR format.** Deferred to implementation — step 6. Until then the IR interpreter and tests use an implementation-defined text form.
+2. **Format of architecture descriptions.** Deferred to implementation — step 11; owned by [13-targets](13-targets.md).
+3. **General-purpose allocator for `app`.** Deferred to implementation — step 25. Own or ported; any allocator that satisfies [06-memory](06-memory.md) and passes the fuzzing of [23-conformance](23-conformance.md).

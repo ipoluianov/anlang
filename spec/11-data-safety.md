@@ -167,9 +167,3 @@ This file owns the data-safety behavior of the logging and HTML packages; [18-st
 **safe.pkg.log** — `kern/log` MUST format its arguments by the rules of `kern/fmt`, including **safe.secret.print**. In `core` it MUST NOT allocate (**std.core.no-hidden-alloc**).
 
 **safe.pkg.html** — `kern/html` MUST render by **safe.untrusted.html**. `html.Trusted` is its type for markup that is inserted without escaping.
-
-## Open issues
-
-1. **Which file reads produce `Untrusted`.** *Provisional:* text and structured decoders wrap results; raw byte reads do not (**safe.untrusted.sources**).
-2. **Shell sinks.** *Provisional:* no shell-string API at all (**safe.untrusted.shell**).
-3. **Declaration of `ExposeSecret`.** `kern.md` lists it among custom effects. *Provisional:* declared with `effect.Declare` in `kern/secret`; the general mechanism is in [07-effects](07-effects.md).

@@ -224,11 +224,3 @@ VariantName = identifier | QualifiedIdent .                                     
 var p Option[arena.Ref[Node]] = None       // inferred from the context
 child := Node{parent: Some(root)}           // inferred from root
 ```
-
-## Open issues
-
-1. **Shifts on checked integers.** `kern.md` lists only `+`, `-`, `*` as checked. Provisional choice: `<<` on checked integers discards bits as in Go (**expr.int.shift**); wrapping types list `<<` explicitly.
-2. **Float-to-integer conversion.** Go leaves out-of-range conversions implementation-defined. Provisional choice: treat them as overflow (**expr.float.to-int**).
-3. **SIMD integer lanes.** `kern.md` does not say whether integer vector lanes are checked. Provisional choice: element-wise operators follow the element type, so integer lanes are checked; wrapping lane types may be added to `kern/simd` later.
-4. **Fixed-point rounding.** Provisional choice: `*` and `/` truncate toward zero (**expr.known.fixed**).
-5. **Uses of a `...any` parameter.** Provisional choice: only `for const`, `len` and forwarding (**expr.call.any-forward**).

@@ -102,8 +102,7 @@ gpu func Blur(img []simd.F32x4, out gpu.Out[simd.F32x4]) {
 
 ## Open issues
 
-1. **Creating and reading output buffers.** `kern.md` does not say how a `gpu.Out[T]` is created on the CPU side and how results are read back. Provisional: a constructor with a length, and a method that returns the elements as a slice after dispatch; names to be fixed in [18-stdlib](18-stdlib.md).
-2. **Launch size in contracts.** `kern.md` says that kernel preconditions concern the launch size but does not name it. Provisional: `gpu.GlobalSize()` (**gpu.dispatch.requires**).
-3. **Floating point semantics and `f64`.** GPU floating point may differ from IEEE 754, and not all GPUs support `f64`. Provisional: `f64` in a GPU function is an error on shader targets without `f64` support; the exact floating point guarantees are open.
-4. **Windows.** `kern.md` mentions Direct3D for rendering on Windows. Provisional: compute on Windows uses `spirv` with Vulkan; Direct3D shader targets are not specified.
-5. **Packages with GPU functions.** Provisional: a GPU function may be declared in any package, provided that package allows `core` (**gpu.subset.profile**).
+
+1. **Creating and reading output buffers.** Deferred to implementation — step 64. A constructor with a length and a method that returns the elements as a slice after dispatch; names are fixed in [18-stdlib](18-stdlib.md).
+2. **Floating point semantics and `f64`.** Deferred to implementation — step 64. `f64` in a GPU function is an error on shader targets without `f64` support; exact floating point guarantees are fixed per shader target.
+3. **Direct3D.** Deferred to implementation — step 64. Compute on Windows uses `spirv` with Vulkan; whether Direct3D shader targets are added is decided at that step.

@@ -141,7 +141,7 @@ func sqlite3_close(db ffi.Handle) i32                    = lib.Symbol("sqlite3_c
 
 **ffi.mem.empty-slice** — For an empty slice, the pointer value is unspecified and MUST NOT be dereferenced by external code; the length is passed separately by the program.
 
-**ffi.mem.cstring** — `ffi.CString(s string) cstring` creates a NUL-terminated copy of `s`; it has effect `Alloc` and panics if `s` contains a NUL byte. `ffi.GoString(h ffi.Handle) string` copies a NUL-terminated string from external memory.
+**ffi.mem.cstring** — `ffi.CString(s string) cstring` creates a NUL-terminated copy of `s`; it is equivalent to the conversion `cstring(s)` (**type.string.terminator-conv**), has effect `Alloc` and panics if `s` contains a NUL byte. `ffi.GoString(h ffi.Handle) string` copies a NUL-terminated string from external memory.
 
 ### 12.5.2 Callbacks
 
@@ -179,8 +179,5 @@ func Open(path string) (DB, error) {
 
 ## Open issues
 
-1. **Calling a function of an unavailable optional library.** *Provisional:* panic, with effect `Panic` (**ffi.lib.optional**).
-2. **Unresolved symbols of object files that need a C library** (for example `memcpy`). *Provisional:* build error unless another `ffi.Static` object provides them (**ffi.static.unresolved**).
-3. **Strings returned by external code.** *Provisional:* returned as `ffi.Handle` and copied with `ffi.GoString`.
-4. **Binding JNI function-table entries and Objective-C selectors.** `kern.md` says "the same declarations" but gives no binding form. *Provisional:* `objc_msgSend` is declared per signature with `lib.Symbol`; the binding form for JNI table entries is open.
-5. **Callback limit and threads.** `kern.md` says only that the number of live callbacks is limited, as in purego. *Provisional:* at least 1024, never freed, foreign threads run callbacks as tasks (**ffi.callback.lifetime**, **ffi.callback.context**).
+
+1. **Binding JNI function-table entries.** Deferred to implementation — step 65. `objc_msgSend` is declared per signature with `lib.Symbol`; the binding form for JNI table entries is fixed with the Android bridge.

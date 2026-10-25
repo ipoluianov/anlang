@@ -52,7 +52,7 @@ weather/
 
 ```
 KernModFile      = { newline } { Directive { newline } } .
-Directive        = ModuleDirective | EditionDirective | TargetsDirective | EffectsDirective .
+Directive        = ModuleDirective | EditionDirective | TargetsDirective | EffectsDirective | GenerateDirective .
 
 ModuleDirective  = "module" ModuleName newline .
 ModuleName       = ascii_lower { ascii_lower | decimal_digit | "_" } .
@@ -71,6 +71,12 @@ path_element     = ascii_lower { ascii_lower | decimal_digit | "_" } .
 EffectSet        = "{" [ EffectName { "," EffectName } ] "}" .
 EffectName       = identifier .
 
+GenerateDirective = "generate" GeneratorPath InputPattern { InputPattern } "->" OutputPath newline .
+GeneratorPath    = ImportPath .
+InputPattern     = PackageDir [ "/" FilePattern ] | FilePattern .
+FilePattern      = { path_char | "*" } .
+OutputPath       = ImportPath .
+
 ascii_lower      = "a" … "z" .
 ```
 
@@ -88,7 +94,11 @@ ascii_lower      = "a" … "z" .
 
 **tool.mod.effects.names** — Каждое имя эффекта в `kern.mod` ДОЛЖНО называть эффект, известный в программе: встроенный эффект, эффект из описания устройства цели или эффект, объявленный через `effect.Declare` (см. [07-effects](07-effects.ru.md)).
 
-**tool.mod.format** — `kern fmt` ДОЛЖЕН форматировать канонически и `kern.mod`: директивы в порядке `module`, `kern`, `targets`, `effects`; правила эффектов отсортированы по шаблону; имена эффектов отсортированы.
+**tool.mod.generate** — `kern.mod` МОЖЕТ содержать любое число директив `generate`. Каждая объявляет генератор ([10-compile-time](10-compile-time.ru.md), §10.8): пакет генератора (пакет `main` проекта), его входные файлы в виде шаблонов относительно корня проекта и путь импорта выходного пакета, который ДОЛЖЕН лежать под именем модуля. Пример: `generate gen/svdgen boards/stm32/*.svd -> myprogram/device`.
+
+**tool.mod.generate.unique** — Две директивы `generate` НЕ ДОЛЖНЫ называть один выходной пакет, а выходной пакет НЕ ДОЛЖЕН быть каталогом, существующим в проекте.
+
+**tool.mod.format** — `kern fmt` ДОЛЖЕН форматировать канонически и `kern.mod`: директивы в порядке `module`, `kern`, `targets`, `effects`, `generate`; правила эффектов отсортированы по шаблону; имена эффектов отсортированы; директивы `generate` отсортированы по выходному пути.
 
 ### 20.3.3 Пример
 
@@ -179,6 +189,7 @@ AUTH-4  After five failed attempts, login is locked for 15 minutes
 | `kern doc [-html] [пакеты]` | Документация |
 | `kern dev [-target T]` | Запуск с горячей перезагрузкой |
 | `kern port -from go\|c <источник> <назначение>` | Перенос кода с Go или C |
+| `kern gen -show <пакет>` | Вывести исходный код сгенерированного пакета |
 | `kern serve` | Сервер протокола среды (см. [21-protocol](21-protocol.ru.md)) |
 | `kern lsp` | Сервер Language Server Protocol (см. [21-protocol](21-protocol.ru.md)) |
 
@@ -193,6 +204,8 @@ AUTH-4  After five failed attempts, login is locked for 15 minutes
 **tool.cmd.size** — `kern size` ДОЛЖЕН сообщать для каждого пакета его вклад во flash (код и константные данные) и RAM (статические данные), а для `main`, каждой задачи и каждого обработчика прерывания — вычисленную максимальную глубину стека или то, что понадобился резерв (см. [19-runtime](19-runtime.ru.md), **rt.stack.report**).
 
 **tool.cmd.query** — `kern query` ДОЛЖЕН отвечать на запросы семантического API: кто вызывает функцию; какие эффекты достижимы из точки и какая цепочка вызовов вносит каждый; что сломается при изменении типа или функции; какое условие контракта не доказано и почему. Те же запросы доступны как операция `query` протокола (см. [21-protocol](21-protocol.ru.md)).
+
+**tool.cmd.gen** — `kern gen -show <package>` ДОЛЖЕН запустить генератор указанного выходного пакета, если его результат в кэше устарел, и вывести сгенерированные исходные файлы в каноническом форматировании. Без `-show` `kern gen` ДОЛЖЕН обновить все сгенерированные пакеты в кэше сборки, не собирая программу.
 
 **tool.cmd.flash** — `kern flash` ДОЛЖЕН сначала собрать цель так же, как `kern build`, а затем записать образ цели `core` в устройство через отладочный адаптер (SWD или JTAG) или, для целей с форматом UF2, записью файла UF2.
 
@@ -332,13 +345,3 @@ API:
 Effects:
   ! Parse: {} → {Network}                    NEW EFFECT
 ```
-
-## 20.16 Открытые вопросы
-
-1. **Коды возврата.** `kern.md` их не задаёт. Предварительное решение: **tool.exit-status** (0 / 1 / 2).
-2. **Ссылки на тесты в `REQUIREMENTS`.** В примере используются имена без пакета. Предварительное решение: такие имена должны быть уникальны в проекте, иначе их уточняют каталогом пакета.
-3. **Синтаксис идентификатора требования.** Предварительное решение: заглавные буквы и цифры, дефис, число (`AUTH-3`).
-4. **Выпускные и отладочные сборки.** См. [19-runtime](19-runtime.ru.md), **rt.dev.builds**.
-5. **Как `kern diff` получает две версии.** `kern.md` говорит «две версии кода», не уточняя, как они передаются. Предварительное решение: два каталога. Интеграция с системой контроля версий не задаётся, поскольку среда не зависит от git.
-6. **Запуск миграции редакции.** Предварительное решение: `kern fmt -edition <E>`.
-7. **`kern flash` и сборка.** Не задано. Предварительное решение: сначала сборка, как `kern build` (**tool.cmd.flash**).

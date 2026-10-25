@@ -80,9 +80,3 @@ The behavior of each component is specified elsewhere: memory in [06-memory](06-
 **rt.dev.only** — The deterministic test scheduler (see [09-concurrency](09-concurrency.md), [20-toolchain](20-toolchain.md)) and the hot reload interpreter (see [17-ui](17-ui.md)) MUST NOT be present in a release build.
 
 **rt.dev.builds** — A *release build* is the output of `kern build`. A *development build* is a build made by `kern test`, `kern dev`, `kern debug` or `kern run` with development options. Development-only components MAY be present only in development builds.
-
-## 19.7 Open issues
-
-1. **Release and development builds.** `kern.md` distinguishes them but does not define them. Provisional choice: **rt.dev.builds**.
-2. **Panic exit status in `app`.** `kern.md` says "message with stack trace and exit". Provisional choice: a non-zero exit status, unspecified beyond that; Go uses 2.
-3. **Stack rounding and minimum sizes.** Provisional choice: the computed depth rounded to the target's stack alignment, plus the space the target description reserves for interrupt entry, if any.

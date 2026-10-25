@@ -183,8 +183,3 @@ The solver's capabilities grow in stages. Each stage widens the set of obligatio
 | 3 | arrays and slices | contents after copying, loop invariants |
 | 4 | `enum` and `Option` | which variant is possible at a point |
 | 5 | bounded quantifiers | "for all i in a range" |
-
-## 8.9 Open issues
-
-1. **`result` with several results.** Provisional: only for exactly one unnamed result; otherwise results are named (**contract.expr.result**).
-2. **Type invariants with exported fields.** Assigning an exported field from another package is covered by the boundary rules, but such assignments make the invariant hard to keep. Provisional: allowed, checked at boundaries like any other assignment.

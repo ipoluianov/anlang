@@ -217,8 +217,3 @@ func Record(d time.Duration) error {
 **conc.test.findings** — The deterministic scheduler MUST report deadlocks (all remaining tasks waiting) and MUST allow tests to check ordering properties across interleavings.
 
 **Note** — Real-time schedulability analysis — proving at compile time, from WCET bounds and task periods, that all tasks meet their deadlines — is a goal for later versions ([14-embedded](14-embedded.md)).
-
-## 9.12 Open issues
-
-1. **Duration of `task.LockThread`.** Provisional: until the task finishes; no unlock function (**conc.os.lock-thread**).
-2. **`RWMutex` read access.** Provisional: `RLock()` yields a copy, consistent with value semantics (**conc.sync.rwmutex**).

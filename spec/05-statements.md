@@ -186,8 +186,5 @@ The optional expression is a struct value whose fields name the input registers.
 
 ## Open issues
 
-1. **`default` in variant switches.** `kern.md` says `default` is not needed. Provisional choice: it is permitted (**stmt.switch.variant.default**); a lint MAY warn because it hides new variants.
-2. **Deferred calls returning errors.** Provisional choice: forbidden without an explicit discard (**stmt.error.unused**, item 2).
-3. **Dead stores of errors.** Provisional choice: an error assigned to a variable and overwritten before being read is not covered by **stmt.error.unused**; Go's "declared and not used" rule still applies.
-4. **`asm` syntax.** `kern.md` lists the exact syntax as an open question. Provisional choice: **stmt.asm.syntax**. `asm` is a contextual word but is not listed among the contextual words in `kern.md`; the list in [01-lexical](01-lexical.md) should include it.
-5. **`inout` access in `defer`.** Provisional choice: the operand path is fixed at the `defer` statement, the access begins when the deferred call runs (**stmt.defer.inout-args**).
+
+1. **`asm` syntax.** Deferred to implementation — step 12. The block form of **stmt.asm.syntax** is provisional until the assembler is generated from the first architecture description.
