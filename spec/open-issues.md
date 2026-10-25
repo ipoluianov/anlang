@@ -183,6 +183,8 @@ Provisional technical choices accepted as written on 2026-10-25. The rule text i
 | 5 | 13-targets, 15-os | BIOS boot sector target | Target `kern/target/bios-boot` (i8086, `core`); format `target.BootSector`: image at `0x7C00`, at most 510 bytes, padded, signature `0x55 0xAA`, 512-byte file; entry `func main()` with `DS=ES=SS=0`, `SP=0x7C00`; `bios.BootDrive()`; returning from `main` halts (**os.boot.bios**) |
 | 6 | 13-targets | Standard targets and their names | Naming rules (OS: `<platform>-<arch>`; DOS/BIOS by output; boot: `<environment>-<arch>`; microcontrollers by chip; mobile by platform; `web`) and the list of 22 required targets with the roadmap step of each; architecture `armv6m` added for `rp2040` (**target.std.name**, **target.std.required**) |
 | 7 | 03-declarations | File suffixes with `_` in architecture names | Suffixes are matched against the end of the file name instead of splitting at `_`, so `main_x86_64.kn` and `main_linux_x86_64.kn` select correctly (**decl.file.suffix**); found while implementing the build driver |
+| 8 | 02-types | Separator of variant fields | Commas, as in a parameter list: `TooLong{word string, max int}` (**type.enum.fields**) |
+| 9 | 20-toolchain | Canonical formatting | gofmt style with tabs for the part shared with Go, imports sorted, layout of Kern constructs; the canonical form is a fixed point of formatting; heuristics decide by the output layout where gofmt is not idempotent (**tool.fmt.style**, **tool.fmt.fixed-point**, **tool.fmt.differences**); kern.mod values aligned at column 9 (**tool.mod.format**) |
 
 ## 2. Deferred to implementation
 
@@ -210,3 +212,4 @@ Questions that are not design decisions. Each is decided at the roadmap step giv
 | 18 | 22-compiler | General-purpose allocator for `app` | 25 |
 | 19 | 23-conformance | Layout of the conformance suite on disk | 1 |
 | 20 | 23-conformance | Performance thresholds | 26 |
+| 21 | 20-toolchain | Reformatting of doc comments by kern fmt (gofmt reformats them with go/doc/comment) | 40 |

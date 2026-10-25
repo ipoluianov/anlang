@@ -68,6 +68,26 @@ func (c *checker) check() {
 		for _, d := range f.Decls {
 			fd, ok := d.(*syntax.FuncDecl)
 			if !ok {
+				if g := d.(*syntax.GenDecl); g.Tok != syntax.Import {
+					c.errorf(g.Pos(), "", "%s declarations: %s", g.Tok, unsupported)
+				}
+				continue
+			}
+			switch {
+			case fd.Recv != nil:
+				c.errorf(fd.Pos(), "", "methods: %s", unsupported)
+				continue
+			case fd.Type.TypeParams != nil:
+				c.errorf(fd.Pos(), "", "generic functions: %s", unsupported)
+				continue
+			case fd.Handler != "" || fd.Gpu.IsValid():
+				c.errorf(fd.Pos(), "", "interrupt, trap and gpu functions: %s", unsupported)
+				continue
+			case fd.Binding != nil:
+				c.errorf(fd.Pos(), "", "external functions: %s", unsupported)
+				continue
+			case fd.Body == nil:
+				c.errorf(fd.Pos(), "decl.func.body", "missing function body")
 				continue
 			}
 			name := fd.Name.Name
@@ -96,7 +116,7 @@ func (c *checker) check() {
 		c.errorf(pos, "decl.package.main", "package main has no func main")
 	} else {
 		c.prog.Main = m.ir
-		if len(m.decl.Params) > 0 || len(m.decl.Results) > 0 {
+		if hasSignature(m.decl) {
 			c.errorf(m.decl.Name.Pos(), "decl.package.main", "func main must have no parameters and no results")
 		}
 	}
@@ -112,7 +132,7 @@ func (c *checker) check() {
 			if info == nil || info.decl != fd {
 				continue
 			}
-			if len(fd.Params) > 0 || len(fd.Results) > 0 {
+			if hasSignature(fd) {
 				c.errorf(fd.Name.Pos(), "", "functions with parameters or results: %s", unsupported)
 				continue
 			}
@@ -135,21 +155,21 @@ func (c *checker) checkPackageClauses() {
 		if f.Name.Name != "main" {
 			c.errorf(f.Name.Pos(), "decl.package.main", "package %s in the project root: a program is built from package main", f.Name.Name)
 		}
-		for _, p := range f.Profiles {
+		for _, p := range f.Profiles() {
 			switch p.Name {
 			case "core", "app", "ui":
 			default:
 				c.errorf(p.Pos(), "decl.profile.names", "unknown profile %s: want core, app or ui", p.Name)
 			}
 		}
-		if f.Profiles == nil {
+		if f.Profile == nil {
 			continue
 		}
-		set := profileSet(f.Profiles)
+		set := profileSet(f.Profiles())
 		if profilesFrom == nil {
 			profiles, profilesFrom = set, f
 		} else if set != profiles {
-			c.errorf(f.Profiles[0].Pos(), "decl.profile.package", "profile clause %s differs from %s in %s", set, profiles, profilesFrom.Name.Pos().File)
+			c.errorf(f.Profile.Pos(), "decl.profile.package", "profile clause %s differs from %s in %s", set, profiles, profilesFrom.Name.Pos().File)
 		}
 	}
 }
@@ -264,7 +284,7 @@ func (c *checker) stdCall(path string, sel *syntax.Name, call *syntax.CallExpr, 
 		c.errorf(sel.Pos(), "", "%s.%s: %s", path, sel.Name, unsupported)
 		return
 	}
-	if call.Ellipsis {
+	if call.Ellipsis.IsValid() {
 		c.errorf(call.Lparen, "", "... in call to fmt.%s: %s", sel.Name, unsupported)
 		return
 	}
@@ -295,6 +315,10 @@ func (c *checker) stdCall(path string, sel *syntax.Name, call *syntax.CallExpr, 
 	c.nData++
 	c.prog.Data = append(c.prog.Data, d)
 	fn.Body = append(fn.Body, &ir.PrintStdout{Data: d})
+}
+
+func hasSignature(fd *syntax.FuncDecl) bool {
+	return fd.Type.Params.NumFields() > 0 || fd.Type.Results != nil
 }
 
 func unparen(x syntax.Expr) syntax.Expr {

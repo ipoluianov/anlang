@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("package p\nvar(a= /* c */ ; b, c int = 2, 3 )\nfunc  g( ) { switch {c; defau: ase a>blt:} }\n")

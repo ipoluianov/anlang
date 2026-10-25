@@ -8,5 +8,5 @@ import "kern/strings"
 
 // Word trims surrounding white space and converts w to lower case.
 func Word(w string) string {
-    return strings.ToLower(strings.TrimSpace(w))
+	return strings.ToLower(strings.TrimSpace(w))
 }

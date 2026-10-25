@@ -13,30 +13,30 @@ package main
 profile core
 
 import (
-    "kern/arch/i8086"
-    "kern/bios"
+	"kern/arch/i8086"
+	"kern/bios"
 )
 
 const greeting = []u8("Hello from a Kern boot sector!\r\nBoot drive: 0x")
 
 func main() {
-    puts(greeting)
-    putHex(bios.BootDrive())
-    puts([]u8("\r\n"))
-    // Returning from main halts the processor.
+	puts(greeting)
+	putHex(bios.BootDrive())
+	puts([]u8("\r\n"))
+	// Returning from main halts the processor.
 }
 
 // puts prints the bytes of s.
 func puts(s []u8) {
-    for _, c := range s {
-        putChar(c)
-    }
+	for _, c := range s {
+		putChar(c)
+	}
 }
 
 // putHex prints b as two hexadecimal digits.
 func putHex(b u8) {
-    putChar(hexDigit(b >> 4))
-    putChar(hexDigit(b & 0x0F))
+	putChar(hexDigit(b >> 4))
+	putChar(hexDigit(b & 0x0F))
 }
 
 // hexDigit returns the ASCII hexadecimal digit for n.
@@ -45,16 +45,16 @@ func putHex(b u8) {
 // overflow u8, so no overflow checks are emitted: in a 510-byte program
 // every removed check counts.
 func hexDigit(n u8) u8 {
-    requires n < 16
+	requires n < 16
 
-    if n < 10 {
-        return '0' + n
-    }
-    return 'A' + n - 10
+	if n < 10 {
+		return '0' + n
+	}
+	return 'A' + n - 10
 }
 
 // putChar prints c with the BIOS video service: int 10h, function 0Eh
 // (teletype output).
 func putChar(c u8) {
-    i8086.Int(0x10, i8086.Regs{AH: 0x0E, AL: c})
+	i8086.Int(0x10, i8086.Regs{AH: 0x0E, AL: c})
 }

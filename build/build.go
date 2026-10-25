@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"kern/arch/x86_64"
+	"kern/format"
 	"kern/link/elf"
 	"kern/modfile"
 	"kern/syntax"
@@ -156,6 +157,9 @@ func (p *Project) Build(target string) (string, []error) {
 		}
 		f, ferrs := syntax.Parse(name, src)
 		errs = append(errs, ferrs...)
+		if len(ferrs) == 0 {
+			errs = append(errs, format.Canonical(name, src)...)
+		}
 		if f != nil {
 			parsed = append(parsed, f)
 		}
@@ -242,4 +246,33 @@ func asErrors(errs []*syntax.Error) []error {
 		out[i] = e
 	}
 	return out
+}
+
+// SourceFiles returns the paths, relative to the project root, of all
+// Kern source files of the project: every .kn file in the root and its
+// subdirectories, except in out/, testdata/ and directories whose names
+// begin with "." or "_".
+func (p *Project) SourceFiles() ([]string, error) {
+	var files []string
+	err := filepath.WalkDir(p.Root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		name := d.Name()
+		if d.IsDir() {
+			if path != p.Root && (name == "out" || name == "testdata" || strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_")) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if strings.HasSuffix(name, ".kn") && !strings.HasPrefix(name, ".") && !strings.HasPrefix(name, "_") {
+			rel, err := filepath.Rel(p.Root, path)
+			if err != nil {
+				return err
+			}
+			files = append(files, rel)
+		}
+		return nil
+	})
+	return files, err
 }

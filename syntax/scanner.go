@@ -20,9 +20,22 @@ func (e *Error) Error() string {
 	return fmt.Sprintf("%s: %s [%s]", e.Pos, e.Msg, e.Rule)
 }
 
+// Mode selects the language a Scanner or parser accepts.
+type Mode int
+
+const (
+	// KernMode accepts Kern source.
+	KernMode Mode = iota
+	// GoMode accepts Go source: enum, inout and profile are identifiers
+	// and contextual words have no special meaning. It is used to test
+	// the parser against the Go sources and by kern port.
+	GoMode
+)
+
 // Scanner splits a source file into tokens with automatic semicolon
 // insertion, as in Go (lex.token.go).
 type Scanner struct {
+	mode Mode
 	file string
 	src  []byte
 	off  int
@@ -32,14 +45,19 @@ type Scanner struct {
 	// insertSemi is set when a newline or EOF must produce a semicolon.
 	insertSemi bool
 
+	// pending is a comment token to return before scanning further. It is
+	// set when a /*-comment containing a newline ends a line that needs a
+	// semicolon: as in Go, the semicolon comes first.
+	pending *Token
+
 	Errors []*Error
 }
 
 // NewScanner returns a scanner for src. The file name is used in positions.
-func NewScanner(file string, src []byte) *Scanner {
-	s := &Scanner{file: file, src: src, line: 1, col: 1}
+func NewScanner(file string, src []byte, mode Mode) *Scanner {
+	s := &Scanner{mode: mode, file: file, src: src, line: 1, col: 1}
 	if !utf8.Valid(src) {
-		s.errorf(Pos{file, 1, 1}, "lex.source.utf8", "source is not valid UTF-8")
+		s.errorf(Pos{file, 0, 1, 1}, "lex.source.utf8", "source is not valid UTF-8")
 	}
 	return s
 }
@@ -48,7 +66,7 @@ func (s *Scanner) errorf(pos Pos, rule, format string, args ...any) {
 	s.Errors = append(s.Errors, &Error{Pos: pos, Rule: rule, Msg: fmt.Sprintf(format, args...)})
 }
 
-func (s *Scanner) pos() Pos { return Pos{s.file, s.line, s.col} }
+func (s *Scanner) pos() Pos { return Pos{s.file, s.off, s.line, s.col} }
 
 func (s *Scanner) peek() rune {
 	if s.off >= len(s.src) {
@@ -84,6 +102,10 @@ func (s *Scanner) next() rune {
 // a comment that contains a newline, or a line comment, ends a line for
 // the purpose of semicolon insertion.
 func (s *Scanner) Scan() Token {
+	if t := s.pending; t != nil {
+		s.pending = nil
+		return *t
+	}
 	for {
 		r := s.peek()
 		if r == '\n' && s.insertSemi {
@@ -117,6 +139,9 @@ func (s *Scanner) Scan() Token {
 		}
 		lit := string(s.src[start:s.off])
 		kind := Lookup(lit)
+		if s.mode == GoMode {
+			kind = lookupGo(lit)
+		}
 		s.insertSemi = kind == Ident || kind == Break || kind == Continue ||
 			kind == Fallthrough || kind == Return
 		return Token{Kind: kind, Pos: pos, Lit: lit}
@@ -152,7 +177,7 @@ func (s *Scanner) scanComment(pos Pos) Token {
 		}
 		// The newline after a line comment stays in the input, so Scan
 		// turns it into a semicolon when one is due.
-		return Token{Kind: Comment, Pos: pos, Lit: string(s.src[start:s.off])}
+		return Token{Kind: CommentTok, Pos: pos, Lit: string(s.src[start:s.off])}
 	}
 	hasNewline := false
 	for {
@@ -169,12 +194,13 @@ func (s *Scanner) scanComment(pos Pos) Token {
 			break
 		}
 	}
-	lit := string(s.src[start:s.off])
+	tok := Token{Kind: CommentTok, Pos: pos, Lit: string(s.src[start:s.off])}
 	if hasNewline && s.insertSemi {
 		s.insertSemi = false
+		s.pending = &tok
 		return Token{Kind: Semicolon, Pos: pos, Lit: "\n"}
 	}
-	return Token{Kind: Comment, Pos: pos, Lit: lit}
+	return tok
 }
 
 func (s *Scanner) scanNumber(pos Pos) Token {
@@ -216,7 +242,10 @@ func (s *Scanner) scanNumber(pos Pos) Token {
 	}
 	if s.peek() == 'i' {
 		s.next()
-		s.errorf(pos, "lex.literal.no-imaginary", "imaginary literals are removed in Kern")
+		if s.mode == KernMode {
+			s.errorf(pos, "lex.literal.no-imaginary", "imaginary literals are removed in Kern")
+		}
+		kind = Imag
 	}
 	lit := string(s.src[start:s.off])
 	if kind == Float && base == 16 && !hasHexExponent(lit) {
@@ -388,7 +417,7 @@ func (s *Scanner) scanOperator(pos Pos) Token {
 		if s.peekAt(0) == '.' && s.peekAt(1) == '.' {
 			s.next()
 			s.next()
-			return tok(Ellipsis)
+			return tok(DotDotDot)
 		}
 		return tok(Period)
 	case ':':

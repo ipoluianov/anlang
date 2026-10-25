@@ -9,10 +9,10 @@ package main
 profile core
 
 import (
-    "kern/dos"
-    "kern/encoding"
+	"kern/dos"
+	"kern/encoding"
 )
 
 func main() {
-    dos.Print(encoding.CP866("Привет из Kern!\r\n"))
+	dos.Print(encoding.CP866("Привет из Kern!\r\n"))
 }

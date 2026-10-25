@@ -10,7 +10,7 @@ type Kind int
 const (
 	Illegal Kind = iota
 	EOF
-	Comment
+	CommentTok
 
 	// Literals and identifiers.
 	Ident
@@ -18,6 +18,7 @@ const (
 	Float
 	Rune
 	String
+	Imag // Go only: imaginary literals are removed in Kern
 
 	// Operators and punctuation (lex.operator.go).
 	Add    // +
@@ -42,29 +43,29 @@ const (
 	ShlAssign
 	ShrAssign
 	AndNotAssign
-	LAnd     // &&
-	LOr      // ||
-	Arrow    // <-
-	Inc      // ++
-	Dec      // --
-	Eql      // ==
-	Lss      // <
-	Gtr      // >
-	Assign   // =
-	Not      // !
-	Neq      // !=
-	Leq      // <=
-	Geq      // >=
-	Define   // :=
-	Ellipsis // ...
-	LParen   // (
-	LBrack   // [
-	LBrace   // {
-	Comma    // ,
-	Period   // .
-	RParen   // )
-	RBrack   // ]
-	RBrace   // }
+	LAnd      // &&
+	LOr       // ||
+	Arrow     // <-
+	Inc       // ++
+	Dec       // --
+	Eql       // ==
+	Lss       // <
+	Gtr       // >
+	Assign    // =
+	Not       // !
+	Neq       // !=
+	Leq       // <=
+	Geq       // >=
+	Define    // :=
+	DotDotDot // ...
+	LParen    // (
+	LBrack    // [
+	LBrace    // {
+	Comma     // ,
+	Period    // .
+	RParen    // )
+	RBrack    // ]
+	RBrace    // }
 	Semicolon
 	Colon // :
 	Tilde // ~
@@ -103,14 +104,15 @@ const (
 )
 
 var kindNames = [...]string{
-	Illegal: "ILLEGAL",
-	EOF:     "EOF",
-	Comment: "COMMENT",
-	Ident:   "identifier",
-	Int:     "integer literal",
-	Float:   "floating-point literal",
-	Rune:    "rune literal",
-	String:  "string literal",
+	Illegal:    "ILLEGAL",
+	EOF:        "EOF",
+	CommentTok: "COMMENT",
+	Ident:      "identifier",
+	Int:        "integer literal",
+	Float:      "floating-point literal",
+	Rune:       "rune literal",
+	String:     "string literal",
+	Imag:       "imaginary literal",
 
 	Add: "+", Sub: "-", Mul: "*", Quo: "/", Rem: "%",
 	And: "&", Or: "|", Xor: "^", Shl: "<<", Shr: ">>", AndNot: "&^",
@@ -119,7 +121,7 @@ var kindNames = [...]string{
 	AndNotAssign: "&^=",
 	LAnd:         "&&", LOr: "||", Arrow: "<-", Inc: "++", Dec: "--",
 	Eql: "==", Lss: "<", Gtr: ">", Assign: "=", Not: "!",
-	Neq: "!=", Leq: "<=", Geq: ">=", Define: ":=", Ellipsis: "...",
+	Neq: "!=", Leq: "<=", Geq: ">=", Define: ":=", DotDotDot: "...",
 	LParen: "(", LBrack: "[", LBrace: "{", Comma: ",", Period: ".",
 	RParen: ")", RBrack: "]", RBrace: "}", Semicolon: ";", Colon: ":", Tilde: "~",
 
@@ -158,12 +160,40 @@ func Lookup(name string) Kind {
 	return Ident
 }
 
-// Pos is a position in a source file. Line and Col are 1-based; Col
-// counts bytes.
+// lookupGo is Lookup with the keywords of Go only: the Kern keywords
+// enum, inout and profile are identifiers.
+func lookupGo(name string) Kind {
+	k := Lookup(name)
+	if k == Enum || k == Inout || k == Profile {
+		return Ident
+	}
+	return k
+}
+
+// Pos is a position in a source file. Offset is 0-based; Line and Col
+// are 1-based; Col counts bytes. The zero Pos is invalid.
 type Pos struct {
-	File string
-	Line int
-	Col  int
+	File   string
+	Offset int
+	Line   int
+	Col    int
+}
+
+// IsValid reports whether p is a real position.
+func (p Pos) IsValid() bool { return p.Line > 0 }
+
+// Advance returns the position after text that starts at p.
+func (p Pos) Advance(text string) Pos {
+	for i := 0; i < len(text); i++ {
+		if text[i] == '\n' {
+			p.Line++
+			p.Col = 1
+		} else {
+			p.Col++
+		}
+	}
+	p.Offset += len(text)
+	return p
 }
 
 func (p Pos) String() string {

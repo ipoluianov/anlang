@@ -99,9 +99,11 @@ type Header struct {
 ```
 TypeLit      = … | EnumType .                                   (replaces Go)
 EnumType     = "enum" "{" { VariantDecl ";" } "}" .               (new)
-VariantDecl  = identifier [ "{" [ VariantField { ";" VariantField } [ ";" ] ] "}" ] .
+VariantDecl  = identifier [ "{" [ VariantField { "," VariantField } [ "," ] ] "}" ] .
 VariantField = IdentifierList Type .
 ```
+
+**type.enum.fields** — Поля варианта записываются как список параметров: группы имён с типом через запятую, как в `Rect{w, h f64}` и `TooLong{word string, max int}`. У каждого поля есть имя; `inout` и `...` не допускаются.
 
 ```go
 type Shape enum {

@@ -99,9 +99,11 @@ An enum type is a sum type: a value of the type is exactly one of its variants, 
 ```
 TypeLit      = … | EnumType .                                   (replaces Go)
 EnumType     = "enum" "{" { VariantDecl ";" } "}" .               (new)
-VariantDecl  = identifier [ "{" [ VariantField { ";" VariantField } [ ";" ] ] "}" ] .
+VariantDecl  = identifier [ "{" [ VariantField { "," VariantField } [ "," ] ] "}" ] .
 VariantField = IdentifierList Type .
 ```
+
+**type.enum.fields** — The fields of a variant are written like a parameter list: groups of names with a type, separated by commas, as in `Rect{w, h f64}` and `TooLong{word string, max int}`. Every field has a name; `inout` and `...` are not allowed.
 
 ```go
 type Shape enum {

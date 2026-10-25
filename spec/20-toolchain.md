@@ -98,7 +98,7 @@ Tokens are separated by spaces or tabs; `newline` is a line feed. `decimal_digit
 
 **tool.mod.generate.unique** — Two `generate` directives MUST NOT name the same output package, and the output package MUST NOT be a directory that exists in the project.
 
-**tool.mod.format** — `kern fmt` MUST also format `kern.mod` canonically: directives in the order `module`, `kern`, `targets`, `effects`, `generate`; effect rules sorted by pattern; effect names sorted; `generate` directives sorted by output path.
+**tool.mod.format** — `kern fmt` MUST also format `kern.mod` canonically: directives in the order `module`, `kern`, `targets`, `effects`, `generate`; effect rules sorted by pattern; effect names sorted; `generate` directives sorted by output path. Each single-line directive is written as its name padded with spaces to 8 columns followed by its value (`module  hello`, `kern    1.0`, `targets linux-x86_64, macos-arm64`); target names are separated by ", ". Whole-line comments stay before the directive that follows them, trailing comments at the end of their directive's line; blank lines are removed.
 
 ### 20.3.3 Example
 
@@ -200,6 +200,12 @@ AUTH-4  After five failed attempts, login is locked for 15 minutes
 **tool.cmd.check** — `kern check` MUST perform all checks of `kern build` that precede code generation, including effect checks against each selected target, and MUST NOT write outputs.
 
 **tool.cmd.fmt** — `kern fmt` MUST rewrite each Kern source file and `kern.mod` in canonical formatting (see [01-lexical](01-lexical.md)). With `-check`, it MUST NOT modify files and MUST fail if any file is not canonically formatted. Formatting MUST be idempotent.
+
+**tool.fmt.style** — The canonical form of a Kern source file is the output of `kern fmt`. For the part of Kern shared with Go it is the output of `gofmt` (Go 1.25): tabs for indentation, spaces for alignment, imports sorted within each run of consecutive import lines, numeric literal prefixes and exponents in lower case. The Kern constructs are laid out as follows: the profile clause on its own line after the package clause, separated by blank lines; enum variants one per line; struct clauses (`invariant`, `layout`) before the fields, in their own alignment section; contract clauses as statements; an external function binding `= expr` on the line of the signature; handler and GPU function declarations like function declarations.
+
+**tool.fmt.fixed-point** — The canonical form MUST be a fixed point: formatting it again MUST give the same bytes. `kern fmt` formats repeatedly until the output no longer changes. Where a layout heuristic of `gofmt` depends on the source layout and makes `gofmt` non-idempotent, `kern fmt` decides by the output layout instead: a comment that starts on the line of a struct field or of a spec in a group is that line's trailing comment; the last statement of a block is its last non-empty statement; only `\n` ends a line inside a literal.
+
+**tool.fmt.differences** — `kern fmt` does not reformat doc comments, does not rewrite `//go:build`, `// +build` or `//line` comments (they have no meaning in Kern, **lex.comment.inert**), and does not remove duplicate imports (a duplicate import is a compile error).
 
 **tool.cmd.size** — `kern size` MUST report, for each package, the flash (code and constant data) and RAM (static data) it contributes, and, for `main`, each task and each interrupt handler, the computed maximum stack depth or the fact that a reserve was needed (see [19-runtime](19-runtime.md), **rt.stack.report**).
 

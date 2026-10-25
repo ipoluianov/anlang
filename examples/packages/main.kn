@@ -5,45 +5,45 @@
 package main
 
 import (
-    "kern/errors"
-    "kern/fmt"
-    "kern/strings"
+	"kern/errors"
+	"kern/fmt"
+	"kern/strings"
 
-    "myprogram/mydictionary"
+	"myprogram/mydictionary"
 )
 
 func main() {
-    var dict mydictionary.Dictionary // the zero value is an empty, usable dictionary
+	var dict mydictionary.Dictionary // the zero value is an empty, usable dictionary
 
-    if err := dict.Add("  Kern ", "a language where AI writes and the machine checks"); err != nil {
-        fmt.Println("error:", err)
-        return
-    }
+	if err := dict.Add("  Kern ", "a language where AI writes and the machine checks"); err != nil {
+		fmt.Println("error:", err)
+		return
+	}
 
-    // Test for one variant of the package's error enum.
-    if err := dict.Add("   ", "nothing"); errors.Is(err, mydictionary.EmptyWord) {
-        fmt.Println("skipped an empty word")
-    }
+	// Test for one variant of the package's error enum.
+	if err := dict.Add("   ", "nothing"); errors.Is(err, mydictionary.EmptyWord) {
+		fmt.Println("skipped an empty word")
+	}
 
-    // Handle every variant: adding a variant to mydictionary.Error
-    // makes this switch fail to compile until it is handled here.
-    if err := dict.Add(strings.Repeat("a", 100), "too long"); err != nil {
-        if de, ok := errors.As[mydictionary.Error](err); ok {
-            switch de {
-            case mydictionary.EmptyWord:
-                fmt.Println("empty word")
-            case mydictionary.TooLong{word, max}:
-                fmt.Println("word of", len(word), "bytes, limit", max)
-            }
-        }
-    }
+	// Handle every variant: adding a variant to mydictionary.Error
+	// makes this switch fail to compile until it is handled here.
+	if err := dict.Add(strings.Repeat("a", 100), "too long"); err != nil {
+		if de, ok := errors.As[mydictionary.Error](err); ok {
+			switch de {
+			case mydictionary.EmptyWord:
+				fmt.Println("empty word")
+			case mydictionary.TooLong{word, max}:
+				fmt.Println("word of", len(word), "bytes, limit", max)
+			}
+		}
+	}
 
-    if def, ok := dict.Lookup("KERN"); ok {
-        fmt.Println("kern:", def)
-    }
-    if _, ok := dict.Lookup("go"); !ok {
-        fmt.Println("go: not found")
-    }
+	if def, ok := dict.Lookup("KERN"); ok {
+		fmt.Println("kern:", def)
+	}
+	if _, ok := dict.Lookup("go"); !ok {
+		fmt.Println("go: not found")
+	}
 
-    fmt.Println("words:", dict.Len())
+	fmt.Println("words:", dict.Len())
 }

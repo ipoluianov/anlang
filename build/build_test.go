@@ -107,7 +107,7 @@ func TestPrintFailurePanics(t *testing.T) {
 	}
 	p := newProject(t, map[string]string{
 		"kern.mod": "module  p\nkern    1.0\n",
-		"main.kn":  "package main\n\nimport \"kern/fmt\"\n\nfunc main() {\n    fmt.Println(\"x\")\n}\n",
+		"main.kn":  "package main\n\nimport \"kern/fmt\"\n\nfunc main() {\n\tfmt.Println(\"x\")\n}\n",
 	})
 	out, errs := p.Build("linux-x86_64")
 	if len(errs) > 0 {
@@ -140,9 +140,9 @@ func TestCallsAndOrder(t *testing.T) {
 import "kern/fmt"
 
 func main() {
-    first()
-    fmt.Println("two", "three")
-    last()
+	first()
+	fmt.Println("two", "three")
+	last()
 }
 `,
 		"helpers.kn": `package main
@@ -150,11 +150,11 @@ func main() {
 import f "kern/fmt"
 
 func first() {
-    f.Print("one ")
+	f.Print("one ")
 }
 
 func last() {
-    f.Println("four")
+	f.Println("four")
 }
 `,
 	})
@@ -176,7 +176,7 @@ func last() {
 func TestReproducible(t *testing.T) {
 	files := map[string]string{
 		"kern.mod": "module  p\nkern    1.0\n",
-		"main.kn":  "package main\n\nimport \"kern/fmt\"\n\nfunc main() {\n    fmt.Println(\"x\")\n}\n",
+		"main.kn":  "package main\n\nimport \"kern/fmt\"\n\nfunc main() {\n\tfmt.Println(\"x\")\n}\n",
 	}
 	var outs [][]byte
 	for i := 0; i < 2; i++ {
@@ -205,5 +205,16 @@ func TestUnsupportedTarget(t *testing.T) {
 	_, errs = p.Build("pdp11")
 	if len(errs) == 0 || !strings.Contains(errs[0].Error(), "target.select.resolve") {
 		t.Errorf("got %v", errs)
+	}
+}
+
+func TestNonCanonicalRejected(t *testing.T) {
+	p := newProject(t, map[string]string{
+		"kern.mod": "module  p\nkern    1.0\n",
+		"main.kn":  "package main\n\nfunc main() {\n    f()\n}\n\nfunc f() {}\n",
+	})
+	_, errs := p.Build("linux-x86_64")
+	if len(errs) != 1 || !strings.Contains(errs[0].Error(), "main.kn:4:1") || !strings.Contains(errs[0].Error(), "lex.source.canonical") {
+		t.Errorf("got %v, want lex.source.canonical at main.kn:4", errs)
 	}
 }

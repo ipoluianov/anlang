@@ -9,11 +9,11 @@ import (
 // comments.
 func scan(t *testing.T, src string) ([]Token, []*Error) {
 	t.Helper()
-	s := NewScanner("test.kn", []byte(src))
+	s := NewScanner("test.kn", []byte(src), KernMode)
 	var toks []Token
 	for {
 		tok := s.Scan()
-		if tok.Kind == Comment {
+		if tok.Kind == CommentTok {
 			continue
 		}
 		toks = append(toks, tok)
@@ -136,7 +136,7 @@ func TestScanErrors(t *testing.T) {
 
 func TestScanPositions(t *testing.T) {
 	toks, _ := scan(t, "a\n  bé c")
-	want := []Pos{{"test.kn", 1, 1}, {"test.kn", 1, 2}, {"test.kn", 2, 3}, {"test.kn", 2, 7}}
+	want := []Pos{{"test.kn", 0, 1, 1}, {"test.kn", 1, 1, 2}, {"test.kn", 4, 2, 3}, {"test.kn", 8, 2, 7}}
 	for i, p := range want {
 		if toks[i].Pos != p {
 			t.Errorf("token %d: got %v, want %v", i, toks[i].Pos, p)
