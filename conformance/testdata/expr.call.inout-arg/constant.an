@@ -1,0 +1,11 @@
+// want: expr.call.inout-arg
+
+package main
+
+func inc(n inout int) {
+	n++
+}
+
+func main() {
+	inc(3)
+}

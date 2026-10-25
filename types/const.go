@@ -15,6 +15,8 @@ const (
 	tokenShl    = token.SHL
 	tokenGeq    = token.GEQ
 	tokenLeq    = token.LEQ
+	tokenLss    = token.LSS
+	tokenNeq    = token.NEQ
 	tokenQuoInt = token.QUO_ASSIGN // integer division in constant.BinaryOp
 )
 

@@ -1,0 +1,13 @@
+// want: expr.closure.capture-inout
+
+package main
+
+func f(n inout int) func() {
+	return func() {
+		n++
+	}
+}
+
+func main() {
+
+}

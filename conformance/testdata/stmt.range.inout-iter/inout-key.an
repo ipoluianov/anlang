@@ -1,0 +1,11 @@
+// want: stmt.range.inout-iter
+
+package main
+
+func bad(yield func(inout int, string) bool) {}
+
+func main() {
+	for k, v := range bad {
+		_, _ = k, v
+	}
+}

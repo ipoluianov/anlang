@@ -188,6 +188,7 @@ Provisional technical choices accepted as written on 2026-10-25. The rule text i
 | 10 | 23-conformance | Layout of the conformance suite on disk | `conformance/testdata/<rule>/`: single-file tests `<name>.an` of module `conf` and project tests `<name>/`; the expected rule set in one `// want:` comment, further rules in `// checks:`; diagnostics without a rule never match (**conf.suite.layout**) |
 | 11 | 02-types, 03-declarations, 04-expressions, 05-statements | Rule identifiers for errors inherited from Go | General rules for what is "as in Go": expressions (**expr.go**), statements, including labels and missing returns (**stmt.go**), conversions (**type.conv.go**); unused imports (**decl.import.used**) and unused local variables (**decl.var.unused**) are errors, as in the Go compiler; found while implementing the checker |
 | 12 | 02-types | Receive with a discarded value from a channel of a type without a zero value | Permitted: a receive statement `<-ch` and `case <-ch:` in `select` do not use the zero value (**type.zero.chan-receive**); found while implementing the checker |
+| 13 | 02-types, 04-expressions | Calling an `inout` method through a non-addressable interface value | Permitted: whether the dynamic method has an `inout` receiver is not known statically; the call modifies the copy held by the interface value, which is discarded for a temporary (**type.interface.inout-method**, **expr.method.interface-inout**); found while implementing the checker |
 
 ## 2. Deferred to implementation
 

@@ -1,0 +1,14 @@
+// want: ok
+
+package main
+
+func inc(n inout int) {
+	n++
+}
+
+func main() {
+	n := 0
+	defer inc(n)
+	n = 5
+	_ = n
+}

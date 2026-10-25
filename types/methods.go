@@ -150,7 +150,6 @@ func (c *checker) receiver(recv *syntax.FieldList) (*Var, []*TypeParam) {
 	}
 	if f.Inout.IsValid() {
 		v.inout = true
-		c.notSupported(f.Inout, 4, "inout receivers")
 	}
 	return v, rtps
 }

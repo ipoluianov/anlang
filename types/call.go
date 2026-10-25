@@ -10,7 +10,15 @@ import (
 
 func (c *checker) callExpr(x *operand, e *syntax.CallExpr) {
 	var fun operand
+	savedCallee := c.callee
+	c.callee = unparen(e.Fun)
 	c.rawExpr(&fun, e.Fun, nil)
+	c.callee = savedCallee
+	if fun.second {
+		if lit, ok := unparen(e.Fun).(*syntax.FuncLit); ok {
+			c.secondLits[lit] = true
+		}
+	}
 	x.expr = e
 	switch fun.mode {
 	case invalid:
@@ -50,6 +58,7 @@ func (c *checker) callExpr(x *operand, e *syntax.CallExpr) {
 		}
 	}
 	c.arguments(e, sig, args)
+	c.inoutOverlap(c.inoutAccesses(e, sig))
 	switch sig.Results.Len() {
 	case 0:
 		x.mode = novalue
@@ -141,7 +150,7 @@ func (c *checker) arguments(e *syntax.CallExpr, sig *Signature, args []*operand)
 			return
 		}
 		for i, a := range args {
-			c.assignment(a, params[i].typ, "argument to "+name)
+			c.paramArg(a, params[i], "argument to "+name)
 		}
 		return
 	}
@@ -151,11 +160,11 @@ func (c *checker) arguments(e *syntax.CallExpr, sig *Signature, args []*operand)
 			return
 		}
 		for i, a := range args {
-			t := params[min(i, nparams-1)].typ
-			if i >= nparams-1 {
-				t = t.(*Slice).Elem
+			if i < nparams-1 {
+				c.paramArg(a, params[i], "argument to "+name)
+				continue
 			}
-			c.assignment(a, t, "argument to "+name)
+			c.assignment(a, params[nparams-1].typ.(*Slice).Elem, "argument to "+name)
 		}
 		return
 	}
@@ -164,8 +173,38 @@ func (c *checker) arguments(e *syntax.CallExpr, sig *Signature, args []*operand)
 		return
 	}
 	for i, a := range args {
-		c.assignment(a, params[i].typ, "argument to "+name)
+		c.paramArg(a, params[i], "argument to "+name)
 	}
+}
+
+// paramArg checks the argument x for parameter p.
+func (c *checker) paramArg(x *operand, p *Var, context string) {
+	if p.inout {
+		c.inoutArg(x, p, context)
+		return
+	}
+	c.assignment(x, p.typ, context)
+}
+
+// inoutAccesses returns the operands of the inout accesses of a call:
+// the inout receiver of a method and the arguments for inout parameters.
+func (c *checker) inoutAccesses(e *syntax.CallExpr, sig *Signature) []syntax.Expr {
+	var exprs []syntax.Expr
+	if sel, ok := unparen(e.Fun).(*syntax.SelectorExpr); ok {
+		if m, ok := c.info.Uses[sel.Sel].(*Func); ok {
+			if ms, ok := m.typ.(*Signature); ok && ms.Recv != nil && ms.Recv.inout {
+				if tv := c.info.Types[sel.X]; !tv.IsType() {
+					exprs = append(exprs, sel.X)
+				}
+			}
+		}
+	}
+	for i, p := range sig.Params.Vars {
+		if p.inout && i < len(e.Args) {
+			exprs = append(exprs, e.Args[i])
+		}
+	}
+	return exprs
 }
 
 func (c *checker) argCountError(e *syntax.CallExpr, sig *Signature, args []*operand) {
@@ -192,6 +231,10 @@ func (c *checker) conversionCall(x *operand, e *syntax.CallExpr, t Type) {
 		return
 	}
 	c.expr(x, e.Args[0])
+	if x.second {
+		c.secondClassError(x, "in a conversion")
+		return
+	}
 	if x.mode == invalid || !isValid(t) {
 		x.invalidate()
 		return

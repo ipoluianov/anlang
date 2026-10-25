@@ -29,8 +29,6 @@ func TestCheckErrors(t *testing.T) {
 		src string
 		msg string
 	}{
-		{"package main\ntype T struct{}\nfunc (t inout T) M() {}\nfunc main() {}", "inout receivers: not supported yet"},
-		{"package main\nfunc f(x inout int) {}\nfunc main() {}", "inout parameters: not supported yet by this compiler (spec/24-roadmap.md, step 4)"},
 		{"package main\nfunc main() { for const i := range 3 { _ = i } }", "for const: not supported yet"},
 	}
 	for _, tt := range tests {

@@ -1,0 +1,14 @@
+// want: ok
+
+package main
+
+func inc(n inout int) {
+	n++
+}
+
+func main() {
+	var f func(inout int) = inc
+	n := 0
+	f(n)
+	_ = n
+}

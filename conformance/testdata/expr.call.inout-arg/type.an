@@ -1,0 +1,14 @@
+// want: expr.call.inout-arg
+
+package main
+
+func inc(n inout int) {
+	n++
+}
+
+type MyInt int
+
+func main() {
+	var m MyInt
+	inc(m)
+}

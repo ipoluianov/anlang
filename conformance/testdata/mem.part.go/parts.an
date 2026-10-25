@@ -1,0 +1,19 @@
+// want: ok
+
+package main
+
+func inc(n inout int) {
+	n++
+}
+
+type Point struct {
+	X, Y int
+}
+
+func main() {
+	ps := []Point{{1, 2}}
+	inc(ps[0].X)
+	var a [2]Point
+	inc(a[1].Y)
+	_, _ = ps, a
+}

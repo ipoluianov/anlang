@@ -1,0 +1,20 @@
+// want: ok
+
+package main
+
+func swap(a, b inout int) {
+	a, b = b, a
+}
+
+type Point struct {
+	X, Y int
+}
+
+func main() {
+	var p Point
+	swap(p.X, p.Y)
+	a := [3]int{}
+	swap(a[0], a[2])
+	x, y := 1, 2
+	swap(x, y)
+}

@@ -1,0 +1,20 @@
+// want: expr.call.inout-overlap
+
+package main
+
+type Stats struct {
+	count int
+	sum   int
+}
+
+func (s inout Stats) Add(v int) {
+	s.count++
+	s.sum += v
+}
+
+func merge(s inout Stats, n inout int) {}
+
+func main() {
+	var s Stats
+	merge(s, s.count)
+}

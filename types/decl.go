@@ -214,7 +214,11 @@ func (c *checker) initVars(vars []*Var, t Type, inits []syntax.Expr) {
 		x := &operand{}
 		c.exprHint(x, e, t)
 		if i < len(vars) {
+			// A new local variable may hold a second-class closure.
+			c.secondOK = c.fn != nil
+			vars[i].second = x.second && c.secondOK
 			c.assignment(x, t, "variable declaration")
+			c.secondOK = false
 		}
 		xs = append(xs, x)
 	}
@@ -430,7 +434,6 @@ func (c *checker) params(list *syntax.FieldList, isParams bool) (*Tuple, bool) {
 		if f.Inout.IsValid() && !isEllipsis {
 			if isParams {
 				inout = true
-				c.notSupported(f.Inout, 4, "inout parameters")
 			} else {
 				c.errorf(f.Inout, "decl.param.inout-result", "results cannot be inout")
 			}

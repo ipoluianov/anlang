@@ -23,12 +23,13 @@ const (
 
 // operand is the result of checking an expression.
 type operand struct {
-	mode  operandMode
-	expr  syntax.Expr
-	typ   Type
-	val   constant.Value
-	id    builtinID // for builtin
-	targs []Type    // type arguments of a partially instantiated generic function
+	mode   operandMode
+	expr   syntax.Expr
+	typ    Type
+	val    constant.Value
+	id     builtinID // for builtin
+	targs  []Type    // type arguments of a partially instantiated generic function
+	second bool      // a second-class closure (expr.closure.capture-inout)
 }
 
 func (x *operand) invalidate() { x.mode = invalid }
@@ -307,6 +308,10 @@ func (c *checker) defaultUntyped(x *operand) {
 // diagnostics.
 func (c *checker) assignment(x *operand, t Type, context string) {
 	c.singleValue(x)
+	if x.second && !c.secondOK {
+		c.secondClassError(x, "in "+context)
+		return
+	}
 	switch x.mode {
 	case invalid:
 		return

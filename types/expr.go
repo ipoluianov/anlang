@@ -57,9 +57,12 @@ func (c *checker) valueOnly(x *operand) {
 // rawExpr checks e and records its type. The result may be a type, a
 // built-in, no value or multiple values.
 func (c *checker) rawExpr(x *operand, e syntax.Expr, hint Type) {
-	x.mode, x.typ, x.val, x.expr, x.targs = invalid, Typ[Invalid], nil, e, nil
+	x.mode, x.typ, x.val, x.expr, x.targs, x.second = invalid, Typ[Invalid], nil, e, nil, false
 	c.exprInternal(x, e, hint)
 	x.expr = e
+	if c.pathDepth == 0 && len(c.held) > 0 {
+		c.checkHeld(e)
+	}
 	if x.mode != typexpr {
 		x.typ = unalias(x.typ)
 	}
@@ -99,8 +102,8 @@ func (c *checker) exprInternal(x *operand, e syntax.Expr, hint Type) {
 
 	case *syntax.FuncLit:
 		sig := c.funcType(e.Type, true)
-		c.funcBody(c.scope, sig, nil, e.Type, e.Body, true)
-		x.mode, x.typ = value, sig
+		second := c.funcBody(c.scope, sig, nil, e.Type, e.Body, true)
+		x.mode, x.typ, x.second = value, sig, second
 
 	case *syntax.CompositeLit:
 		c.compositeLit(x, e, hint)
@@ -205,10 +208,19 @@ func (c *checker) ident(x *operand, id *syntax.Name, wantType bool) {
 	case *Var:
 		c.objDecl(obj)
 		obj.used = true
+		if obj.owner != nil && obj.owner != c.fn {
+			switch {
+			case obj.inout:
+				c.useInoutVar(obj)
+			case obj.second:
+				c.errorf(id.Pos(), "expr.closure.capture-inout", "cannot capture %s in a function literal: it holds a closure that captures an inout variable", id.Name)
+				return
+			}
+		}
 		if !isValid(obj.typ) {
 			return
 		}
-		x.mode, x.typ = variable, obj.typ
+		x.mode, x.typ, x.second = variable, obj.typ, obj.second
 	case *Func:
 		c.objDecl(obj)
 		x.mode, x.typ = value, obj.typ
@@ -273,7 +285,9 @@ func (c *checker) selector(x *operand, e *syntax.SelectorExpr) {
 		}
 	}
 
+	c.pathDepth++
 	c.rawExpr(x, e.X, nil)
+	c.pathDepth--
 	x.expr = e
 	switch x.mode {
 	case invalid:
@@ -299,6 +313,12 @@ func (c *checker) selector(x *operand, e *syntax.SelectorExpr) {
 	case *Func:
 		// A method value or the callee of a method call.
 		c.info.Uses[e.Sel] = obj
+		if ms, ok := obj.typ.(*Signature); ok && ms.Recv != nil && ms.Recv.inout {
+			if !c.inoutReceiver(x, e) {
+				x.invalidate()
+				return
+			}
+		}
 		if n, ok := x.typ.(*Named); ok && n.orig == universeOption && obj.name == "Get" {
 			// Get returns the zero value for None (type.option.get).
 			c.zeroUse(e.Sel.Pos(), n.targs[0], "type.option.get", "Option.Get")
@@ -370,6 +390,27 @@ func (c *checker) possibleType(e syntax.Expr, x *operand, xi *Interface, t Type,
 	return true
 }
 
+// inoutReceiver checks a selector x.M of a method with an inout
+// receiver: x must be addressable (expr.method.inout-call), and the
+// method value may only be called directly (expr.method.inout-value).
+func (c *checker) inoutReceiver(x *operand, e *syntax.SelectorExpr) bool {
+	if c.callee != e {
+		c.errorf(e.Pos(), "expr.method.inout-value", "method %s has an inout receiver: it may only be called directly, not used as a value", exprString(e))
+		return false
+	}
+	switch x.mode {
+	case mapindex:
+		c.errorf(e.X.Pos(), "expr.addr.map", "cannot call method %s with an inout receiver on a map element", e.Sel.Name)
+		return false
+	case variable:
+	default:
+		c.errorf(e.X.Pos(), "expr.method.inout-call", "cannot call method %s with an inout receiver on %s: it is not addressable", e.Sel.Name, x)
+		return false
+	}
+	c.capturedInout(e.X)
+	return true
+}
+
 // methodExpr checks a method expression T.M: a function whose first
 // parameter is the receiver.
 func (c *checker) methodExpr(x *operand, e *syntax.SelectorExpr) {
@@ -392,6 +433,14 @@ func (c *checker) methodExpr(x *operand, e *syntax.SelectorExpr) {
 	c.info.Uses[e.Sel] = m
 	sig := methodType(m)
 	recv := &Var{object: object{pos: e.Pos(), typ: t}, param: true}
+	if ms, ok := m.typ.(*Signature); ok && ms.Recv != nil && ms.Recv.inout {
+		if c.callee != e {
+			c.errorf(e.Pos(), "expr.method.inout-value", "method expression %s has an inout receiver: it may only be called directly", exprString(e))
+			x.invalidate()
+			return
+		}
+		recv.inout = true
+	}
 	params := append([]*Var{recv}, sig.Params.Vars...)
 	x.mode, x.typ, x.val = value, &Signature{Params: &Tuple{Vars: params}, Results: sig.Results, Variadic: sig.Variadic}, nil
 }
@@ -792,7 +841,9 @@ func (c *checker) index(e syntax.Expr, length int64) int64 {
 }
 
 func (c *checker) indexExpr(x *operand, e *syntax.IndexExpr) {
+	c.pathDepth++
 	c.rawExpr(x, e.X, nil)
+	c.pathDepth--
 	switch {
 	case x.mode == typexpr:
 		x.typ = c.instanceType(e, x.typ)
@@ -868,7 +919,9 @@ func (c *checker) indexExpr(x *operand, e *syntax.IndexExpr) {
 }
 
 func (c *checker) sliceExpr(x *operand, e *syntax.SliceExpr) {
+	c.pathDepth++
 	c.expr(x, e.X)
+	c.pathDepth--
 	if x.mode == invalid {
 		for _, i := range []syntax.Expr{e.Low, e.High, e.Max} {
 			if i != nil {

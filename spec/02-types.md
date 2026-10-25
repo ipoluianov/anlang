@@ -201,7 +201,7 @@ if p, ok := n.parent.Get(); ok {
 
 **type.interface.copy** — An interface value holds a copy of the dynamic value assigned to it. Changing the original afterwards does not change the copy, and vice versa.
 
-**type.interface.inout-method** — A method with an `inout` receiver belongs to the method set of its receiver type. Calling it through an interface value modifies the copy held by the interface value; the interface operand MUST then be addressable ([04-expressions](04-expressions.md)).
+**type.interface.inout-method** — A method with an `inout` receiver belongs to the method set of its receiver type. Calling it through an interface value modifies the copy held by the interface value. The interface operand need not be addressable: if it is a temporary value, the modified copy is discarded ([04-expressions](04-expressions.md)).
 
 **type.interface.nil** — The zero value of an interface type is `nil`. Calling a method on an interface value is allowed only where the value is proven non-`nil` (**mem.nil.call**, [06-memory](06-memory.md)).
 

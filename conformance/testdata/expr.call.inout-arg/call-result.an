@@ -1,0 +1,15 @@
+// want: expr.call.inout-arg
+
+package main
+
+func inc(n inout int) {
+	n++
+}
+
+func one() int {
+	return 1
+}
+
+func main() {
+	inc(one())
+}

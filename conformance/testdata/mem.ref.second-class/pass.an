@@ -1,0 +1,17 @@
+// want: expr.closure.capture-inout
+// checks: mem.ref.second-class
+
+package main
+
+func run(g func()) {}
+
+func f(n inout int) {
+	add := func() {
+		n++
+	}
+	run(add)
+}
+
+func main() {
+
+}

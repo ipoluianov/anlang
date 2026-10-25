@@ -9,11 +9,13 @@ import (
 
 // funcContext is the state of the function body being checked.
 type funcContext struct {
-	name    string // the declared function or method, for diagnostics
-	sig     *Signature
-	generic *Signature // the enclosing generic function, if any
-	vars    []*Var     // local variables (decl.var.unused)
-	labels  map[string]*Label
+	parent   *funcContext // the enclosing function of a function literal
+	captures bool         // a function literal captures an inout variable (expr.closure.capture-inout)
+	name     string       // the declared function or method, for diagnostics
+	sig      *Signature
+	generic  *Signature // the enclosing generic function, if any
+	vars     []*Var     // local variables (decl.var.unused)
+	labels   map[string]*Label
 	// enclosing lists the labeled statements around the current
 	// statement, innermost last.
 	enclosing []*syntax.LabeledStmt
@@ -33,10 +35,18 @@ const (
 // funcBody checks the body of a function, a method or a function
 // literal. parent is the enclosing scope: the file scope, or for a
 // function literal the scope in which it appears (expr.closure.capture-copy).
-func (c *checker) funcBody(parent *Scope, sig *Signature, recv *syntax.FieldList, ft *syntax.FuncType, body *syntax.BlockStmt, literal bool) {
+func (c *checker) funcBody(parent *Scope, sig *Signature, recv *syntax.FieldList, ft *syntax.FuncType, body *syntax.BlockStmt, literal bool) (captures bool) {
 	savedScope, savedFn := c.scope, c.fn
 	defer func() { c.scope, c.fn = savedScope, savedFn }()
 	c.fn = &funcContext{sig: sig, labels: map[string]*Label{}, name: c.funcName}
+	defer func() { captures = c.fn.captures }()
+	savedHeld := c.held
+	if literal {
+		c.fn.parent = savedFn
+	} else {
+		c.held = nil
+	}
+	defer func() { c.held = savedHeld }()
 	if len(sig.TypeParams) > 0 {
 		c.fn.generic = sig
 	} else if literal && savedFn != nil {
@@ -84,6 +94,7 @@ func (c *checker) funcBody(parent *Scope, sig *Signature, recv *syntax.FieldList
 		// when the enclosing expression is complete.
 		c.flushUntyped()
 	}
+	return false // set by the deferred function
 }
 
 func sortedLabels(m map[string]*Label) []string {
@@ -371,6 +382,9 @@ func (c *checker) callStmt(what string, call *syntax.CallExpr) {
 		c.errorf(call.Pos(), "stmt.go", "%s discards result of %s", what, exprString(call))
 		return
 	}
+	if what == "go" {
+		c.goCall(call)
+	}
 	if what == "defer" {
 		c.unusedError(call, &x)
 	}
@@ -423,8 +437,8 @@ func (c *checker) capturedWrite(e syntax.Expr) bool {
 		return false
 	}
 	v, ok := c.info.Uses[id].(*Var)
-	if !ok || v.owner == nil || v.owner == c.fn {
-		return false
+	if !ok || v.owner == nil || v.owner == c.fn || v.inout {
+		return false // inout variables are captured by reference (expr.closure.capture-inout)
 	}
 	c.errorf(e.Pos(), "expr.closure.captured-readonly", "cannot modify %s: %s is captured by the function literal, which holds a read-only copy", exprString(e), id.Name)
 	return true
@@ -463,6 +477,7 @@ func (c *checker) lhsVar(e syntax.Expr) (Type, bool) {
 			c.info.Uses[id] = v
 			c.objDecl(v)
 			c.recordType(e, variable, v.typ, nil)
+			c.checkHeld(e)
 			if c.capturedWrite(e) {
 				return Typ[Invalid], false
 			}
@@ -594,9 +609,13 @@ func (c *checker) shortVarDecl(s *syntax.AssignStmt) {
 		case v != nil:
 			v.typ = Typ[Invalid]
 			if x != nil {
+				// A new variable may hold a second-class closure.
+				c.secondOK = true
+				second := x.second
 				c.assignment(x, nil, "assignment")
+				c.secondOK = false
 				if x.mode != invalid {
-					v.typ = x.typ
+					v.typ, v.second = x.typ, second
 				}
 			}
 		case x != nil && types[i] != nil:
@@ -882,8 +901,14 @@ func (c *checker) rangeStmt(s *syntax.RangeStmt) {
 	defer c.closeScope()
 
 	var x operand
+	// The range statement calls an iterator directly: a method value with
+	// an inout receiver may be the range expression.
+	savedCallee := c.callee
+	c.callee = unparen(s.X)
 	c.expr(&x, s.X)
+	c.callee = savedCallee
 	var key, val Type
+	var inout [2]bool
 	maxVars := 2
 	if x.mode != invalid {
 		switch t := core(x.typ).(type) {
@@ -911,7 +936,7 @@ func (c *checker) rangeStmt(s *syntax.RangeStmt) {
 			}
 			key, maxVars = t.Elem, 1
 		case *Signature:
-			key, val, maxVars = c.rangeFunc(s.X, t)
+			key, val, maxVars, inout = c.rangeFunc(s.X, t)
 		}
 		if key == nil && x.mode != invalid {
 			c.errorf(s.X.Pos(), "stmt.range.go", "cannot range over %s", &x)
@@ -921,6 +946,13 @@ func (c *checker) rangeStmt(s *syntax.RangeStmt) {
 
 	lhs := []syntax.Expr{s.Key, s.Value}
 	types := []Type{key, val}
+	if inout != [2]bool{} {
+		// The loop holds the operand of the iterator while the body runs
+		// (stmt.range.inout-exclusive).
+		saved := c.held
+		c.held = append(append([]heldPath(nil), c.held...), c.heldPaths(s.X)...)
+		defer func() { c.held = saved }()
+	}
 	for i, e := range lhs {
 		if e != nil && i >= maxVars {
 			c.errorf(e.Pos(), "stmt.range.go", "range over %s permits only %d iteration variable(s)", &x, maxVars)
@@ -940,7 +972,7 @@ func (c *checker) rangeStmt(s *syntax.RangeStmt) {
 				c.errorf(e.Pos(), "stmt.range.go", "non-name %s on left side of :=", exprString(e))
 				continue
 			}
-			v := &Var{object: object{pos: id.Pos(), name: id.Name, typ: Typ[Invalid]}}
+			v := &Var{object: object{pos: id.Pos(), name: id.Name, typ: Typ[Invalid]}, inout: inout[i]}
 			if x.mode != invalid && types[i] != nil {
 				v.typ = types[i]
 			}
@@ -956,6 +988,15 @@ func (c *checker) rangeStmt(s *syntax.RangeStmt) {
 			if e == nil {
 				continue
 			}
+			if inout[i] {
+				c.errorf(e.Pos(), "stmt.range.inout", "the inout loop variable %s must be declared with :=", exprString(e))
+				if id, ok := e.(*syntax.Name); ok {
+					if v, ok := c.lookup(id.Name).(*Var); ok {
+						v.used = true // no further error
+					}
+				}
+				continue
+			}
 			t, ok := c.lhsVar(e)
 			if ok && t != nil && x.mode != invalid && types[i] != nil && !c.assignableTo(types[i], t) {
 				c.errorf(e.Pos(), "stmt.range.go", "cannot assign %s to %s (type %s) in range", types[i], exprString(e), t)
@@ -966,27 +1007,29 @@ func (c *checker) rangeStmt(s *syntax.RangeStmt) {
 }
 
 // rangeFunc returns the iteration types of an iterator function
-// (stmt.range.go): func(yield func(K, V) bool) with 0 to 2 values.
-func (c *checker) rangeFunc(e syntax.Expr, t *Signature) (key, val Type, n int) {
+// (stmt.range.go): func(yield func(K, V) bool) with 0 to 2 values, and
+// which of them the iterator yields with inout access: only the last
+// (stmt.range.inout-iter).
+func (c *checker) rangeFunc(e syntax.Expr, t *Signature) (key, val Type, n int, inout [2]bool) {
 	if t.Params.Len() == 1 && t.Results.Len() == 0 {
 		if y, ok := t.Params.Vars[0].typ.Underlying().(*Signature); ok && y.Results.Len() == 1 && Identical(y.Results.Vars[0].typ, Typ[Bool]) && y.Params.Len() <= 2 {
-			for _, p := range y.Params.Vars {
-				if p.inout {
-					c.notSupported(e.Pos(), 4, "iterators that yield inout access")
-					return Typ[Invalid], Typ[Invalid], 2
-				}
+			ps := y.Params.Vars
+			if len(ps) == 2 && ps[0].inout {
+				c.errorf(e.Pos(), "stmt.range.inout-iter", "an iterator may yield inout access only to its last value")
 			}
-			switch y.Params.Len() {
+			switch len(ps) {
 			case 0:
-				return Typ[Invalid], nil, 0
+				return Typ[Invalid], nil, 0, inout
 			case 1:
-				return y.Params.Vars[0].typ, nil, 1
+				inout[0] = ps[0].inout
+				return ps[0].typ, nil, 1, inout
 			default:
-				return y.Params.Vars[0].typ, y.Params.Vars[1].typ, 2
+				inout[1] = ps[1].inout
+				return ps[0].typ, ps[1].typ, 2, inout
 			}
 		}
 	}
-	return nil, nil, 0
+	return nil, nil, 0, inout
 }
 
 func (c *checker) typeSwitchStmt(ctxt stmtContext, s *syntax.TypeSwitchStmt) {
@@ -1091,6 +1134,28 @@ func (c *checker) typeSwitchStmt(ctxt stmtContext, s *syntax.TypeSwitchStmt) {
 		c.info.Defs[lhs] = nil
 		if !used {
 			c.errorf(lhs.Pos(), "decl.var.unused", "declared and not used: %s", lhs.Name)
+		}
+	}
+}
+
+// goCall checks the call of a go statement for second-class references
+// (mem.ref.second-class) and inout accesses.
+func (c *checker) goCall(call *syntax.CallExpr) {
+	switch f := unparen(call.Fun).(type) {
+	case *syntax.Name:
+		if v, ok := c.info.Uses[f].(*Var); ok && v.second {
+			c.errorf(f.Pos(), "expr.closure.capture-inout", "cannot start %s in a go statement: it captures an inout variable", f.Name)
+			return
+		}
+	case *syntax.FuncLit:
+		if c.secondLits[f] {
+			c.errorf(f.Pos(), "expr.closure.capture-inout", "cannot start a function literal that captures an inout variable in a go statement")
+			return
+		}
+	}
+	if tv, ok := c.info.Types[call.Fun]; ok {
+		if sig, ok := core(tv.Type).(*Signature); ok && len(c.inoutAccesses(call, sig)) > 0 {
+			c.notSupported(call.Pos(), 32, "inout arguments in go statements")
 		}
 	}
 }

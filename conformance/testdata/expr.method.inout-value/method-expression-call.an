@@ -1,0 +1,19 @@
+// want: ok
+
+package main
+
+type Stats struct {
+	count int
+	sum   int
+}
+
+func (s inout Stats) Add(v int) {
+	s.count++
+	s.sum += v
+}
+
+func main() {
+	var s Stats
+	Stats.Add(s, 1)
+	_ = s
+}

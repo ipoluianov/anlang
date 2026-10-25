@@ -1,0 +1,13 @@
+// want: ok
+
+package main
+
+func inc(n inout int) {
+	n++
+}
+
+func main() {
+	n := 1
+	inc(n)
+	_ = n
+}

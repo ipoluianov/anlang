@@ -1,0 +1,27 @@
+// want: ok
+
+package main
+
+type Bag struct {
+	items []int
+}
+
+func (b inout Bag) Each(yield func(inout int) bool) {
+	for i := range b.items {
+		if !yield(b.items[i]) {
+			return
+		}
+	}
+}
+
+func inc(n inout int) {
+	n++
+}
+
+func main() {
+	b := Bag{items: []int{1}}
+	for v := range b.Each {
+		inc(v)
+	}
+	_ = b
+}

@@ -1,0 +1,18 @@
+// want: expr.method.inout-value
+
+package main
+
+type Stats struct {
+	count int
+	sum   int
+}
+
+func (s inout Stats) Add(v int) {
+	s.count++
+	s.sum += v
+}
+
+func main() {
+	f := Stats.Add
+	_ = f
+}

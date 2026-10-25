@@ -1,0 +1,13 @@
+// want: expr.call.inout-overlap
+// checks: mem.inout.static
+
+package main
+
+func swap(a, b inout int) {
+	a, b = b, a
+}
+
+func main() {
+	x := 1
+	swap(x, x)
+}

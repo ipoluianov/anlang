@@ -1,0 +1,13 @@
+// want: type.assign.go
+// checks: type.func.inout
+
+package main
+
+func inc(n inout int) {
+	n++
+}
+
+func main() {
+	var f func(int) = inc
+	_ = f
+}

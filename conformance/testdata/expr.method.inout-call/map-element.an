@@ -1,0 +1,19 @@
+// want: expr.addr.map
+// checks: expr.method.inout-call
+
+package main
+
+type Stats struct {
+	count int
+	sum   int
+}
+
+func (s inout Stats) Add(v int) {
+	s.count++
+	s.sum += v
+}
+
+func main() {
+	m := map[int]Stats{}
+	m[1].Add(1)
+}

@@ -139,7 +139,7 @@ return u64(h)
 
 **expr.method.inout-value** — A method value `x.M` or method expression `T.M` whose receiver is declared `inout` MAY be used only as the callee of an immediate call. A program MUST NOT store, pass, return or convert such a method value.
 
-**expr.method.interface-inout** — A method with an `inout` receiver belongs to the method set of its receiver type `T`. Calling it through an interface value requires the interface operand to be addressable; the call modifies the copy held by the interface value.
+**expr.method.interface-inout** — A method with an `inout` receiver belongs to the method set of its receiver type `T`. Calling it through an interface value modifies the copy held by the interface value. Whether the dynamic method has an `inout` receiver is not known statically, so the interface operand need not be addressable; a call on a temporary interface value modifies a copy that is then discarded.
 
 ## 9. Calls
 

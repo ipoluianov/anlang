@@ -95,6 +95,11 @@ type checker struct {
 	enumVariants    map[*TypeName][]*Variant    // variants of enum type declarations
 	variantSwitches map[*syntax.SwitchStmt]bool // variant switches: whether exhaustive or with default
 	inArgs          bool                        // checking call arguments
+	held            []heldPath                  // paths held by enclosing inout loops
+	pathDepth       int                         // nesting of the operand of selectors, indices and slices
+	callee          syntax.Expr                 // the callee of the call being checked
+	secondOK        bool                        // a second-class closure may initialize a new variable
+	secondLits      map[*syntax.FuncLit]bool    // function literals that capture inout variables
 	funcName        string                      // the function whose body is checked
 	zeroEdges       []zeroEdge                  // type arguments, for the zero value constraint
 	pendingZero     map[syntax.Expr]pendingZero // single-value map index and receive expressions

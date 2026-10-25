@@ -1,0 +1,26 @@
+// want: ok
+// checks: type.interface.inout-method
+
+package main
+
+type Counter interface {
+	Inc()
+}
+
+type C struct {
+	n int
+}
+
+func (c inout C) Inc() {
+	c.n++
+}
+
+func get() Counter {
+	return C{}
+}
+
+func main() {
+	var k Counter = C{}
+	k.Inc()
+	get().Inc()
+}

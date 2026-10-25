@@ -1,0 +1,22 @@
+// want: expr.closure.captured-readonly
+
+package main
+
+type Stats struct {
+	count int
+	sum   int
+}
+
+func (s inout Stats) Add(v int) {
+	s.count++
+	s.sum += v
+}
+
+func main() {
+	var s Stats
+	f := func() {
+		s.Add(1)
+	}
+	f()
+	_ = s
+}

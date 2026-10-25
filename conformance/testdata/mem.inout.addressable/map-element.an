@@ -1,0 +1,13 @@
+// want: expr.addr.map
+// checks: mem.inout.addressable
+
+package main
+
+func inc(n inout int) {
+	n++
+}
+
+func main() {
+	m := map[string]int{}
+	inc(m["a"])
+}

@@ -1,0 +1,14 @@
+// want: expr.call.inout-overlap
+// checks: mem.inout.exclusive
+
+package main
+
+func swap(a, b inout int) {
+	a, b = b, a
+}
+
+func main() {
+	a := []int{1, 2}
+	i := 0
+	swap(a[i], a[1])
+}

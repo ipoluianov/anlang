@@ -1,0 +1,23 @@
+// want: stmt.range.inout-exclusive
+
+package main
+
+type Bag struct {
+	items []int
+}
+
+func (b inout Bag) Each(yield func(inout int) bool) {
+	for i := range b.items {
+		if !yield(b.items[i]) {
+			return
+		}
+	}
+}
+
+func main() {
+	b := Bag{items: []int{1}}
+	for v := range b.Each {
+		v++
+		_ = len(b.items)
+	}
+}

@@ -1,0 +1,18 @@
+// want: ok
+
+package main
+
+func Count(n inout int, xs []i32) {
+	add := func(v i32) {
+		n += int(v)
+	}
+	for _, x := range xs {
+		add(x)
+	}
+}
+
+func main() {
+	n := 0
+	Count(n, []i32{1, 2})
+	_ = n
+}

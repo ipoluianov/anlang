@@ -52,6 +52,7 @@ type Var struct {
 	field    bool
 	embedded bool         // an embedded struct field
 	owner    *funcContext // function or function literal that declares a local variable
+	second   bool         // holds a second-class closure (expr.closure.capture-inout)
 	param    bool         // a parameter or a result
 	used     bool
 }

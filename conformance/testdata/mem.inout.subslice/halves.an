@@ -1,0 +1,10 @@
+// want: ok
+
+package main
+
+func both(a, b inout []i32) {}
+
+func main() {
+	xs := []i32{3, 1, 2, 4}
+	both(xs[:2], xs[2:])
+}

@@ -1,0 +1,16 @@
+// want: expr.closure.captured-readonly
+
+package main
+
+func inc(n inout int) {
+	n++
+}
+
+func main() {
+	n := 0
+	f := func() {
+		inc(n)
+	}
+	f()
+	_ = n
+}
