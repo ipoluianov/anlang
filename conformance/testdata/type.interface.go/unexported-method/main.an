@@ -1,0 +1,14 @@
+// want: type.interface.go
+
+package main
+
+import "conf/lib"
+
+type T struct{}
+
+func (t T) m() {}
+
+func main() {
+	var i lib.I = T{}
+	_ = i
+}

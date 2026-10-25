@@ -3,6 +3,7 @@ package types
 import (
 	"go/constant"
 	"go/token"
+	"strings"
 
 	"an/syntax"
 )
@@ -198,6 +199,11 @@ func (c *checker) ident(x *operand, id *syntax.Name, wantType bool) {
 	}
 }
 
+func isBuiltinObj(obj Object) bool {
+	_, ok := obj.(*Builtin)
+	return ok
+}
+
 // selector checks X.Sel: a qualified identifier or a field selector.
 func (c *checker) selector(x *operand, e *syntax.SelectorExpr) {
 	x.mode, x.expr = invalid, e
@@ -209,16 +215,34 @@ func (c *checker) selector(x *operand, e *syntax.SelectorExpr) {
 				return // the import was rejected
 			}
 			obj := p.Imported.Scope.Lookup(e.Sel.Name)
-			if obj == nil || !obj.base().Exported() {
+			switch {
+			case obj == nil && strings.HasPrefix(p.Imported.Path, "an/"):
+				// The standard library is built into this compiler only in part.
+				c.notSupported(e.Pos(), 29, p.Imported.Path+"."+e.Sel.Name)
+				return
+			case obj == nil:
 				c.errorf(e.Sel.Pos(), "decl.visibility.go", "undefined: %s.%s", id.Name, e.Sel.Name)
+				return
+			case !obj.base().Exported():
+				c.errorf(e.Sel.Pos(), "decl.visibility.go", "name %s not exported by package %s", e.Sel.Name, id.Name)
 				return
 			}
 			c.info.Uses[e.Sel] = obj
+			// Imported packages are checked completely before their importers.
+			if !isValid(obj.Type()) && !isBuiltinObj(obj) {
+				return
+			}
 			switch obj := obj.(type) {
 			case *Builtin:
 				x.mode, x.typ, x.id = builtin, Typ[Invalid], obj.id
-			default:
-				c.notSupported(e.Pos(), 29, exprString(e))
+			case *Const:
+				x.mode, x.typ, x.val = constant_, obj.typ, obj.Val
+			case *TypeName:
+				x.mode, x.typ = typexpr, obj.typ
+			case *Var:
+				x.mode, x.typ = variable, obj.typ
+			case *Func:
+				x.mode, x.typ = value, obj.typ
 			}
 			return
 		}
@@ -238,7 +262,7 @@ func (c *checker) selector(x *operand, e *syntax.SelectorExpr) {
 	if x.mode == invalid {
 		return
 	}
-	obj, _, ambiguous := c.lookupFieldOrMethod(x.typ, e.Sel.Name)
+	obj, _, ambiguous := c.lookupFieldOrMethod(x.typ, c.pkg, e.Sel.Name)
 	switch obj := obj.(type) {
 	case *Var:
 		c.info.Uses[e.Sel] = obj
@@ -253,12 +277,22 @@ func (c *checker) selector(x *operand, e *syntax.SelectorExpr) {
 		x.mode, x.typ, x.val = value, methodType(obj), nil
 		return
 	}
-	if ambiguous {
+	switch {
+	case ambiguous:
 		c.errorf(e.Sel.Pos(), "type.struct.go", "ambiguous selector %s", exprString(e))
-	} else {
+	case c.hidden(x.typ, e.Sel.Name):
+		c.errorf(e.Sel.Pos(), "decl.visibility.go", "%s undefined (cannot refer to unexported field or method %s)", exprString(e), e.Sel.Name)
+	default:
 		c.errorf(e.Sel.Pos(), "expr.go", "%s undefined (type %s has no field or method %s)", exprString(e), x.typ, e.Sel.Name)
 	}
 	x.invalidate()
+}
+
+// hidden reports whether t has an unexported field or method name of
+// another package.
+func (c *checker) hidden(t Type, name string) bool {
+	obj, _, _ := c.lookupFieldOrMethod(t, nil, name)
+	return obj != nil
 }
 
 // typeAssert checks a type assertion x.(T) (type.interface.go). The
@@ -308,7 +342,7 @@ func (c *checker) possibleType(e syntax.Expr, x *operand, xi *Interface, t Type,
 // parameter is the receiver.
 func (c *checker) methodExpr(x *operand, e *syntax.SelectorExpr) {
 	t := x.typ
-	obj, _, ambiguous := c.lookupFieldOrMethod(t, e.Sel.Name)
+	obj, _, ambiguous := c.lookupFieldOrMethod(t, c.pkg, e.Sel.Name)
 	m, ok := obj.(*Func)
 	if !ok {
 		if ambiguous {

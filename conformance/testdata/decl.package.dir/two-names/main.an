@@ -1,0 +1,9 @@
+// want: decl.package.dir
+
+package main
+
+import "conf/lib"
+
+func main() {
+	_ = lib.Answer()
+}

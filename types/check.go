@@ -19,9 +19,13 @@ import (
 
 // Config describes the package to check and the target.
 type Config struct {
-	Module   string // module name from anlang.mod
-	IntBits  int    // size of int and uint in bits (type.int.word); 0 means 64
-	AddrBits int    // size of usize in bits (type.int.usize); 0 means IntBits
+	Module string // module name from anlang.mod
+	Path   string // import path of the package; "" or Module for package main in the project root
+	// Imports are the checked packages of the project that the package
+	// imports, by import path.
+	Imports  map[string]*Package
+	IntBits  int // size of int and uint in bits (type.int.word); 0 means 64
+	AddrBits int // size of usize in bits (type.int.usize); 0 means IntBits
 }
 
 // Info is the result of type checking.
@@ -39,8 +43,10 @@ type Info struct {
 	Funcs []*Func
 	// Methods are the methods in source order.
 	Methods []*Func
-	// Main is func main.
+	// Main is func main; nil for packages other than main.
 	Main *Func
+	// Pkg is the checked package.
+	Pkg *Package
 }
 
 // TypeAndValue is the type and, for a constant, the value of an
@@ -75,6 +81,7 @@ type checker struct {
 	files    []*syntax.File
 	errors   []*syntax.Error
 	info     *Info
+	pkg      *Package
 	pkgScope *Scope
 
 	decls        map[Object]*declInfo
@@ -82,9 +89,11 @@ type checker struct {
 	aliasMethods []aliasMethod
 	methods      map[*TypeName][]*Func // methods by receiver base type
 	lazy         map[*TypeName]*lazyAlias
-	interfaces   []interfaceInfo // interface types, checked for method conflicts at the end
-	objList      []Object        // package-level objects in source order, including blank ones
-	objPath      []Object        // objects whose declarations are being checked
+
+	invalidSwitch map[*syntax.SwitchStmt]bool // switches with an invalid tag
+	interfaces    []interfaceInfo             // interface types, checked for method conflicts at the end
+	objList       []Object                    // package-level objects in source order, including blank ones
+	objPath       []Object                    // objects whose declarations are being checked
 
 	untyped map[syntax.Expr]untypedInfo
 
@@ -125,7 +134,9 @@ func Check(conf *Config, files []*syntax.File) (*Info, []*syntax.Error) {
 		decls:    map[Object]*declInfo{},
 		methods:  map[*TypeName][]*Func{},
 		lazy:     map[*TypeName]*lazyAlias{},
-		untyped:  map[syntax.Expr]untypedInfo{},
+
+		invalidSwitch: map[*syntax.SwitchStmt]bool{},
+		untyped:       map[syntax.Expr]untypedInfo{},
 	}
 	if c.intBits == 0 {
 		c.intBits = 64
@@ -133,7 +144,12 @@ func Check(conf *Config, files []*syntax.File) (*Info, []*syntax.Error) {
 	if c.addrBits == 0 {
 		c.addrBits = c.intBits
 	}
-	c.info.Scope = c.pkgScope
+	path := conf.Path
+	if path == "" {
+		path = conf.Module
+	}
+	c.pkg = &Package{Path: path, Scope: c.pkgScope}
+	c.info.Scope, c.info.Pkg = c.pkgScope, c.pkg
 	c.check()
 	sort.SliceStable(c.errors, func(i, j int) bool { return posLess(c.errors[i].Pos, c.errors[j].Pos) })
 	return c.info, c.errors
@@ -168,7 +184,9 @@ func (c *checker) check() {
 		c.objDecl(obj)
 	}
 	c.checkMethods()
-	c.checkMain()
+	if c.isRoot() {
+		c.checkMain()
+	}
 
 	for _, f := range append(c.info.Funcs, c.info.Methods...) {
 		if d := c.decls[f].fdecl; d.Body != nil {
@@ -187,14 +205,29 @@ func (c *checker) check() {
 	}
 }
 
+// isRoot reports whether the package is the project root, package main.
+func (c *checker) isRoot() bool { return c.pkg.Path == c.conf.Module }
+
 // checkPackageClauses checks that all files are package main and agree
 // on the profile clause.
 func (c *checker) checkPackageClauses() {
 	var profiles string
 	var profilesFrom *syntax.File
-	for _, f := range c.files {
-		if f.Name.Name != "main" {
-			c.errorf(f.Name.Pos(), "decl.package.main", "package %s in the project root: a program is built from package main", f.Name.Name)
+	root := c.isRoot()
+	last := c.pkg.Path[strings.LastIndex(c.pkg.Path, "/")+1:]
+	for i, f := range c.files {
+		name := f.Name.Name
+		switch {
+		case root && name != "main":
+			c.errorf(f.Name.Pos(), "decl.package.main", "package %s in the project root: a program is built from package main", name)
+		case root:
+		case i > 0 && name != c.pkg.Name:
+			c.errorf(f.Name.Pos(), "decl.package.dir", "package %s differs from package %s in %s", name, c.pkg.Name, c.files[0].Name.Pos().File)
+		case i == 0 && name != last && name != "main":
+			c.errorf(f.Name.Pos(), "decl.package.name", "package %s in directory %s: the package name must be %s", name, c.pkg.Path, last)
+		}
+		if i == 0 {
+			c.pkg.Name = name
 		}
 		seen := map[string]bool{}
 		for _, p := range f.Profiles() {
@@ -314,6 +347,14 @@ func (c *checker) collectGenDecl(fs *Scope, d *syntax.GenDecl) {
 			s := s.(*syntax.TypeSpec)
 			obj := &TypeName{object{pos: s.Name.Pos(), name: s.Name.Name}}
 			c.declarePkg(s.Name, obj, &declInfo{file: fs, tspec: s})
+			if et, ok := s.Type.(*syntax.EnumType); ok {
+				// Until enum types are supported (roadmap step 3), the
+				// variants are declared invalid, so their uses report no
+				// further errors.
+				for _, v := range et.Variants {
+					c.declarePkg(v.Name, &Const{object: object{pos: v.Name.Pos(), name: v.Name.Name, typ: Typ[Invalid]}}, &declInfo{file: fs})
+				}
+			}
 		}
 	}
 }
@@ -381,6 +422,7 @@ func (c *checker) collectFunc(fs *Scope, d *syntax.FuncDecl) {
 // object is to be checked: blank objects are checked, but not declared
 // (decl.visibility.go).
 func (c *checker) declarePkg(name *syntax.Name, obj Object, di *declInfo) bool {
+	obj.base().pkg = c.pkg
 	if _, isFunc := obj.(*Func); name.Name == "init" && !isFunc {
 		c.errorf(name.Pos(), "decl.visibility.go", "cannot declare init: the name is reserved, as in Go")
 		return false
@@ -467,13 +509,35 @@ func (c *checker) importPath(spec *syntax.ImportSpec, path string, err error) *P
 		c.errorf(spec.Path.Pos(), "decl.import.paths", "invalid element %q in import path %q: want [a-z][a-z0-9_]*", elems[i], path)
 		return nil
 	}
+	if i := slices.Index(elems, "internal"); i >= 0 {
+		parent := strings.Join(elems[:i], "/")
+		if c.pkg.Path != parent && !strings.HasPrefix(c.pkg.Path, parent+"/") {
+			c.errorf(spec.Path.Pos(), "decl.import.internal", "package %s may import %q only from within %s", c.pkg.Path, path, parent)
+			return nil
+		}
+	}
+	if own {
+		switch {
+		case path == c.conf.Module:
+			c.errorf(spec.Path.Pos(), "decl.package.main", "package main cannot be imported")
+			return nil
+		case path == c.pkg.Path:
+			c.errorf(spec.Path.Pos(), "decl.import.no-cycle", "package %s imports itself", path)
+			return nil
+		}
+		pkg := c.conf.Imports[path]
+		switch {
+		case pkg == nil:
+			c.errorf(spec.Path.Pos(), "decl.import.paths", "no package %q in this project", path)
+		case pkg.Name == "main":
+			c.errorf(spec.Path.Pos(), "decl.package.main", "%q is a package main and cannot be imported", path)
+			return nil
+		}
+		return pkg
+	}
 	pkg := stdPackages[path]
 	if pkg == nil {
-		step := 29
-		if own {
-			step = 2
-		}
-		c.notSupported(spec.Path.Pos(), step, fmt.Sprintf("package %q", path))
+		c.notSupported(spec.Path.Pos(), 29, fmt.Sprintf("package %q", path))
 	}
 	return pkg
 }

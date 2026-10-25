@@ -1,0 +1,7 @@
+package a
+
+import "conf/b"
+
+func A() int {
+	return b.B()
+}

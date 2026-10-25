@@ -22,6 +22,7 @@ type object struct {
 	pos    syntax.Pos
 	name   string
 	typ    Type
+	pkg    *Package // package of fields and methods; their unexported names are visible only there
 }
 
 func (o *object) Name() string     { return o.name }
@@ -30,6 +31,7 @@ func (o *object) Pos() syntax.Pos  { return o.pos }
 func (o *object) Parent() *Scope   { return o.parent }
 func (o *object) base() *object    { return o }
 func (o *object) Exported() bool   { return o.name != "" && 'A' <= o.name[0] && o.name[0] <= 'Z' }
+func (o *object) Pkg() *Package    { return o.pkg }
 func (o *object) setType(typ Type) { o.typ = typ }
 
 // Const is a declared constant.

@@ -648,6 +648,11 @@ func (c *checker) switchStmt(ctxt stmtContext, s *syntax.SwitchStmt) {
 		c.stmt(0, s.Init)
 	}
 	var tag operand
+	defer func() {
+		if tag.mode == invalid {
+			c.invalidSwitch[s] = true
+		}
+	}()
 	if s.Tag != nil {
 		c.expr(&tag, s.Tag)
 		c.defaultUntyped(&tag)
@@ -674,6 +679,15 @@ func (c *checker) switchStmt(ctxt stmtContext, s *syntax.SwitchStmt) {
 			dflt = cl
 		}
 		for _, e := range cl.List {
+			if tag.mode == invalid {
+				// The case expressions may be patterns of an enum type
+				// that could not be checked: they are checked only to
+				// mark the variables they use, without diagnostics.
+				n := len(c.errors)
+				c.useArgs([]syntax.Expr{e})
+				c.errors = c.errors[:n]
+				continue
+			}
 			c.caseValue(&tag, e, s.Tag != nil, seen)
 		}
 		c.openScope()

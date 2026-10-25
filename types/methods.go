@@ -42,7 +42,7 @@ func (c *checker) collectMethods() {
 
 // addMethod declares method d of type tn.
 func (c *checker) addMethod(tn *TypeName, file *Scope, d *syntax.FuncDecl) {
-	obj := &Func{object: object{pos: d.Name.Pos(), name: d.Name.Name}, Decl: d}
+	obj := &Func{object: object{pos: d.Name.Pos(), name: d.Name.Name, pkg: c.pkg}, Decl: d}
 	c.decls[obj] = &declInfo{file: file, fdecl: d}
 	c.info.Methods = append(c.info.Methods, obj)
 	if d.Name.Name == "_" {
@@ -189,7 +189,7 @@ func (c *checker) interfaceType(e *syntax.InterfaceType) Type {
 					c.errorf(name.Pos(), "type.interface.go", "methods must have a unique non-blank name")
 					continue
 				}
-				m := &Func{object: object{pos: name.Pos(), name: name.Name, typ: sig}}
+				m := &Func{object: object{pos: name.Pos(), name: name.Name, typ: sig, pkg: c.pkg}}
 				c.info.Defs[name] = m
 				if lookupFunc(t.Methods, name.Name) != nil {
 					c.errorf(name.Pos(), "type.interface.go", "duplicate method %s", name.Name)

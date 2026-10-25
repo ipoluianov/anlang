@@ -1,0 +1,7 @@
+package lib
+
+import "conf/lib/internal/norm"
+
+func Answer() int {
+	return norm.N()
+}

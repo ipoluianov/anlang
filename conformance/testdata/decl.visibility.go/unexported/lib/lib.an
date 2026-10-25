@@ -1,0 +1,14 @@
+package lib
+
+type Point struct {
+	X      int
+	secret int
+}
+
+func New() Point {
+	return Point{X: helper()}
+}
+
+func helper() int {
+	return 1
+}

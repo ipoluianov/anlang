@@ -1,0 +1,7 @@
+// want: decl.package.main
+
+package main
+
+import "conf"
+
+func main() {}

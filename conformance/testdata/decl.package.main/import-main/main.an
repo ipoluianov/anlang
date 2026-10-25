@@ -1,0 +1,9 @@
+// want: decl.package.main
+
+package main
+
+import "conf/tool"
+
+func main() {
+	_ = tool.X
+}

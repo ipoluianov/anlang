@@ -1,0 +1,11 @@
+// want: decl.visibility.go
+
+package main
+
+import "conf/lib"
+
+func main() {
+	p := lib.New()
+	_ = p.secret
+	_ = lib.helper()
+}

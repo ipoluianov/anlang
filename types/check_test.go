@@ -34,7 +34,6 @@ func TestCheckErrors(t *testing.T) {
 		{"package main\nfunc F[T any]() {}\nfunc main() {}", "generic functions: not supported yet"},
 		{"package main\ntype E enum { A }\nfunc main() {}", "enum types: not supported yet by this compiler (spec/24-roadmap.md, step 3)"},
 		{"package main\nfunc f(x inout int) {}\nfunc main() {}", "inout parameters: not supported yet by this compiler (spec/24-roadmap.md, step 4)"},
-		{"package main\nimport \"m/lib\"\nfunc main() { lib.F() }", "package \"m/lib\": not supported yet"},
 		{"package main\nfunc main() { var o Option[int]; _ = o }", "Option: not supported yet"},
 		{"package main\nfunc main() { for const i := range 3 { _ = i } }", "for const: not supported yet"},
 	}
@@ -121,5 +120,75 @@ func main() {
 	_, errs := Check(&Config{Module: "m", IntBits: 16}, []*syntax.File{f})
 	if len(errs) != 1 || errs[0].Rule != "expr.int.const" {
 		t.Errorf("16-bit int: got %v, want one expr.int.const error", errs)
+	}
+}
+
+// TestImports checks a package that imports another package of the
+// project: exported names are visible, unexported ones are not
+// (decl.visibility.go).
+func TestImports(t *testing.T) {
+	parse := func(name, src string) []*syntax.File {
+		f, errs := syntax.Parse(name, []byte(src))
+		if len(errs) > 0 {
+			t.Fatalf("parse: %v", errs)
+		}
+		return []*syntax.File{f}
+	}
+	lib, errs := Check(&Config{Module: "m", Path: "m/lib"}, parse("lib/lib.an", `package lib
+
+const Max = 10
+
+type Point struct {
+	X, Y int
+	tag  string
+}
+
+func (p Point) Sum() int { return p.X + p.Y }
+
+func (p Point) hidden() {}
+
+type Shape interface {
+	Area() int
+}
+
+func New(x int) Point { return Point{X: x} }
+`))
+	if len(errs) > 0 {
+		t.Fatal(errs)
+	}
+	imports := map[string]*Package{"m/lib": lib.Pkg}
+	_, errs = Check(&Config{Module: "m", Imports: imports}, parse("main.an", `package main
+
+import "m/lib"
+
+func main() {
+	p := lib.New(lib.Max)
+	var q lib.Point = lib.Point{X: 1, Y: 2}
+	_ = p.Sum() + q.X
+}
+`))
+	if len(errs) > 0 {
+		t.Fatal(errs)
+	}
+	_, errs = Check(&Config{Module: "m", Imports: imports}, parse("main.an", `package main
+
+import "m/lib"
+
+func main() {
+	p := lib.New(1)
+	p.hidden()
+	_ = p.tag
+	_ = lib.Point{1, 2, "t"}
+	_ = lib.Point{tag: "t"}
+	_ = lib.max
+}
+`))
+	var got []string
+	for _, e := range errs {
+		got = append(got, e.Rule)
+	}
+	want := "decl.visibility.go decl.visibility.go decl.visibility.go decl.visibility.go decl.visibility.go"
+	if strings.Join(got, " ") != want {
+		t.Errorf("got %v, want five decl.visibility.go errors", errs)
 	}
 }

@@ -1,0 +1,5 @@
+package norm
+
+func N() int {
+	return 1
+}

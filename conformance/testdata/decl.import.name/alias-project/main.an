@@ -1,0 +1,9 @@
+// want: ok
+
+package main
+
+import l "conf/lib"
+
+func main() {
+	_ = l.Answer()
+}

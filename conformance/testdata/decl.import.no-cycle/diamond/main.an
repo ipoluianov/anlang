@@ -1,0 +1,12 @@
+// want: ok
+
+package main
+
+import (
+	"conf/a"
+	"conf/b"
+)
+
+func main() {
+	_ = a.A() + b.B()
+}

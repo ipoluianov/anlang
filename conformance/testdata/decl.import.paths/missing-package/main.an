@@ -1,0 +1,9 @@
+// want: decl.import.paths
+
+package main
+
+import "conf/lib"
+
+func main() {
+	_ = lib.Answer()
+}

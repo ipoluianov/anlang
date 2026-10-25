@@ -1,0 +1,15 @@
+package geo
+
+const Unit = 1
+
+type Shape interface {
+	Area() int
+}
+
+type Rect struct {
+	W, H int
+}
+
+func (r Rect) Area() int {
+	return r.W * r.H
+}

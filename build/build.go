@@ -9,7 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"an/arch/x86_64"
@@ -177,35 +179,124 @@ func (p *Project) Build(target string) (string, []error) {
 	return out, nil
 }
 
-// Check selects the source files of the program in the project root for
-// one target, parses and type-checks them. Diagnostics are returned as
-// *syntax.Error; other errors (an unknown target, unreadable files) as
-// plain errors.
+// Check checks the program in the project root for one target: package
+// main and the project packages it imports, each checked after the
+// packages it imports. Diagnostics are returned as *syntax.Error; other
+// errors (an unknown target, unreadable files) as plain errors.
 func (p *Project) Check(target string) (*types.Info, []error) {
 	t, ok := LookupTarget(target)
 	if !ok {
 		return nil, []error{fmt.Errorf("unknown target %q (target.select.resolve)", target)}
 	}
-	files, err := SelectFiles(p.Root, t)
+	l := &loader{p: p, t: t, pkgs: map[string]*loadedPkg{}}
+	root, err := l.load(p.Mod.Module, nil)
 	if err != nil {
 		return nil, []error{err}
 	}
-	if len(files) == 0 {
+	if root == nil {
 		return nil, []error{fmt.Errorf("%s: no Anlang source files for target %s", p.Root, target)}
 	}
-	var srcs []Source
-	for _, name := range files {
-		data, err := os.ReadFile(filepath.Join(p.Root, name))
-		if err != nil {
-			return nil, []error{err}
-		}
-		srcs = append(srcs, Source{Name: name, Data: data})
+	if len(l.errs) > 0 {
+		return nil, asErrors(l.errs)
 	}
-	info, errs := CheckSources(p.Mod.Module, t, srcs)
+	var errs []*syntax.Error
+	checked := map[string]*types.Package{}
+	for _, lp := range l.order {
+		imports := map[string]*types.Package{}
+		for _, path := range lp.imports {
+			if pkg := checked[path]; pkg != nil {
+				imports[path] = pkg
+			}
+		}
+		info, perrs := checkFiles(p.Mod.Module, lp.path, t, imports, lp.files)
+		errs = append(errs, perrs...)
+		checked[lp.path] = info.Pkg
+		lp.info = info
+	}
 	if len(errs) > 0 {
 		return nil, asErrors(errs)
 	}
-	return info, nil
+	return root.info, nil
+}
+
+// loader loads the packages of a program.
+type loader struct {
+	p     *Project
+	t     Target
+	pkgs  map[string]*loadedPkg
+	stack []*loadedPkg // packages being loaded, for cycle detection
+	order []*loadedPkg // loaded packages, each after the packages it imports
+	errs  []*syntax.Error
+}
+
+type loadedPkg struct {
+	path    string
+	files   []*syntax.File
+	imports []string // project packages imported
+	info    *types.Info
+	done    bool
+}
+
+// load loads the project package path and the project packages it
+// imports. It returns nil if the package has no source files for the
+// target; the importer then reports the missing package.
+func (l *loader) load(path string, from *syntax.ImportSpec) (*loadedPkg, error) {
+	if lp := l.pkgs[path]; lp != nil {
+		if !lp.done {
+			var cycle []string
+			for _, s := range l.stack[slices.Index(l.stack, lp):] {
+				cycle = append(cycle, s.path)
+			}
+			l.errs = append(l.errs, &syntax.Error{Pos: from.Path.Pos(), Rule: "decl.import.no-cycle",
+				Msg: fmt.Sprintf("import cycle not allowed: %s -> %s", strings.Join(cycle, " -> "), path)})
+		}
+		return lp, nil
+	}
+	rel := strings.TrimPrefix(strings.TrimPrefix(path, l.p.Mod.Module), "/")
+	dir := filepath.Join(l.p.Root, filepath.FromSlash(rel))
+	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+		return nil, nil
+	}
+	names, err := SelectFiles(dir, l.t)
+	if err != nil {
+		return nil, err
+	}
+	if len(names) == 0 {
+		return nil, nil
+	}
+	var srcs []Source
+	for _, name := range names {
+		data, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			return nil, err
+		}
+		srcs = append(srcs, Source{Name: filepath.ToSlash(filepath.Join(rel, name)), Data: data})
+	}
+	files, errs := parseSources(srcs)
+	l.errs = append(l.errs, errs...)
+
+	lp := &loadedPkg{path: path, files: files}
+	l.pkgs[path] = lp
+	l.stack = append(l.stack, lp)
+	module := l.p.Mod.Module
+	for _, f := range files {
+		for _, spec := range f.Imports {
+			ipath, err := strconv.Unquote(spec.Path.Value)
+			if err != nil || !strings.HasPrefix(ipath, module+"/") {
+				continue // the root package and other paths are reported by the checker
+			}
+			if _, err := l.load(ipath, spec); err != nil {
+				return nil, err
+			}
+			if !slices.Contains(lp.imports, ipath) {
+				lp.imports = append(lp.imports, ipath)
+			}
+		}
+	}
+	l.stack = l.stack[:len(l.stack)-1]
+	lp.done = true
+	l.order = append(l.order, lp)
+	return lp, nil
 }
 
 // Source is a source file: its name for diagnostics and its contents.
@@ -217,6 +308,16 @@ type Source struct {
 // CheckSources parses srcs, checks that they are in canonical form and
 // type-checks them as package main of module for target t.
 func CheckSources(module string, t Target, srcs []Source) (*types.Info, []*syntax.Error) {
+	files, errs := parseSources(srcs)
+	if len(errs) > 0 {
+		return nil, errs
+	}
+	return checkFiles(module, module, t, nil, files)
+}
+
+// parseSources parses srcs and checks that they are in canonical form
+// (lex.source.canonical).
+func parseSources(srcs []Source) ([]*syntax.File, []*syntax.Error) {
 	var parsed []*syntax.File
 	var errs []*syntax.Error
 	for _, src := range srcs {
@@ -229,11 +330,13 @@ func CheckSources(module string, t Target, srcs []Source) (*types.Info, []*synta
 			parsed = append(parsed, f)
 		}
 	}
-	if len(errs) > 0 {
-		return nil, errs
-	}
+	return parsed, errs
+}
+
+// checkFiles type-checks the files of package path for target t.
+func checkFiles(module, path string, t Target, imports map[string]*types.Package, files []*syntax.File) (*types.Info, []*syntax.Error) {
 	word := wordBits[t.Arch]
-	return types.Check(&types.Config{Module: module, IntBits: word, AddrBits: word}, parsed)
+	return types.Check(&types.Config{Module: module, Path: path, Imports: imports, IntBits: word, AddrBits: word}, files)
 }
 
 // SelectFiles returns the names of the source files in dir that belong

@@ -400,6 +400,9 @@ func writeType(b *strings.Builder, t Type) {
 		}
 		b.WriteString("}")
 	case *Named:
+		if p := t.Obj.pkg; p != nil && p.Name != "main" && p.Name != "" {
+			b.WriteString(p.Name + ".")
+		}
 		b.WriteString(t.Obj.name)
 	case *lazyAlias:
 		b.WriteString(t.obj.name)

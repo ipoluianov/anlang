@@ -98,6 +98,9 @@ func (c *checker) structLit(e *syntax.CompositeLit, t *Struct) {
 				continue
 			}
 			c.info.Uses[key] = field
+			if !visible(field, c.pkg) {
+				c.errorf(key.Pos(), "decl.visibility.go", "cannot refer to unexported field %s in struct literal of type %s", key.Name, t)
+			}
 			if seen[key.Name] {
 				c.errorf(key.Pos(), "expr.lit.go", "duplicate field name %s in struct literal", key.Name)
 			}
@@ -114,6 +117,9 @@ func (c *checker) structLit(e *syntax.CompositeLit, t *Struct) {
 		if i >= len(t.Fields) {
 			c.errorf(el.Pos(), "expr.lit.go", "too many values in struct literal of type %s", t)
 			return
+		}
+		if f := t.Fields[i]; !visible(f, c.pkg) {
+			c.errorf(el.Pos(), "decl.visibility.go", "implicit assignment to unexported field %s in struct literal of type %s", f.name, t)
 		}
 		c.fieldValue(el, t.Fields[i].typ)
 	}

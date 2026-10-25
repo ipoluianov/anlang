@@ -7,11 +7,13 @@ import (
 
 // lookupFieldOrMethod finds the field or method name of a value of type
 // t, including fields and methods promoted through embedded fields
-// (type.struct.go, decl.receiver.method-set). index is the path of field
+// (type.struct.go, decl.receiver.method-set). An unexported name is
+// found only if it belongs to package pkg (decl.visibility.go); if pkg
+// is nil, every name is found. index is the path of field
 // indices to the field or to the embedded field that holds the method.
 // ambiguous reports that the name is found more than once at the
 // shallowest depth.
-func (c *checker) lookupFieldOrMethod(t Type, name string) (obj Object, index []int, ambiguous bool) {
+func (c *checker) lookupFieldOrMethod(t Type, pkg *Package, name string) (obj Object, index []int, ambiguous bool) {
 	if name == "_" {
 		return nil, nil, false
 	}
@@ -41,7 +43,7 @@ func (c *checker) lookupFieldOrMethod(t Type, name string) (obj Object, index []
 					continue
 				}
 				seen[named] = true
-				if m := lookupFunc(named.methods, name); m != nil {
+				if m := lookupFunc(named.methods, name); m != nil && visible(m, pkg) {
 					add(m, e.index, e.multiples)
 					continue
 				}
@@ -50,7 +52,7 @@ func (c *checker) lookupFieldOrMethod(t Type, name string) (obj Object, index []
 			case *Struct:
 				for i, f := range u.Fields {
 					index := append(slices.Clip(e.index), i)
-					if f.name == name {
+					if f.name == name && visible(f, pkg) {
 						add(f, index, e.multiples)
 						continue
 					}
@@ -59,7 +61,7 @@ func (c *checker) lookupFieldOrMethod(t Type, name string) (obj Object, index []
 					}
 				}
 			case *Interface:
-				if m := lookupFunc(u.MethodSet(), name); m != nil {
+				if m := lookupFunc(u.MethodSet(), name); m != nil && visible(m, pkg) {
 					add(m, e.index, e.multiples)
 				}
 			}
@@ -86,6 +88,12 @@ func (c *checker) lookupFieldOrMethod(t Type, name string) (obj Object, index []
 	return nil, nil, false
 }
 
+// visible reports whether field or method obj is visible in package pkg.
+func visible(obj Object, pkg *Package) bool {
+	o := obj.base()
+	return pkg == nil || o.pkg == nil || o.pkg == pkg || o.Exported()
+}
+
 // methodType returns the type of method m as called on a value: its
 // signature without the receiver.
 func methodType(m *Func) *Signature {
@@ -105,9 +113,11 @@ func (c *checker) missingMethod(v Type, t *Interface) string {
 	for _, m := range t.MethodSet() {
 		var have *Func
 		if vi, ok := v.Underlying().(*Interface); ok {
-			have = lookupFunc(vi.MethodSet(), m.name)
+			if have = lookupFunc(vi.MethodSet(), m.name); have != nil && !visible(have, m.pkg) {
+				have = nil
+			}
 		} else {
-			obj, _, ambiguous := c.lookupFieldOrMethod(v, m.name)
+			obj, _, ambiguous := c.lookupFieldOrMethod(v, m.pkg, m.name)
 			if ambiguous {
 				return fmt.Sprintf("ambiguous selector for method %s", m.name)
 			}

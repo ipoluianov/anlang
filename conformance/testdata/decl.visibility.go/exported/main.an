@@ -1,0 +1,10 @@
+// want: ok
+
+package main
+
+import "conf/geo"
+
+func main() {
+	var s geo.Shape = geo.Rect{W: 2, H: 3}
+	_ = s.Area() + geo.Unit
+}

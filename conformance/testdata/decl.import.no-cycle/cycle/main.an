@@ -1,0 +1,9 @@
+// want: decl.import.no-cycle
+
+package main
+
+import "conf/a"
+
+func main() {
+	_ = a.A()
+}

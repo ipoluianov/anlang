@@ -226,7 +226,7 @@ func (c *checker) structType(e *syntax.StructType) Type {
 				}
 				continue
 			}
-			v := &Var{object: object{pos: name.Pos(), name: name.Name, typ: typ}, field: true, embedded: true}
+			v := &Var{object: object{pos: name.Pos(), name: name.Name, typ: typ, pkg: c.pkg}, field: true, embedded: true}
 			if prev, ok := seen[name.Name]; ok {
 				c.errorf(name.Pos(), "type.struct.go", "%s redeclared (previous declaration at %s)", name.Name, prev)
 			}
@@ -239,7 +239,7 @@ func (c *checker) structType(e *syntax.StructType) Type {
 			continue
 		}
 		for _, name := range f.Names {
-			v := &Var{object: object{pos: name.Pos(), name: name.Name, typ: typ}, field: true}
+			v := &Var{object: object{pos: name.Pos(), name: name.Name, typ: typ, pkg: c.pkg}, field: true}
 			c.info.Defs[name] = v
 			if name.Name != "_" {
 				if prev, ok := seen[name.Name]; ok {

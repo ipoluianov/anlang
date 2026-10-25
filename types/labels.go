@@ -169,7 +169,9 @@ func (c *checker) isTerminating(s syntax.Stmt, label string) bool {
 	case *syntax.ForStmt:
 		return s.Cond == nil && !hasBreak(s.Body, label, true)
 	case *syntax.SwitchStmt:
-		return c.clausesTerminate(s.Body, label)
+		// A switch on an invalid tag may be an exhaustive switch on an
+		// enum type (stmt.terminating.variant); no further error.
+		return c.invalidSwitch[s] || c.clausesTerminate(s.Body, label)
 	case *syntax.TypeSwitchStmt:
 		return c.clausesTerminate(s.Body, label)
 	case *syntax.SelectStmt:
