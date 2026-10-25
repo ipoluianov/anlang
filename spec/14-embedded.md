@@ -1,6 +1,6 @@
 # 14. Embedded Systems
 
-This file specifies how Kern programs for microcontrollers and other bare-metal targets access hardware: device descriptions, peripheral ownership, interrupt handlers, stack analysis, static tasks and worst-case execution time (WCET).
+This file specifies how Anlang programs for microcontrollers and other bare-metal targets access hardware: device descriptions, peripheral ownership, interrupt handlers, stack analysis, static tasks and worst-case execution time (WCET).
 
 Firmware is written in the `core` profile. Nothing here introduces new syntax except the `interrupt` declaration, whose syntax is the production `HandlerDecl` in [03-declarations](03-declarations.md) §3.10.
 
@@ -10,7 +10,7 @@ A *device description* describes the peripherals, registers and interrupt vector
 
 **emb.device.source** — A device description MUST be produced at compile time. The standard source is a vendor SVD file loaded with `svd.Load(path)`; `svd.Load` runs under the rules for compile-time evaluation and generators ([10-compile-time](10-compile-time.md)).
 
-**emb.device.package** — For a target whose description has a `Device`, the implementation MUST provide the package `kern/device`, generated from that description. The content of `kern/device` depends on the selected target. Importing `kern/device` when the selected target has no `Device` is an error.
+**emb.device.package** — For a target whose description has a `Device`, the implementation MUST provide the package `an/device`, generated from that description. The content of `an/device` depends on the selected target. Importing `an/device` when the selected target has no `Device` is an error.
 
 **emb.device.granularity** — The device description defines the *ownership units*: each peripheral instance (for example `TIM2`, `USART1`) is a unit. Where the hardware allows parts of a peripheral to be changed independently without read-modify-write (for example GPIO pins with atomic set/reset registers), the description MAY declare each part (each pin) as a separate unit.
 
@@ -22,7 +22,7 @@ A *device description* describes the peripherals, registers and interrupt vector
 
 **emb.reg.volatile** — Every read and write of a device register is a *volatile access*: the implementation MUST NOT remove, duplicate, merge or reorder volatile accesses relative to other volatile accesses of the same execution context.
 
-**emb.reg.unsafe** — The register mapping MUST be generated using `unsafe.Map` inside `kern/device` ([06-memory](06-memory.md)). Program code that accesses peripherals through `kern/device` MUST NOT need to import `unsafe`.
+**emb.reg.unsafe** — The register mapping MUST be generated using `unsafe.Map` inside `an/device` ([06-memory](06-memory.md)). Program code that accesses peripherals through `an/device` MUST NOT need to import `unsafe`.
 
 ### 1.2 Memory regions and constants
 
@@ -34,7 +34,7 @@ A *device description* describes the peripherals, registers and interrupt vector
 
 ### 2.1 Peripherals as values
 
-**emb.periph.global** — Each ownership unit is available as a package-level value of `kern/device`: `device.TIM2`, `device.USART1`, `device.GPIOC.Pin13`. These values are hardware mappings and are permitted as package-level variables in the `core` profile ([06-memory](06-memory.md)).
+**emb.periph.global** — Each ownership unit is available as a package-level value of `an/device`: `device.TIM2`, `device.USART1`, `device.GPIOC.Pin13`. These values are hardware mappings and are permitted as package-level variables in the `core` profile ([06-memory](06-memory.md)).
 
 **emb.periph.identity** — Every ownership unit has a distinct type of size zero. A value derived from a unit (for example `led := device.GPIOC.Pin13.Output(gpio.PushPull)`) has a type that statically records the unit. Copying such a value does not create a new unit: all copies denote the same unit.
 
@@ -147,12 +147,12 @@ package main
 profile core
 
 import (
-    "kern/atomic"
-    "kern/cpu"
-    "kern/device"
-    "kern/gpio"
-    "kern/interrupts"
-    "kern/timer"
+    "an/atomic"
+    "an/cpu"
+    "an/device"
+    "an/gpio"
+    "an/interrupts"
+    "an/timer"
 )
 
 var ticks atomic.U32

@@ -10,12 +10,12 @@ import (
 	"strings"
 	"testing"
 
-	"kern/syntax"
+	"an/syntax"
 )
 
 // TestGoCorpus formats every .go file of the Go distribution in GoMode
 // and compares the result with the output of go/format, the library
-// behind gofmt. For the part of Kern shared with Go both must agree byte
+// behind gofmt. For the part of Anlang shared with Go both must agree byte
 // for byte.
 func TestGoCorpus(t *testing.T) {
 	if testing.Short() {

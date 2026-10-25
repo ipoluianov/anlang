@@ -1,6 +1,6 @@
 # 05. Statements
 
-This file specifies how Kern statements differ from Go statements: `switch` over `enum` types with patterns, terminating statements, `range` with `inout` loop variables, `for const`, `go`, `defer` with `inout` arguments, the unused-error rule and `asm`.
+This file specifies how Anlang statements differ from Go statements: `switch` over `enum` types with patterns, terminating statements, `range` with `inout` loop variables, `for const`, `go`, `defer` with `inout` arguments, the unused-error rule and `asm`.
 
 Where this file is silent, statements behave as in the Go specification (see [README](README.md)). Contract clauses at the start of function, loop and struct bodies are specified in [08-contracts](08-contracts.md).
 
@@ -182,7 +182,7 @@ The optional expression is a struct value whose fields name the input registers.
 
 ## 11. No `unsafe` blocks
 
-**stmt.unsafe.none** — Kern has no `unsafe` block statement. Unsafe operations are functions of the package `kern/unsafe` ([06-memory](06-memory.md), **mem.unsafe.package**).
+**stmt.unsafe.none** — Anlang has no `unsafe` block statement. Unsafe operations are functions of the package `an/unsafe` ([06-memory](06-memory.md), **mem.unsafe.package**).
 
 ## Open issues
 

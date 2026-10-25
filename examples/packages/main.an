@@ -1,13 +1,13 @@
 // Command myprogram shows how a program uses its own nested packages.
 //
 // Project packages are imported by paths under the module name from
-// kern.mod (myprogram/...); the standard library lives under kern/....
+// anlang.mod (myprogram/...); the standard library lives under an/....
 package main
 
 import (
-	"kern/errors"
-	"kern/fmt"
-	"kern/strings"
+	"an/errors"
+	"an/fmt"
+	"an/strings"
 
 	"myprogram/mydictionary"
 )
@@ -15,7 +15,7 @@ import (
 func main() {
 	var dict mydictionary.Dictionary // the zero value is an empty, usable dictionary
 
-	if err := dict.Add("  Kern ", "a language where AI writes and the machine checks"); err != nil {
+	if err := dict.Add("  Anlang ", "a language where AI writes and the machine checks"); err != nil {
 		fmt.Println("error:", err)
 		return
 	}
@@ -39,7 +39,7 @@ func main() {
 	}
 
 	if def, ok := dict.Lookup("KERN"); ok {
-		fmt.Println("kern:", def)
+		fmt.Println("anlang:", def)
 	}
 	if _, ok := dict.Lookup("go"); !ok {
 		fmt.Println("go: not found")

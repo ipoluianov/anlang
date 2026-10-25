@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"kern/syntax"
+	"an/syntax"
 )
 
 // FuzzFormat checks that the parser and printer never panic, and that
@@ -14,8 +14,8 @@ import (
 // syntax tree and is a fixed point of formatting (tool.cmd.fmt:
 // formatting is idempotent).
 func FuzzFormat(f *testing.F) {
-	seeds, _ := filepath.Glob("../examples/*/*.kn")
-	more, _ := filepath.Glob("../examples/*/*/*/*/*.kn")
+	seeds, _ := filepath.Glob("../examples/*/*.an")
+	more, _ := filepath.Glob("../examples/*/*/*/*/*.an")
 	for _, name := range append(seeds, more...) {
 		if src, err := os.ReadFile(name); err == nil {
 			f.Add(src)
@@ -26,16 +26,16 @@ func FuzzFormat(f *testing.F) {
 	f.Add([]byte("package p\n\nvar ( a = 1 /* c */ ; b, c int = 2, 3 )\nfunc  g( ) { switch {case a>b: ; default:} }\n"))
 
 	f.Fuzz(func(t *testing.T, src []byte) {
-		out, errs := Source("fuzz.kn", src, syntax.KernMode)
+		out, errs := Source("fuzz.an", src, syntax.AnlangMode)
 		if len(errs) > 0 {
 			return
 		}
-		before, _ := syntax.Parse("fuzz.kn", src)
-		after, _ := syntax.Parse("fuzz.kn", out)
+		before, _ := syntax.Parse("fuzz.an", src)
+		after, _ := syntax.Parse("fuzz.an", out)
 		if !sameTree(before, after) {
 			t.Fatalf("formatting changed the syntax tree\n--- input\n%s\n--- output\n%s", src, out)
 		}
-		again, errs := Source("fuzz.kn", out, syntax.KernMode)
+		again, errs := Source("fuzz.an", out, syntax.AnlangMode)
 		if len(errs) > 0 {
 			t.Fatalf("canonical form does not parse: %v\n--- input\n%s\n--- output\n%s", errs[0], src, out)
 		}

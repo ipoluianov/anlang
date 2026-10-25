@@ -1,4 +1,4 @@
-// Command kern is the Kern toolchain (spec/20-toolchain.md).
+// Command anlang is the Anlang toolchain (spec/20-toolchain.md).
 package main
 
 import (
@@ -11,10 +11,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"kern/build"
-	"kern/format"
-	"kern/modfile"
-	"kern/syntax"
+	"an/build"
+	"an/format"
+	"an/modfile"
+	"an/syntax"
 )
 
 // Exit statuses (tool.exit-status).
@@ -40,20 +40,20 @@ func main() {
 	case "help", "-h", "-help", "--help":
 		usage()
 	default:
-		fmt.Fprintf(os.Stderr, "kern: unknown command %q\n", cmd)
+		fmt.Fprintf(os.Stderr, "anlang: unknown command %q\n", cmd)
 		usage()
 		os.Exit(exitUsage)
 	}
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `Usage: kern <command> [flags]
+	fmt.Fprint(os.Stderr, `Usage: anlang <command> [flags]
 
 Commands:
   build [-target t1,t2]   build the program in the current project
   run   [-target t] [-- args]
                           build and run the program on this machine
-  fmt   [-check] [files]  rewrite Kern files and kern.mod in canonical form
+  fmt   [-check] [files]  rewrite Anlang files and anlang.mod in canonical form
 
 Only the target linux-x86_64 is implemented so far.
 `)
@@ -61,12 +61,12 @@ Only the target linux-x86_64 is implemented so far.
 
 func runBuild(args []string) int {
 	fs := flag.NewFlagSet("build", flag.ContinueOnError)
-	target := fs.String("target", "", "comma-separated targets (default: targets in kern.mod)")
+	target := fs.String("target", "", "comma-separated targets (default: targets in anlang.mod)")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
 	if fs.NArg() > 0 {
-		fmt.Fprintln(os.Stderr, "kern build: unexpected arguments:", strings.Join(fs.Args(), " "))
+		fmt.Fprintln(os.Stderr, "anlang build: unexpected arguments:", strings.Join(fs.Args(), " "))
 		return exitUsage
 	}
 	p, status := load()
@@ -94,7 +94,7 @@ func runRun(args []string) int {
 		return exitUsage
 	}
 	if *target != build.HostTarget() {
-		fmt.Fprintf(os.Stderr, "kern run: target %s cannot run on this machine (%s); emulators arrive later (kern run -emu)\n", *target, build.HostTarget())
+		fmt.Fprintf(os.Stderr, "anlang run: target %s cannot run on this machine (%s); emulators arrive later (anlang run -emu)\n", *target, build.HostTarget())
 		return exitUsage
 	}
 	p, status := load()
@@ -113,7 +113,7 @@ func runRun(args []string) int {
 		if errors.As(err, &exit) {
 			return exit.ExitCode()
 		}
-		fmt.Fprintln(os.Stderr, "kern run:", err)
+		fmt.Fprintln(os.Stderr, "anlang run:", err)
 		return exitUsage
 	}
 	return exitOK
@@ -151,10 +151,10 @@ func runFmt(args []string) int {
 		}
 		rel, err := p.SourceFiles()
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "kern fmt:", err)
+			fmt.Fprintln(os.Stderr, "anlang fmt:", err)
 			return exitUsage
 		}
-		files = append(files, filepath.Join(p.Root, "kern.mod"))
+		files = append(files, filepath.Join(p.Root, "anlang.mod"))
 		for _, f := range rel {
 			files = append(files, filepath.Join(p.Root, f))
 		}
@@ -164,13 +164,13 @@ func runFmt(args []string) int {
 	for _, path := range files {
 		src, err := os.ReadFile(path)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "kern fmt:", err)
+			fmt.Fprintln(os.Stderr, "anlang fmt:", err)
 			status = exitProblems
 			continue
 		}
 		name := displayPath(path)
 		var out []byte
-		if filepath.Base(path) == "kern.mod" {
+		if filepath.Base(path) == "anlang.mod" {
 			if _, errs := modfile.Parse(name, src); len(errs) > 0 {
 				report(asErrors(errs))
 				status = exitProblems
@@ -179,7 +179,7 @@ func runFmt(args []string) int {
 			out = modfile.Format(src)
 		} else {
 			var errs []*syntax.Error
-			out, errs = format.Source(name, src, syntax.KernMode)
+			out, errs = format.Source(name, src, syntax.AnlangMode)
 			if len(errs) > 0 {
 				report(asErrors(errs))
 				status = exitProblems
@@ -195,7 +195,7 @@ func runFmt(args []string) int {
 			continue
 		}
 		if err := os.WriteFile(path, out, 0o644); err != nil {
-			fmt.Fprintln(os.Stderr, "kern fmt:", err)
+			fmt.Fprintln(os.Stderr, "anlang fmt:", err)
 			status = exitProblems
 		}
 	}

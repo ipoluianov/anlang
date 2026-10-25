@@ -1,6 +1,6 @@
 # 3. Packages and Declarations
 
-This file specifies source files, packages, import paths, the profile clause, file selection and declarations, as a delta over the Go specification, sections "Declarations and scope", "Packages" and "Program initialization and execution". The project layout and `kern.mod` are specified in [20-toolchain](20-toolchain.md).
+This file specifies source files, packages, import paths, the profile clause, file selection and declarations, as a delta over the Go specification, sections "Declarations and scope", "Packages" and "Program initialization and execution". The project layout and `anlang.mod` are specified in [20-toolchain](20-toolchain.md).
 
 ## 3.1 Source files and packages
 
@@ -17,35 +17,35 @@ TopLevelDecl  = Declaration | FunctionDecl | MethodDecl | HandlerDecl | GpuFunct
 
 ## 3.2 Import paths
 
-**decl.import.module** — The *module name* is declared in `kern.mod` ([20-toolchain](20-toolchain.md)). It MUST match `[a-z][a-z0-9_]*` and MUST NOT be `kern`.
+**decl.import.module** — The *module name* is declared in `anlang.mod` ([20-toolchain](20-toolchain.md)). It MUST match `[a-z][a-z0-9_]*` and MUST NOT be `an`.
 
 **decl.import.paths** — An import path MUST have one of two forms:
 
-1. `kern/<path>` — a package of the standard library, shipped with the toolchain ([18-stdlib](18-stdlib.md));
+1. `an/<path>` — a package of the standard library, shipped with the toolchain ([18-stdlib](18-stdlib.md));
 2. `<module>` or `<module>/<path>` — a package of the current project, where `<module>` is the module name and `<path>` is the directory relative to the project root.
 
 `<path>` is a sequence of elements separated by `/`; each element MUST match `[a-z][a-z0-9_]*`. Any other import path, including a network address such as `github.com/acme/jsonparse`, MUST be rejected.
 
 ```go
 import (
-    "kern/arch/i8086"
-    "kern/fmt"
+    "an/arch/i8086"
+    "an/fmt"
 
     "weather/server"
 )
 ```
 
-**decl.import.name** — The package name used in code is the last element of the import path (by **decl.package.name**), unless an alias is given: `import f "kern/fmt"`.
+**decl.import.name** — The package name used in code is the last element of the import path (by **decl.package.name**), unless an alias is given: `import f "an/fmt"`.
 
 **decl.import.no-blank-dot** — Blank imports (`import _ "p"`) and dot imports (`import . "p"`) MUST be rejected.
 
 **decl.import.no-cycle** — The import graph MUST be acyclic, as in Go.
 
-**decl.import.internal** — An import path containing an element `internal` is importable only by packages rooted at the parent of that element, as in Go. This applies to both `kern/...` and project paths.
+**decl.import.internal** — An import path containing an element `internal` is importable only by packages rooted at the parent of that element, as in Go. This applies to both `an/...` and project paths.
 
-**decl.import.unsafe** — The package `kern/unsafe` MAY be imported only by a package whose profile set is exactly `{core}` (§3.3). Importing it is the marker of unsafe code; there are no `unsafe` blocks ([06-memory](06-memory.md)).
+**decl.import.unsafe** — The package `an/unsafe` MAY be imported only by a package whose profile set is exactly `{core}` (§3.3). Importing it is the marker of unsafe code; there are no `unsafe` blocks ([06-memory](06-memory.md)).
 
-**decl.import.arch** — An architecture instruction package `kern/arch/<a>` MAY be imported only in source files whose architecture suffix is `<a>` (§3.4).
+**decl.import.arch** — An architecture instruction package `an/arch/<a>` MAY be imported only in source files whose architecture suffix is `<a>` (§3.4).
 
 ## 3.3 Profile clause
 
@@ -70,11 +70,11 @@ profile core, app, ui
 
 The target of a build is chosen with `-target`, never in code ([13-targets](13-targets.md)). Code specific to a platform or architecture lives in files with suffixes, as in Go.
 
-**decl.file.ext** — Source files have the extension `.kn`. Files with other extensions in a package directory are not source files.
+**decl.file.ext** — Source files have the extension `.an`. Files with other extensions in a package directory are not source files.
 
 **decl.file.ignored** — Files whose names begin with `.` or `_` are ignored.
 
-**decl.file.suffix** — Let *N* be the file name without `.kn`. Suffixes are matched against the end of *N*, not by splitting at `_`, because architecture names may contain `_` (`x86_64`). Then:
+**decl.file.suffix** — Let *N* be the file name without `.an`. Suffixes are matched against the end of *N*, not by splitting at `_`, because architecture names may contain `_` (`x86_64`). Then:
 
 1. If *N* ends with `_test`, the file is a *test file* and is included only when tests are built ([20-toolchain](20-toolchain.md)). The suffix is removed from *N* before the next steps.
 2. If *N* ends with `_<platform>_<architecture>` (`_dos_i8086`, `_linux_x86_64`), the file is included only for targets with that platform and architecture.
@@ -110,8 +110,8 @@ const Description = target.Desc{
 
 **decl.var.package-kinds** — A package-level variable MUST have one of these types:
 
-1. a type of package `kern/atomic`;
-2. `sync.Mutex[T]` or `sync.RWMutex[T]` of package `kern/sync`;
+1. a type of package `an/atomic`;
+2. `sync.Mutex[T]` or `sync.RWMutex[T]` of package `an/sync`;
 3. a *hardware mapping*: the type of a value produced by `unsafe.Map` ([06-memory](06-memory.md)), or a peripheral mapping generated from a device description ([14-embedded](14-embedded.md)). Hardware mappings are allowed only in packages whose profile set is exactly `{core}`.
 
 Any other package-level variable, including one of an ordinary type or of a channel type, MUST be rejected.
@@ -174,7 +174,7 @@ Binding      = "=" Expression .                                                 
 func sqlite3_open(path cstring, db inout ffi.Handle) i32 = lib.Symbol("sqlite3_open", ffi.Effects{File})
 ```
 
-**decl.extern.binding** — A function declaration with a `Binding` and no body is an *external function*. The binding expression MUST be evaluable at compile time and MUST have a binding type of package `kern/ffi` or `kern/js` (`lib.Symbol(...)`, `ffi.At(...)`, `js.Import(...)`), as specified in [12-ffi](12-ffi.md).
+**decl.extern.binding** — A function declaration with a `Binding` and no body is an *external function*. The binding expression MUST be evaluable at compile time and MUST have a binding type of package `an/ffi` or `an/js` (`lib.Symbol(...)`, `ffi.At(...)`, `js.Import(...)`), as specified in [12-ffi](12-ffi.md).
 
 **decl.extern.no-generic** — An external function MUST NOT have type parameters.
 

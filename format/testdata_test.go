@@ -9,13 +9,13 @@ import (
 	"strings"
 	"testing"
 
-	"kern/syntax"
+	"an/syntax"
 )
 
 // TestGoTestdata formats the files in the testdata directories of the Go
 // distribution: unlike the rest of the Go sources, many of them are not
 // in canonical form, including the inputs of the go/printer tests. The
-// output must match go/format except for features kern fmt does not
+// output must match go/format except for features anlang fmt does not
 // implement: reformatting doc comments, //go:build lines and //line
 // directives, removal of duplicate imports, and formatting of fragments.
 func TestGoTestdata(t *testing.T) {

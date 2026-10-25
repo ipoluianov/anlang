@@ -1,17 +1,17 @@
-# Kern Specification
+# Anlang Specification
 
-This directory holds the normative specification of the Kern language and environment. Each file has a Russian translation next to it (`NN-name.ru.md`).
+This directory holds the normative specification of the Anlang language and environment. Each file has a Russian translation next to it (`NN-name.ru.md`).
 
 ## Status
 
-Draft. The specification formalizes the design in `kern.md` as of 2026-10-25. Places where `kern.md` left a question open are listed in an **Open issues** subsection at the end of the relevant file.
+Draft. The specification formalizes the design in `anlang.md` as of 2026-10-25. Places where `anlang.md` left a question open are listed in an **Open issues** subsection at the end of the relevant file.
 
 ## Relation to Go
 
-Kern is specified as a delta over **The Go Programming Language Specification, version go1.23** (hereafter *the Go specification*). Version go1.23 is the reference because it includes range-over-func.
+Anlang is specified as a delta over **The Go Programming Language Specification, version go1.23** (hereafter *the Go specification*). Version go1.23 is the reference because it includes range-over-func.
 
 1. Where this specification is silent, a construct has the syntax and meaning given by the Go specification.
-2. Every Go construct that Kern removes or changes is listed explicitly. Pointer types, the address operator `&`, `init` functions and values of type `any` outside the permitted positions are removed (see [02-types](02-types.md), [03-declarations](03-declarations.md)).
+2. Every Go construct that Anlang removes or changes is listed explicitly. Pointer types, the address operator `&`, `init` functions and values of type `any` outside the permitted positions are removed (see [02-types](02-types.md), [03-declarations](03-declarations.md)).
 3. When this specification and the Go specification conflict, this specification wins.
 
 ## Conventions
@@ -20,8 +20,8 @@ Kern is specified as a delta over **The Go Programming Language Specification, v
 
 The keywords **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT** and **MAY** are used as described in RFC 2119.
 
-- **Program requirements** constrain Kern programs. A program that violates one is rejected at compile time unless the rule says otherwise.
-- **Implementation requirements** constrain the `kern` toolchain.
+- **Program requirements** constrain Anlang programs. A program that violates one is rejected at compile time unless the rule says otherwise.
+- **Implementation requirements** constrain the `anlang` toolchain.
 
 ### Rule identifiers
 
@@ -80,7 +80,7 @@ Repetition  = "{" Expression "}" .
 | [17-ui](17-ui.md) | `ui` | The `ui` profile, rendering, layout, accessibility, mobile targets, manifests, permissions, hot reload |
 | [18-stdlib](18-stdlib.md) | `std` | Standard library structure and package catalog |
 | [19-runtime](19-runtime.md) | `rt` | Runtime composition, panics, task stacks |
-| [20-toolchain](20-toolchain.md) | `tool` | Projects, `kern.mod`, `REQUIREMENTS`, commands, builds, tests, emulators, debugging, `kern port`, `kern diff` |
+| [20-toolchain](20-toolchain.md) | `tool` | Projects, `anlang.mod`, `REQUIREMENTS`, commands, builds, tests, emulators, debugging, `anlang port`, `anlang diff` |
 | [21-protocol](21-protocol.md) | `proto` | The environment protocol, diagnostics, LSP |
 | [22-compiler](22-compiler.md) | `impl` | Compiler pipeline, IR, effect inference algorithm, lowering, ABI, build cache, bootstrapping (*informative* except where marked) |
 | [23-conformance](23-conformance.md) | `conf` | Testing of the environment and the conformance suite |

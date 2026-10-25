@@ -132,7 +132,7 @@ Some constraints of a function are not postconditions. They are written as an `e
 
 ### 8.6.1 `wcet.Within`
 
-**contract.wcet.form** — `wcet.Within(d)` is a compiler-known function of package `kern/wcet`. `d` MUST be a constant expression of type `time.Duration`.
+**contract.wcet.form** — `wcet.Within(d)` is a compiler-known function of package `an/wcet`. `d` MUST be a constant expression of type `time.Duration`.
 
 **contract.wcet.check** — For a function with `ensures wcet.Within(d)`, the compiler MUST compute an upper bound of the execution time of the function on the target, using the cycle model of the architecture description and the clock frequency of the target ([13-targets](13-targets.md), [14-embedded](14-embedded.md)), and MUST reject the program if the bound exceeds `d`.
 
@@ -154,11 +154,11 @@ interrupt ADC1() {
 
 **contract.check.runtime** — Integer overflow, index and slice bounds, narrowing conversions and arena generation checks ([04-expressions](04-expressions.md), [06-memory](06-memory.md)) are proof obligations of a different kind: if the solver proves that the check cannot fail, the check is removed; otherwise the check remains in the program, fails at run time with a panic, and gives the function the effect `Panic` ([07-effects](07-effects.md), **eff.source.panic**). Such checks do not make a program invalid by themselves.
 
-**contract.check.forbidden-panic** — Where `Panic` is forbidden (in `interrupt` and `trap` handlers, under `effect.Without(Panic)`, or by `kern.mod`), every such check MUST be proven or the operation MUST be written in a form that cannot fail (`bits.WrappingAdd`, `conv.Narrow`, `wrap` types).
+**contract.check.forbidden-panic** — Where `Panic` is forbidden (in `interrupt` and `trap` handlers, under `effect.Without(Panic)`, or by `anlang.mod`), every such check MUST be proven or the operation MUST be written in a form that cannot fail (`bits.WrappingAdd`, `conv.Narrow`, `wrap` types).
 
 ## 8.8 Solver
 
-The solver is built into `kern`. External solvers are not used.
+The solver is built into `anlang`. External solvers are not used.
 
 **contract.solver.builtin** — An implementation MUST prove obligations with its own built-in solver and MUST NOT depend on external solver programs or services.
 
@@ -168,7 +168,7 @@ The solver is built into `kern`. External solvers are not used.
 
 **contract.solver.counterexample** — When the solver refutes an obligation, the diagnostic MUST include the counterexample as values of the program variables involved.
 
-**contract.solver.certificate** — For every obligation reported as *proved*, the solver MUST produce a certificate, and an independent checker that is part of `kern` MUST verify it. If the checker rejects a certificate, the obligation is treated as not proved and the implementation MUST report an internal error.
+**contract.solver.certificate** — For every obligation reported as *proved*, the solver MUST produce a certificate, and an independent checker that is part of `anlang` MUST verify it. If the checker rejects a certificate, the obligation is treated as not proved and the implementation MUST report an internal error.
 
 **contract.solver.cache** — The implementation MAY cache results by a hash of the normalized obligation, its facts, the step limit and the solver version. A cached *proved* result MUST have a certificate verified by the checker.
 

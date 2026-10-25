@@ -5,7 +5,7 @@
 package mydictionary
 
 import (
-	"kern/fmt"
+	"an/fmt"
 
 	"myprogram/mydictionary/internal/normalize"
 )
@@ -32,7 +32,7 @@ func (e Error) Error() string {
 }
 
 // Dictionary maps words to their definitions. Words are compared after
-// normalization, so "Kern", " kern" and "KERN" are the same word.
+// normalization, so "Anlang", " anlang" and "KERN" are the same word.
 //
 // The zero value is an empty dictionary ready to use.
 type Dictionary struct {
@@ -49,7 +49,7 @@ func (d inout Dictionary) Add(word, definition string) error {
 	if len(key) > MaxWordLen {
 		return TooLong{word: key, max: MaxWordLen}
 	}
-	d.entries[key] = definition // writing to a nil map is allowed in Kern
+	d.entries[key] = definition // writing to a nil map is allowed in Anlang
 	return nil
 }
 

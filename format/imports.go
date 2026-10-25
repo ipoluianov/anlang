@@ -8,13 +8,13 @@ import (
 	"slices"
 	"strconv"
 
-	"kern/syntax"
+	"an/syntax"
 )
 
 // sortImports sorts runs of consecutive import lines in import blocks,
 // by path and then by local name, as gofmt does. Comments move with the
 // imports on their lines. Unlike gofmt, duplicates are not removed: a
-// repeated import is a compile error in Kern.
+// repeated import is a compile error in Anlang.
 func sortImports(f *syntax.File) {
 	changed := false
 	for _, d := range f.Decls {

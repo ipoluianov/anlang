@@ -1,8 +1,8 @@
 # 06. Memory
 
-This file specifies the Kern memory model: value semantics, `inout` access and exclusivity, second-class references, access to parts of values, copy-on-write, arenas, synchronization types as shared handles, `nil` safety, global state, the package `kern/unsafe`, pointer kinds and allocation per profile.
+This file specifies the Anlang memory model: value semantics, `inout` access and exclusivity, second-class references, access to parts of values, copy-on-write, arenas, synchronization types as shared handles, `nil` safety, global state, the package `an/unsafe`, pointer kinds and allocation per profile.
 
-Kern uses mutable value semantics, after the language Hylo: memory safety without lifetimes in the syntax and without a garbage collector.
+Anlang uses mutable value semantics, after the language Hylo: memory safety without lifetimes in the syntax and without a garbage collector.
 
 ## 1. Values and copies
 
@@ -112,7 +112,7 @@ for n := range a.Edit(root) {
 
 **mem.cow.slice** — Slices and maps are values. A slice expression `s[lo:hi]`, an assignment `t := s`, `append` and every other operation that produces a slice or map value produce a value that is logically independent of its source: a later modification of one is not observable through the other.
 
-**Note** — This differs from Go, where `t := s[1:3]; t[0] = 9` modifies `s`. In Kern, only an `inout` access (§2.3) lets a modification of a subslice reach its source.
+**Note** — This differs from Go, where `t := s[1:3]; t[0] = 9` modifies `s`. In Anlang, only an `inout` access (§2.3) lets a modification of a subslice reach its source.
 
 **mem.cow.impl** — An implementation SHOULD implement **mem.cow.slice** by sharing buffers between copies and copying a buffer before the first write while it is shared. Reference counts used for this are not observable.
 
@@ -120,7 +120,7 @@ for n := range a.Edit(root) {
 
 ## 7. Arenas
 
-The package `kern/arena` provides storage for graphs, trees with parent links and other structures with arbitrary links.
+The package `an/arena` provides storage for graphs, trees with parent links and other structures with arbitrary links.
 
 **mem.arena.type** — `arena.Arena[T]` is a value that owns nodes of type `T`. `arena.Ref[T]` is a handle consisting of a slot index and a generation.
 
@@ -149,7 +149,7 @@ func BuildTree(a inout arena.Arena[Node]) arena.Ref[Node] {
 
 ## 8. Synchronization types as handles
 
-The synchronization types are `chan T`, `sync.Mutex[T]`, `sync.RWMutex[T]` and the types of the package `kern/atomic` ([02-types](02-types.md)).
+The synchronization types are `chan T`, `sync.Mutex[T]`, `sync.RWMutex[T]` and the types of the package `an/atomic` ([02-types](02-types.md)).
 
 **mem.sync.handle** — A value of a synchronization type is a handle to a shared object. Copying the value — by assignment, passing, capturing in a closure, storing in a struct or passing to a task — produces a handle to the same object.
 
@@ -196,13 +196,13 @@ var stats sync.Mutex[Stats]             // permitted: content only through Lock
 var count int                           // error: ordinary mutable variable
 ```
 
-## 11. The package `kern/unsafe`
+## 11. The package `an/unsafe`
 
-**mem.unsafe.package** — Unsafe operations exist only as functions and types of the package `kern/unsafe`. There are no `unsafe` blocks. Importing `kern/unsafe` is the marker of unsafe code; every unsafe place in a program is found by searching for its imports.
+**mem.unsafe.package** — Unsafe operations exist only as functions and types of the package `an/unsafe`. There are no `unsafe` blocks. Importing `an/unsafe` is the marker of unsafe code; every unsafe place in a program is found by searching for its imports.
 
-**mem.unsafe.profile** — The package `kern/unsafe` MAY be imported only by packages of the `core` profile.
+**mem.unsafe.profile** — The package `an/unsafe` MAY be imported only by packages of the `core` profile.
 
-**mem.unsafe.pointers** — Raw pointer types exist only in the package `kern/unsafe` and in the architecture packages `kern/arch/...`. Code outside them uses `inout`, slices and `ffi.Handle` instead ([12-ffi](12-ffi.md)).
+**mem.unsafe.pointers** — Raw pointer types exist only in the package `an/unsafe` and in the architecture packages `an/arch/...`. Code outside them uses `inout`, slices and `ffi.Handle` instead ([12-ffi](12-ffi.md)).
 
 **mem.unsafe.map** — `unsafe.Map[T](addr)` declares that memory at `addr` holds a value of type `T` and returns an addressable value of type `T` bound to that memory. It MAY be used only as the initializer of a package-level variable. Every access to the mapped value is a memory access that the implementation MUST NOT elide, merge or reorder with respect to other accesses to mapped values. Indices into the mapped value are checked or proven as for any other value (**expr.bounds.check**).
 
@@ -210,7 +210,7 @@ var count int                           // error: ordinary mutable variable
 var screen = unsafe.Map[[2000]Cell](i8086.Far(0xB800, 0))   // DOS text video memory
 ```
 
-**Note** — Device registers are mapped by code generated from SVD files ([14-embedded](14-embedded.md)), so user code for microcontrollers does not import `kern/unsafe`.
+**Note** — Device registers are mapped by code generated from SVD files ([14-embedded](14-embedded.md)), so user code for microcontrollers does not import `an/unsafe`.
 
 ### 11.1 Pointer kinds
 
@@ -222,7 +222,7 @@ var screen = unsafe.Map[[2000]Cell](i8086.Far(0xB800, 0))   // DOS text video me
 | AVR | pointer to RAM; pointer to flash, read with a dedicated instruction |
 | 32- and 64-bit targets | one flat kind |
 
-**mem.unsafe.kind-convert** — Conversions between pointer kinds MUST be explicit and are available only in `kern/unsafe` and architecture packages.
+**mem.unsafe.kind-convert** — Conversions between pointer kinds MUST be explicit and are available only in `an/unsafe` and architecture packages.
 
 ## 12. Allocation per profile
 

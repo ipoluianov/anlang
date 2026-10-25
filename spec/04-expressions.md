@@ -1,6 +1,6 @@
 # 04. Expressions
 
-This file specifies how Kern expressions differ from Go expressions: removed operators, addressability, integer overflow, wrapping and other compiler-known types, comparisons, `nil`, calls, `...any` arguments, closures, composite literals and `enum` variant construction.
+This file specifies how Anlang expressions differ from Go expressions: removed operators, addressability, integer overflow, wrapping and other compiler-known types, comparisons, `nil`, calls, `...any` arguments, closures, composite literals and `enum` variant construction.
 
 Where this file is silent, expressions behave as in the Go specification (see [README](README.md)).
 
@@ -14,7 +14,7 @@ Where this file is silent, expressions behave as in the Go specification (see [R
 unary_op = "+" | "-" | "!" | "^" | "<-" .    (replaces Go)
 ```
 
-**Note** — Pointer types do not exist outside the package `kern/unsafe` ([02-types](02-types.md), [06-memory](06-memory.md)). Selectors and method calls therefore never dereference implicitly.
+**Note** — Pointer types do not exist outside the package `an/unsafe` ([02-types](02-types.md), [06-memory](06-memory.md)). Selectors and method calls therefore never dereference implicitly.
 
 ## 2. Addressability
 
@@ -35,13 +35,13 @@ Package-level variables of synchronization types are not addressable; they are u
 
 **expr.addr.map** — A map index expression `m[k]` is not addressable. A program MUST NOT pass it as an `inout` argument, call an `inout`-receiver method on it, or assign to one of its fields or elements. Assigning to `m[k]` itself is permitted, as in Go.
 
-**Note** — In Go a slice index expression is always addressable because a slice refers to shared memory. In Kern a slice is a value ([06-memory](06-memory.md), **mem.cow.slice**), so its elements are addressable only through an addressable slice.
+**Note** — In Go a slice index expression is always addressable because a slice refers to shared memory. In Anlang a slice is a value ([06-memory](06-memory.md), **mem.cow.slice**), so its elements are addressable only through an addressable slice.
 
 ## 3. Integer arithmetic
 
 ### 3.1 Checked arithmetic
 
-The integer types are listed in [02-types](02-types.md). In this section, *checked integer type* means any integer type that is not a type of the package `kern/wrap`.
+The integer types are listed in [02-types](02-types.md). In this section, *checked integer type* means any integer type that is not a type of the package `an/wrap`.
 
 **expr.int.checked** — For operands of a checked integer type, the operators binary `+`, `-`, `*`, unary `-`, and the statements `++`, `--` and the corresponding assignment operations (`+=`, `-=`, `*=`) produce the mathematical result. If the mathematical result is not representable in the operand type, the operation *overflows*.
 
@@ -49,7 +49,7 @@ The integer types are listed in [02-types](02-types.md). In this section, *check
 
 **expr.int.overflow** — An overflowing operation MUST NOT produce a value. An implementation MUST either prove at compile time that the operation cannot overflow, or insert a run-time check that panics on overflow. A function containing such a check has the effect `Panic` ([07-effects](07-effects.md)).
 
-**expr.int.overflow-forbidden** — Where the effect `Panic` is forbidden (for example in `interrupt` and `trap` handlers, or by a profile or `kern.mod` constraint), an operation whose absence of overflow is not proven is a compile-time error. The diagnostic MUST name the operation.
+**expr.int.overflow-forbidden** — Where the effect `Panic` is forbidden (for example in `interrupt` and `trap` handlers, or by a profile or `anlang.mod` constraint), an operation whose absence of overflow is not proven is a compile-time error. The diagnostic MUST name the operation.
 
 **expr.int.shift** — Shift operators on checked integer types behave as in Go: bits shifted out are discarded and the operation does not overflow.
 
@@ -63,7 +63,7 @@ The integer types are listed in [02-types](02-types.md). In this section, *check
 
 ### 3.3 Explicit wrapping, saturating and checked operations
 
-**expr.bits.functions** — The generic functions of the package `kern/bits` accept operands of any checked integer type `T` and return:
+**expr.bits.functions** — The generic functions of the package `an/bits` accept operands of any checked integer type `T` and return:
 
 | Function | Result |
 | --- | --- |
@@ -75,7 +75,7 @@ These functions never panic and have no effects.
 
 ### 3.4 Wrapping types
 
-**expr.wrap.ops** — For operands of a type of the package `kern/wrap` (`wrap.U8` … `wrap.U64`, `wrap.I8` … `wrap.I64`), the operators `+`, `-`, `*`, unary `-` and `<<`, and the corresponding assignment operations and `++`, `--`, produce the mathematical result reduced modulo 2ⁿ and interpreted in the operand type. These operations never panic.
+**expr.wrap.ops** — For operands of a type of the package `an/wrap` (`wrap.U8` … `wrap.U64`, `wrap.I8` … `wrap.I64`), the operators `+`, `-`, `*`, unary `-` and `<<`, and the corresponding assignment operations and `++`, `--`, produce the mathematical result reduced modulo 2ⁿ and interpreted in the operand type. These operations never panic.
 
 **expr.wrap.other-ops** — The operators `&`, `|`, `^`, `&^`, `>>`, `/`, `%` and comparisons on wrapping types behave as on the integer type of the same size and signedness. Division by zero panics.
 
@@ -101,9 +101,9 @@ return u64(h)
 
 **expr.known.closed** — Operators are defined only for the predeclared types, as in Go, and for the types listed in this section. A program cannot define operators for its own types.
 
-**expr.known.simd** — Vector types of the package `kern/simd` (`simd.F32x4`, `simd.U8x16` and others) support the arithmetic operators of their element type, applied element-wise to operands of the same vector type. The implementation maps them to vector instructions of the target or to scalar code; the result MUST be the same.
+**expr.known.simd** — Vector types of the package `an/simd` (`simd.F32x4`, `simd.U8x16` and others) support the arithmetic operators of their element type, applied element-wise to operands of the same vector type. The implementation maps them to vector instructions of the target or to scalar code; the result MUST be the same.
 
-**expr.known.fixed** — Fixed-point types of the package `kern/fixed` (`fixed.Q16`, `fixed.Q8` and others) support `+`, `-`, `*`, `/`, unary `-` and comparisons. `+`, `-` and unary `-` follow **expr.int.checked** on the underlying representation; `*` and `/` produce the exact result truncated toward zero to the type's precision and overflow if it is out of range.
+**expr.known.fixed** — Fixed-point types of the package `an/fixed` (`fixed.Q16`, `fixed.Q8` and others) support `+`, `-`, `*`, `/`, unary `-` and comparisons. `+`, `-` and unary `-` follow **expr.int.checked** on the underlying representation; `*` and `/` produce the exact result truncated toward zero to the type's precision and overflow if it is out of range.
 
 **expr.known.wrap** — The wrapping types are specified in §3.4.
 
@@ -121,7 +121,7 @@ return u64(h)
 
 **expr.cmp.nil-empty** — For a slice or a map, `x == nil` is `true` if and only if `len(x) == 0`.
 
-**Note** — In Kern `nil` for a slice or a map is just the empty value ([02-types](02-types.md)), so Go's distinction between a nil slice and an empty slice does not exist.
+**Note** — In Anlang `nil` for a slice or a map is just the empty value ([02-types](02-types.md)), so Go's distinction between a nil slice and an empty slice does not exist.
 
 ## 7. The identifier `nil`
 

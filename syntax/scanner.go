@@ -24,11 +24,11 @@ func (e *Error) Error() string {
 type Mode int
 
 const (
-	// KernMode accepts Kern source.
-	KernMode Mode = iota
+	// AnlangMode accepts Anlang source.
+	AnlangMode Mode = iota
 	// GoMode accepts Go source: enum, inout and profile are identifiers
 	// and contextual words have no special meaning. It is used to test
-	// the parser against the Go sources and by kern port.
+	// the parser against the Go sources and by anlang port.
 	GoMode
 )
 
@@ -242,8 +242,8 @@ func (s *Scanner) scanNumber(pos Pos) Token {
 	}
 	if s.peek() == 'i' {
 		s.next()
-		if s.mode == KernMode {
-			s.errorf(pos, "lex.literal.no-imaginary", "imaginary literals are removed in Kern")
+		if s.mode == AnlangMode {
+			s.errorf(pos, "lex.literal.no-imaginary", "imaginary literals are removed in Anlang")
 		}
 		kind = Imag
 	}

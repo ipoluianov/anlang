@@ -57,7 +57,7 @@ func (g *CommentGroup) End() Pos { return g.List[len(g.List)-1].End() }
 // interface element or a variant field.
 type Field struct {
 	Names []*Name   // nil for unnamed parameters and embedded fields
-	Inout Pos       // position of "inout"; invalid if absent (Kern)
+	Inout Pos       // position of "inout"; invalid if absent (Anlang)
 	Type  Expr      // field type; nil only in method declarations of enum variants
 	Tag   *BasicLit // struct field tag; nil if absent
 }
@@ -150,7 +150,7 @@ type Ellipsis struct {
 	Elt      Expr // element type; nil in [...]T
 }
 
-// CompositeLit is Type{Elts}. In Kern it also writes a variant with
+// CompositeLit is Type{Elts}. In Anlang it also writes a variant with
 // fields and a variant pattern in a case clause.
 type CompositeLit struct {
 	Type   Expr // nil when the type is elided
@@ -212,7 +212,7 @@ type CallExpr struct {
 	Rparen   Pos
 }
 
-// StarExpr is *X. Pointer types and dereferences are removed in Kern
+// StarExpr is *X. Pointer types and dereferences are removed in Anlang
 // (lex.operator.go); the parser keeps them so the checker can report
 // them, and so that Go sources parse in GoMode.
 type StarExpr struct {
@@ -309,7 +309,7 @@ type ChanType struct {
 	Value Expr
 }
 
-// Variant is one variant of an enum type (Kern). Fields is nil for a
+// Variant is one variant of an enum type (Anlang). Fields is nil for a
 // variant without data.
 type Variant struct {
 	Name   *Name
@@ -324,7 +324,7 @@ func (v *Variant) End() Pos {
 	return v.Name.End()
 }
 
-// EnumType is enum { Variants } (Kern).
+// EnumType is enum { Variants } (Anlang).
 type EnumType struct {
 	Enum     Pos
 	Lbrace   Pos
@@ -428,7 +428,7 @@ type IfStmt struct {
 }
 
 // CaseClause is a case or default clause of a switch statement. List is
-// nil for default. In Kern, the expressions of a switch over an enum are
+// nil for default. In Anlang, the expressions of a switch over an enum are
 // variant patterns (stmt.switch.variant.parse).
 type CaseClause struct {
 	Case  Pos
@@ -437,7 +437,7 @@ type CaseClause struct {
 	Body  []Stmt
 }
 
-// SwitchStmt is an expression switch (including a Kern variant switch).
+// SwitchStmt is an expression switch (including an Anlang variant switch).
 type SwitchStmt struct {
 	Switch Pos
 	Init   Stmt
@@ -477,7 +477,7 @@ type ForStmt struct {
 }
 
 // RangeStmt is a for statement with a range clause. Const is set for the
-// Kern compile-time loop "for const" (ForConstStmt).
+// Anlang compile-time loop "for const" (ForConstStmt).
 type RangeStmt struct {
 	For        Pos
 	Const      bool
@@ -490,7 +490,7 @@ type RangeStmt struct {
 }
 
 // ContractStmt is a requires, ensures or invariant clause at the start of
-// a function or loop body (Kern, lex.context.contract-region).
+// a function or loop body (Anlang, lex.context.contract-region).
 type ContractStmt struct {
 	WordPos Pos
 	Word    string // "requires", "ensures" or "invariant"
@@ -533,7 +533,7 @@ type GenDecl struct {
 	Rparen Pos
 }
 
-// FuncDecl is a function or method declaration, including the Kern forms:
+// FuncDecl is a function or method declaration, including the Anlang forms:
 // external functions (Binding), interrupt and trap handlers (Handler) and
 // GPU functions (Gpu).
 type FuncDecl struct {
@@ -547,7 +547,7 @@ type FuncDecl struct {
 	Binding    Expr       // "= expr" of an external function; nil otherwise
 }
 
-// ProfileClause is "profile core, app" after the package clause (Kern).
+// ProfileClause is "profile core, app" after the package clause (Anlang).
 type ProfileClause struct {
 	Profile Pos
 	Names   []*Name

@@ -36,8 +36,8 @@ type Call struct {
 // fails (std.fmt.print). It is the lowering of fmt.Print and fmt.Println
 // with constant arguments.
 //
-// Temporary: once the standard library is compiled from Kern source
-// (roadmap steps 9–10), fmt.Println is ordinary Kern code and this
+// Temporary: once the standard library is compiled from Anlang source
+// (roadmap steps 9–10), fmt.Println is ordinary Anlang code and this
 // instruction is replaced by a runtime write primitive.
 type PrintStdout struct {
 	Data *Data

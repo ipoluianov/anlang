@@ -6,7 +6,7 @@ Consolidated index of the "Open issues" subsections of all spec files. Section 1
 
 Decisions of 2026-10-25. The rule text in the spec files is normative; these items have been removed from the files' "Open issues" subsections.
 
-### 1.1 Conflicts with kern.md
+### 1.1 Conflicts with anlang.md
 
 | # | File | Question | Decision |
 | --- | --- | --- | --- |
@@ -17,7 +17,7 @@ Decisions of 2026-10-25. The rule text in the spec files is normative; these ite
 | 5 | 12-ffi | Library descriptors | `const`, exported fields `Linux`, `MacOS`, `ARMv7M`, `Optional` (**ffi.lib.desc**, **ffi.static.desc**) |
 | 6 | 11-data-safety | Comparing a secret with a stored hash | `secret.Equal` takes two secrets; the stored hash is `Secret[[]u8]` |
 | 7 | 09-concurrency, 14-embedded | Priority of a task started with `go` | Inherits the parent's priority; `main` is `Normal`; in `core` every interrupt is above every task (**conc.prio.inherit**, **emb.prio.order**) |
-| 8 | 03-declarations, 20-toolchain | Module name and path element syntax | 03's rules: `[a-z][a-z0-9_]*`; the `kern.mod` grammar in 20 references them (**decl.import.module**, **decl.import.paths**, **tool.mod.module**) |
+| 8 | 03-declarations, 20-toolchain | Module name and path element syntax | 03's rules: `[a-z][a-z0-9_]*`; the `anlang.mod` grammar in 20 references them (**decl.import.module**, **decl.import.paths**, **tool.mod.module**) |
 
 ### 1.2 Confirmed decisions
 
@@ -33,8 +33,8 @@ Decisions of 2026-10-25. The rule text in the spec files is normative; these ite
 | 8 | 02, 04 | `inout` methods through interfaces | Allowed on addressable interface operands; modify the copy held by the interface (**type.interface.inout-method**, **expr.method.interface-inout**) |
 | 9 | 06-memory | Heap placement of synchronization objects | Any handle that outlives the creating function, not only `task.Detach` (**mem.sync.heap**) |
 | 10 | 06-memory | `unsafe.Map` | All mapped accesses volatile; only at package level (**mem.unsafe.map**) |
-| 11 | 07-effects | Spelling of base effects in source | Qualified (`effect.Alloc`); bare in `kern.mod` and diagnostics (**eff.model.names**) |
-| 12 | 07-effects | Several `kern.mod` rules match a package | Longest pattern wins; `deny` over `allow` for one pattern (**eff.mod.precedence**) |
+| 11 | 07-effects | Spelling of base effects in source | Qualified (`effect.Alloc`); bare in `anlang.mod` and diagnostics (**eff.model.names**) |
+| 12 | 07-effects | Several `anlang.mod` rules match a package | Longest pattern wins; `deny` over `allow` for one pattern (**eff.mod.precedence**) |
 | 13 | 07-effects, 17-ui | How effects of `Cmd` reach the program | Deferred effects declared with `effect.Defer` (**eff.deferred.declare**, **ui.cmd.deferred**) |
 | 14 | 08-contracts | `assert` | Predeclared function `assert(cond bool)` (**contract.assert.form**) |
 | 15 | 08-contracts | Arithmetic in contracts | Unbounded mathematical integers (**contract.expr.math**) |
@@ -47,7 +47,7 @@ Decisions of 2026-10-25. The rule text in the spec files is normative; these ite
 | 22 | 10-compile-time | Per-type code for `...any` elements | Static type switch on type-parameter values and tuple elements (**ct.typeswitch.static**) |
 | 23 | 10-compile-time | Rejecting arguments at compile time | `meta.Reject` and compile-time evaluation of `requires` on constant arguments (**ct.reject.call**, **ct.reject.precondition**) |
 | 24 | 10-compile-time | `meta` API | `Name`, `Fields`, `Variants`, `Get`, `Set`, `Is`, `Make`, `Tag` (10.4) |
-| 25 | 11-data-safety | Where `Secret` and `Untrusted` live | Predeclared types; operations in `kern/secret` and `kern/untrusted` (**safe.types.predeclared**) |
+| 25 | 11-data-safety | Where `Secret` and `Untrusted` live | Predeclared types; operations in `an/secret` and `an/untrusted` (**safe.types.predeclared**) |
 | 26 | 11-data-safety | Using a secret without exposing it | `secret.Map` with an effect-restricted function (**safe.secret.map**) |
 | 27 | 11-data-safety | Writing validators | `untrusted.Accept`, without an effect |
 | 28 | 12-ffi | Writable buffers | `[]T` read-only, `inout []T` writable (**ffi.types.params**, **ffi.mem.unique**) |
@@ -116,7 +116,7 @@ Provisional technical choices accepted as written on 2026-10-25. The rule text i
 #### 11-data-safety
 - Text and structured decoders return `Untrusted`; raw byte reads do not (**safe.untrusted.sources**).
 - No shell-string API (**safe.untrusted.shell**).
-- `ExposeSecret` declared with `effect.Declare` in `kern/secret`.
+- `ExposeSecret` declared with `effect.Declare` in `an/secret`.
 
 #### 12-ffi
 - Calling an unavailable optional library panics (**ffi.lib.optional**).
@@ -136,7 +136,7 @@ Provisional technical choices accepted as written on 2026-10-25. The rule text i
 - CPU clock: `Clock` field of `target.Desc`.
 
 #### 15-os
-- `PhysAddr`, `VirtAddr` in `kern/mm`; width per target.
+- `PhysAddr`, `VirtAddr` in `an/mm`; width per target.
 - Default memory order `SeqCst` (**os.smp.atomic**).
 - Boot entry signatures per boot platform (**os.boot.entry**).
 
@@ -146,13 +146,13 @@ Provisional technical choices accepted as written on 2026-10-25. The rule text i
 
 #### 17-ui
 - Background limits compared with the platform description (**ui.cap.background**).
-- Effect-to-permission table informative; normative mapping in `kern/app`.
+- Effect-to-permission table informative; normative mapping in `an/app`.
 
 #### 18-stdlib
 - Required set: 18.3 plus 18.3.1 and 18.3.3.
-- `kern/runtime` not importable.
-- `kern/log` in all profiles, `kern/html` in `app` and `ui`.
-- `kern/simd` in all profiles.
+- `an/runtime` not importable.
+- `an/log` in all profiles, `an/html` in `app` and `ui`.
+- `an/simd` in all profiles.
 
 #### 19-runtime
 - Release vs development builds (**rt.dev.builds**).
@@ -163,9 +163,9 @@ Provisional technical choices accepted as written on 2026-10-25. The rule text i
 - Exit statuses 0 / 1 / 2 (**tool.exit-status**).
 - Test references in `REQUIREMENTS`: bare names unique, otherwise qualified.
 - Requirement identifiers like `AUTH-3`.
-- `kern diff` takes two directories.
-- Edition migration via `kern fmt -edition`.
-- `kern flash` builds first (**tool.cmd.flash**).
+- `anlang diff` takes two directories.
+- Edition migration via `anlang fmt -edition`.
+- `anlang flash` builds first (**tool.cmd.flash**).
 
 #### 21-protocol
 - Positions: 1-based line, 1-based byte column.
@@ -176,15 +176,15 @@ Provisional technical choices accepted as written on 2026-10-25. The rule text i
 
 | # | File | Question | Decision |
 | --- | --- | --- | --- |
-| 1 | 02-types, 01-lexical | Zero value of a type parameter | `var x T` and other zero-value uses are allowed; they give `T` the inferred constraint "requires a zero value", propagated like effect summaries; instantiating it with a type without a zero value is an error at the instantiation site with the chain to the use; `kern doc` and `kern query` show the constraint (**type.zero.param-use**, **type.zero.param-constraint**, **type.zero.param-instantiation**, **type.zero.param-tools**) |
-| 2 | 10-compile-time, 20-toolchain | Generators | Declared in `kern.mod` by `generate <generator> <inputs> -> <output package>`; output is not committed, it is produced into the build cache keyed by the hash of generator and inputs; the output package is importable like a project package; `kern gen -show` prints it; a project directory with the output path is an error (**tool.mod.generate**, **tool.mod.generate.unique**, **tool.cmd.gen**, **ct.gen.declared**, **ct.gen.cache**, **ct.gen.package**, **ct.gen.conflict**) |
+| 1 | 02-types, 01-lexical | Zero value of a type parameter | `var x T` and other zero-value uses are allowed; they give `T` the inferred constraint "requires a zero value", propagated like effect summaries; instantiating it with a type without a zero value is an error at the instantiation site with the chain to the use; `anlang doc` and `anlang query` show the constraint (**type.zero.param-use**, **type.zero.param-constraint**, **type.zero.param-instantiation**, **type.zero.param-tools**) |
+| 2 | 10-compile-time, 20-toolchain | Generators | Declared in `anlang.mod` by `generate <generator> <inputs> -> <output package>`; output is not committed, it is produced into the build cache keyed by the hash of generator and inputs; the output package is importable like a project package; `anlang gen -show` prints it; a project directory with the output path is an error (**tool.mod.generate**, **tool.mod.generate.unique**, **tool.cmd.gen**, **ct.gen.declared**, **ct.gen.cache**, **ct.gen.package**, **ct.gen.conflict**) |
 | 3 | 18-stdlib | Printing to standard output | `fmt.Print`, `Println`, `Printf` return no results and panic if the write fails (effects `Console`, `Panic`); `fmt.Fprint*` to an `io.Writer` return `(int, error)` as in Go (**std.fmt.print**, **std.fmt.fprint**, **std.fmt.sprint**) |
 | 4 | 18-stdlib | Error identity | `errors.New` errors compare by value (equal text, equal error); `errors.As` has the comma-ok form `As[T](err) (T, bool)`; the recommended form for a package's errors is an `enum` with `Error() string`, identity from the type (**std.errors.value**, **std.errors.as**, **std.errors.enum**) |
-| 5 | 13-targets, 15-os | BIOS boot sector target | Target `kern/target/bios-boot` (i8086, `core`); format `target.BootSector`: image at `0x7C00`, at most 510 bytes, padded, signature `0x55 0xAA`, 512-byte file; entry `func main()` with `DS=ES=SS=0`, `SP=0x7C00`; `bios.BootDrive()`; returning from `main` halts (**os.boot.bios**) |
+| 5 | 13-targets, 15-os | BIOS boot sector target | Target `an/target/bios-boot` (i8086, `core`); format `target.BootSector`: image at `0x7C00`, at most 510 bytes, padded, signature `0x55 0xAA`, 512-byte file; entry `func main()` with `DS=ES=SS=0`, `SP=0x7C00`; `bios.BootDrive()`; returning from `main` halts (**os.boot.bios**) |
 | 6 | 13-targets | Standard targets and their names | Naming rules (OS: `<platform>-<arch>`; DOS/BIOS by output; boot: `<environment>-<arch>`; microcontrollers by chip; mobile by platform; `web`) and the list of 22 required targets with the roadmap step of each; architecture `armv6m` added for `rp2040` (**target.std.name**, **target.std.required**) |
-| 7 | 03-declarations | File suffixes with `_` in architecture names | Suffixes are matched against the end of the file name instead of splitting at `_`, so `main_x86_64.kn` and `main_linux_x86_64.kn` select correctly (**decl.file.suffix**); found while implementing the build driver |
+| 7 | 03-declarations | File suffixes with `_` in architecture names | Suffixes are matched against the end of the file name instead of splitting at `_`, so `main_x86_64.an` and `main_linux_x86_64.an` select correctly (**decl.file.suffix**); found while implementing the build driver |
 | 8 | 02-types | Separator of variant fields | Commas, as in a parameter list: `TooLong{word string, max int}` (**type.enum.fields**) |
-| 9 | 20-toolchain | Canonical formatting | gofmt style with tabs for the part shared with Go, imports sorted, layout of Kern constructs; the canonical form is a fixed point of formatting; heuristics decide by the output layout where gofmt is not idempotent (**tool.fmt.style**, **tool.fmt.fixed-point**, **tool.fmt.differences**); kern.mod values aligned at column 9 (**tool.mod.format**) |
+| 9 | 20-toolchain | Canonical formatting | gofmt style with tabs for the part shared with Go, imports sorted, layout of Anlang constructs; the canonical form is a fixed point of formatting; heuristics decide by the output layout where gofmt is not idempotent (**tool.fmt.style**, **tool.fmt.fixed-point**, **tool.fmt.differences**); anlang.mod values aligned at column 9 (**tool.mod.format**) |
 
 ## 2. Deferred to implementation
 
@@ -212,4 +212,4 @@ Questions that are not design decisions. Each is decided at the roadmap step giv
 | 18 | 22-compiler | General-purpose allocator for `app` | 25 |
 | 19 | 23-conformance | Layout of the conformance suite on disk | 1 |
 | 20 | 23-conformance | Performance thresholds | 26 |
-| 21 | 20-toolchain | Reformatting of doc comments by kern fmt (gofmt reformats them with go/doc/comment) | 40 |
+| 21 | 20-toolchain | Reformatting of doc comments by anlang fmt (gofmt reformats them with go/doc/comment) | 40 |

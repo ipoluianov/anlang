@@ -3,7 +3,7 @@ package x86_64
 import (
 	"fmt"
 
-	"kern/ir"
+	"an/ir"
 )
 
 // Linux system call numbers.
@@ -22,7 +22,7 @@ const panicPrintMessage = "panic: fmt: write to standard output failed\n"
 //
 // Layout: the entry stub, the program's functions, the runtime routines,
 // then read-only data. The runtime is written here by hand for now; from
-// roadmap step 25 it is Kern code (spec/19-runtime.md).
+// roadmap step 25 it is Anlang code (spec/19-runtime.md).
 func GenLinux(p *ir.Program) (section []byte, entry int, err error) {
 	a := NewAsm()
 

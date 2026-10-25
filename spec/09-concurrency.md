@@ -51,7 +51,7 @@ func Serve(reqs []Request) (Stats, error) {
 
 ## 9.3 Detached tasks
 
-**conc.detach.call** — `task.Detach(f func())` starts a task that is not owned by the calling invocation and MAY outlive it. A call of `task.Detach` has the effect `Detach`, declared by `kern/task`.
+**conc.detach.call** — `task.Detach(f func())` starts a task that is not owned by the calling invocation and MAY outlive it. A call of `task.Detach` has the effect `Detach`, declared by `an/task`.
 
 **conc.detach.profile** — `Detach` is forbidden in the `core` profile ([07-effects](07-effects.md), **eff.profile.allowed**).
 
@@ -131,7 +131,7 @@ func SortParallel(xs inout []i32) {
 
 ## 9.7 Synchronization types
 
-**conc.sync.types** — The synchronization types are `chan T`, `sync.Mutex[T]`, `sync.RWMutex[T]` and the types of package `kern/atomic` (`atomic.U32`, `atomic.I64`, `atomic.Bool` and others).
+**conc.sync.types** — The synchronization types are `chan T`, `sync.Mutex[T]`, `sync.RWMutex[T]` and the types of package `an/atomic` (`atomic.U32`, `atomic.I64`, `atomic.Bool` and others).
 
 **conc.sync.handle** — A value of a synchronization type is a *handle*: assignment, passing, capture by a function literal and sending on a channel copy the handle, and all copies refer to the same object ([06-memory](06-memory.md)). This is the only exception to value semantics.
 
@@ -212,7 +212,7 @@ func Record(d time.Duration) error {
 
 ## 9.11 Deterministic scheduling in tests
 
-**conc.test.deterministic** — `kern test` MUST provide a deterministic scheduler that replaces the target scheduler in tests. It MUST explore interleavings of tasks at wait points, and every interleaving it reports MUST be reproducible from its identifier.
+**conc.test.deterministic** — `anlang test` MUST provide a deterministic scheduler that replaces the target scheduler in tests. It MUST explore interleavings of tasks at wait points, and every interleaving it reports MUST be reproducible from its identifier.
 
 **conc.test.findings** — The deterministic scheduler MUST report deadlocks (all remaining tasks waiting) and MUST allow tests to check ordering properties across interleavings.
 

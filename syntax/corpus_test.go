@@ -9,7 +9,7 @@ import (
 )
 
 // TestGoCorpus parses every .go file of the Go distribution in GoMode.
-// Kern syntax is Go syntax plus the novelty inventory, so the Go sources
+// Anlang syntax is Go syntax plus the novelty inventory, so the Go sources
 // are an oracle for the shared part of the parser (spec/23-conformance.md:
 // external oracles are used only in tests of the environment).
 func TestGoCorpus(t *testing.T) {

@@ -11,7 +11,7 @@ SQL-инъекции, межсайтовый скриптинг, обход пу
 
 ## 11.1 Типы-обёртки
 
-**safe.types.predeclared** — `Secret` и `Untrusted` — обобщённые типы, предобъявленные во всеобъемлющем блоке, как `Option`. Операции над ними предоставляют пакеты `kern/secret` и `kern/untrusted`.
+**safe.types.predeclared** — `Secret` и `Untrusted` — обобщённые типы, предобъявленные во всеобъемлющем блоке, как `Option`. Операции над ними предоставляют пакеты `an/secret` и `an/untrusted`.
 
 **safe.types.zero** — Нулевое значение `Secret[T]` и `Untrusted[T]` оборачивает нулевое значение `T` (см. [02-types](02-types.ru.md)).
 
@@ -70,7 +70,7 @@ func Login(user string, pass Secret[string]) (Session, error) {
 
 ### 11.2.5 Раскрытие секретов
 
-**safe.secret.expose** — `secret.Expose(s Secret[T]) T` возвращает содержимое. Каждый вызов `secret.Expose` имеет эффект `ExposeSecret`, который распространяется, как любой другой эффект (см. [07-effects](07-effects.ru.md)). `ExposeSecret` — свой эффект, объявленный через `effect.Declare` в пакете `kern/secret`.
+**safe.secret.expose** — `secret.Expose(s Secret[T]) T` возвращает содержимое. Каждый вызов `secret.Expose` имеет эффект `ExposeSecret`, который распространяется, как любой другой эффект (см. [07-effects](07-effects.ru.md)). `ExposeSecret` — свой эффект, объявленный через `effect.Declare` в пакете `an/secret`.
 
 **safe.secret.sinks** — Из-за **safe.types.distinct** `Secret[T]` не может попасть в параметры типа `T` у функций сети, файлов, UI и внешних функций. Функция стандартной библиотеки, принимающая `...any` и пишущая в такой приёмник, ДОЛЖНА отвергать аргументы `Secret[T]` при компиляции через `meta.Reject` (**ct.reject.call**); исключение — функции форматирования, которые печатают `***` по **safe.secret.print**.
 
@@ -105,7 +105,7 @@ func Login(user string, pass Secret[string]) (Session, error) {
 
 **safe.untrusted.validator** — Стандартная библиотека предоставляет проверки для распространённых типов, например `validate.Email(u Untrusted[string]) (Email, error)` и `fs.SafePath(root Path, u Untrusted[string]) (Path, error)`.
 
-**safe.untrusted.accept** — `untrusted.Accept(u Untrusted[T]) T` возвращает содержимое без проверки. Это единственный способ написать новую проверку. Её вызовы находятся поиском по `untrusted.Accept` и перечисляются `kern query`.
+**safe.untrusted.accept** — `untrusted.Accept(u Untrusted[T]) T` возвращает содержимое без проверки. Это единственный способ написать новую проверку. Её вызовы находятся поиском по `untrusted.Accept` и перечисляются `anlang query`.
 
 ```go
 func ParseAge(u Untrusted[string]) (Age, error) {
@@ -160,10 +160,10 @@ func Search(r http.Request) (http.Response, error) {
 
 **safe.ct.instructions** *(будущий этап)* — Операции, время выполнения которых на цели зависит от значений операндов (например, деление на некоторых процессорах), будут отвергаться для операндов, зависящих от секрета, по модели времени из описания архитектуры (см. [13-targets](13-targets.ru.md)).
 
-## 11.5 Пакеты `kern/log` и `kern/html`
+## 11.5 Пакеты `an/log` и `an/html`
 
 Этот файл задаёт поведение пакетов журналирования и HTML в части безопасности данных; их профили перечислены в [18-stdlib](18-stdlib.ru.md).
 
-**safe.pkg.log** — `kern/log` ДОЛЖЕН форматировать аргументы по правилам `kern/fmt`, включая **safe.secret.print**. В `core` он НЕ ДОЛЖЕН выделять память (**std.core.no-hidden-alloc**).
+**safe.pkg.log** — `an/log` ДОЛЖЕН форматировать аргументы по правилам `an/fmt`, включая **safe.secret.print**. В `core` он НЕ ДОЛЖЕН выделять память (**std.core.no-hidden-alloc**).
 
-**safe.pkg.html** — `kern/html` ДОЛЖЕН отрисовывать по **safe.untrusted.html**. `html.Trusted` — его тип для разметки, которая вставляется без экранирования.
+**safe.pkg.html** — `an/html` ДОЛЖЕН отрисовывать по **safe.untrusted.html**. `html.Trusted` — его тип для разметки, которая вставляется без экранирования.

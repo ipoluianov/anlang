@@ -9,7 +9,7 @@ import (
 // comments.
 func scan(t *testing.T, src string) ([]Token, []*Error) {
 	t.Helper()
-	s := NewScanner("test.kn", []byte(src), KernMode)
+	s := NewScanner("test.an", []byte(src), AnlangMode)
 	var toks []Token
 	for {
 		tok := s.Scan()
@@ -95,7 +95,7 @@ func TestScanLiterals(t *testing.T) {
 		{"'a'", Rune},
 		{`'\n'`, Rune},
 		{`'é'`, Rune},
-		{`"Привет из Kern!\r\n"`, String},
+		{`"Привет из Anlang!\r\n"`, String},
 		{"`raw\nstring`", String},
 	}
 	for _, tt := range tests {
@@ -136,7 +136,7 @@ func TestScanErrors(t *testing.T) {
 
 func TestScanPositions(t *testing.T) {
 	toks, _ := scan(t, "a\n  bé c")
-	want := []Pos{{"test.kn", 0, 1, 1}, {"test.kn", 1, 1, 2}, {"test.kn", 4, 2, 3}, {"test.kn", 8, 2, 7}}
+	want := []Pos{{"test.an", 0, 1, 1}, {"test.an", 1, 1, 2}, {"test.an", 4, 2, 3}, {"test.an", 8, 2, 7}}
 	for i, p := range want {
 		if toks[i].Pos != p {
 			t.Errorf("token %d: got %v, want %v", i, toks[i].Pos, p)

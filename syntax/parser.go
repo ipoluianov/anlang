@@ -2,11 +2,11 @@ package syntax
 
 import "fmt"
 
-// Parse parses one Kern source file. It returns the file and all lexical
+// Parse parses one Anlang source file. It returns the file and all lexical
 // and syntax errors; the file is nil only if the package clause is
 // missing.
 func Parse(file string, src []byte) (*File, []*Error) {
-	return ParseMode(file, src, KernMode)
+	return ParseMode(file, src, AnlangMode)
 }
 
 // ParseMode is Parse with an explicit language mode.
@@ -200,9 +200,9 @@ func (p *parser) ensureProgress(start Pos) {
 }
 
 // isWord reports whether the current token is the contextual word w.
-// Contextual words are recognized only in Kern mode.
+// Contextual words are recognized only in Anlang mode.
 func (p *parser) isWord(w string) bool {
-	return p.mode == KernMode && p.tok.Kind == Ident && p.tok.Lit == w
+	return p.mode == AnlangMode && p.tok.Kind == Ident && p.tok.Lit == w
 }
 
 // ----------------------------------------------------------------------------
@@ -342,8 +342,8 @@ func (p *parser) importSpec() Spec {
 	case Ident:
 		s.Name = p.name()
 	case Period:
-		if p.mode == KernMode {
-			p.errorf(p.tok.Pos, "decl.import.no-blank-dot", "dot imports are removed in Kern")
+		if p.mode == AnlangMode {
+			p.errorf(p.tok.Pos, "decl.import.no-blank-dot", "dot imports are removed in Anlang")
 		}
 		s.Name = &Name{NamePos: p.tok.Pos, Name: "."}
 		p.next()
@@ -699,7 +699,7 @@ func (p *parser) funcBody() *BlockStmt {
 // (lex.context.contract-region).
 func (p *parser) blockWithContracts(words ...string) *BlockStmt {
 	b := &BlockStmt{Lbrace: p.expect(LBrace)}
-	for p.mode == KernMode && p.tok.Kind == Ident && isOneOf(p.tok.Lit, words) {
+	for p.mode == AnlangMode && p.tok.Kind == Ident && isOneOf(p.tok.Lit, words) {
 		c := &ContractStmt{WordPos: p.tok.Pos, Word: p.tok.Lit}
 		p.next()
 		c.X = p.expr()
@@ -942,7 +942,7 @@ func (p *parser) interfaceType() *InterfaceType {
 	return t
 }
 
-// enumType parses enum { Variant; Variant{fields} } (Kern, type.enum).
+// enumType parses enum { Variant; Variant{fields} } (Anlang, type.enum).
 func (p *parser) enumType() *EnumType {
 	t := &EnumType{Enum: p.tok.Pos}
 	p.next()
@@ -1456,7 +1456,7 @@ func (p *parser) switchStmt() Stmt {
 }
 
 // isTypeSwitchGuard reports whether s is x.(type) or v := x.(type),
-// possibly parenthesized; kern fmt removes the parentheses.
+// possibly parenthesized; anlang fmt removes the parentheses.
 func isTypeSwitchGuard(s Stmt) bool {
 	switch s := s.(type) {
 	case *ExprStmt:

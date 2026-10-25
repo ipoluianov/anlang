@@ -7,8 +7,8 @@ import (
 )
 
 func TestParse(t *testing.T) {
-	src := "module  hello\nkern    1.0 // edition\ntargets linux-x86_64, macos-arm64\n"
-	f, errs := Parse("kern.mod", []byte(src))
+	src := "module  hello\nanlang  1.0 // edition\ntargets linux-x86_64, macos-arm64\n"
+	f, errs := Parse("anlang.mod", []byte(src))
 	if len(errs) > 0 {
 		t.Fatal(errs)
 	}
@@ -23,16 +23,16 @@ func TestParseErrors(t *testing.T) {
 		src  string
 		rule string
 	}{
-		{"kern 1.0\n", "tool.mod.module"},
+		{"anlang 1.0\n", "tool.mod.module"},
 		{"module a\n", "tool.mod.edition"},
-		{"module Hello\nkern 1.0\n", "decl.import.module"},
-		{"module kern\nkern 1.0\n", "decl.import.module"},
-		{"module a\nmodule b\nkern 1.0\n", "tool.mod.module"},
-		{"module a\nkern one\n", "tool.mod.edition"},
-		{"module a\nkern 1.0\ntargets Linux\n", "tool.mod.targets"},
+		{"module Hello\nanlang 1.0\n", "decl.import.module"},
+		{"module an\nanlang 1.0\n", "decl.import.module"},
+		{"module a\nmodule b\nanlang 1.0\n", "tool.mod.module"},
+		{"module a\nanlang one\n", "tool.mod.edition"},
+		{"module a\nanlang 1.0\ntargets Linux\n", "tool.mod.targets"},
 	}
 	for _, tt := range tests {
-		_, errs := Parse("kern.mod", []byte(tt.src))
+		_, errs := Parse("anlang.mod", []byte(tt.src))
 		if len(errs) == 0 || errs[0].Rule != tt.rule {
 			t.Errorf("%q: got %v, want rule %s", strings.ReplaceAll(tt.src, "\n", `\n`), errs, tt.rule)
 		}

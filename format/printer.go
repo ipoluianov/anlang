@@ -1,8 +1,8 @@
 // Based on go/printer/printer.go from the Go sources,
 // Copyright The Go Authors, BSD-style license (third_party/go/LICENSE).
 
-// Package format prints Kern syntax trees in canonical form: the output
-// of kern fmt (lex.source.canonical). For the part of Kern shared with Go
+// Package format prints Anlang syntax trees in canonical form: the output
+// of anlang fmt (lex.source.canonical). For the part of Anlang shared with Go
 // the canonical form is the one produced by gofmt, which lets the Go
 // sources serve as a test oracle.
 package format
@@ -15,7 +15,7 @@ import (
 	"text/tabwriter"
 	"unicode"
 
-	"kern/syntax"
+	"an/syntax"
 )
 
 const (
@@ -789,7 +789,7 @@ const maxPasses = 4
 // output again until it no longer changes. A few of the layout heuristics
 // inherited from gofmt decide by the source layout and can give a
 // different result on their own output (for example the re-indentation
-// of /*-style comments); iterating makes kern fmt idempotent, as
+// of /*-style comments); iterating makes anlang fmt idempotent, as
 // tool.cmd.fmt requires. For canonical input the first pass already
 // returns the input.
 func Source(name string, src []byte, mode syntax.Mode) ([]byte, []*syntax.Error) {
@@ -799,7 +799,7 @@ func Source(name string, src []byte, mode syntax.Mode) ([]byte, []*syntax.Error)
 		if len(errs) > 0 {
 			if pass > 0 {
 				// The printer produced invalid code: an internal error.
-				errs = append([]*syntax.Error{{Pos: syntax.Pos{File: name}, Msg: "kern fmt: formatting produced invalid code"}}, errs...)
+				errs = append([]*syntax.Error{{Pos: syntax.Pos{File: name}, Msg: "anlang fmt: formatting produced invalid code"}}, errs...)
 			}
 			return nil, errs
 		}
@@ -876,7 +876,7 @@ func (p *printer) nodeSize(n syntax.Node, maxSize int) int {
 // It returns nil if it is, and otherwise an error at the first line that
 // differs. Syntax errors are returned as they are.
 func Canonical(name string, src []byte) []*syntax.Error {
-	out, errs := Source(name, src, syntax.KernMode)
+	out, errs := Source(name, src, syntax.AnlangMode)
 	if len(errs) > 0 {
 		return errs
 	}
@@ -892,6 +892,6 @@ func Canonical(name string, src []byte) []*syntax.Error {
 	return []*syntax.Error{{
 		Pos:  syntax.Pos{File: name, Line: line, Col: 1},
 		Rule: "lex.source.canonical",
-		Msg:  "file is not in canonical form; run kern fmt",
+		Msg:  "file is not in canonical form; run anlang fmt",
 	}}
 }

@@ -1,6 +1,6 @@
 // Based on go/printer/nodes.go from the Go sources,
 // Copyright The Go Authors, BSD-style license (third_party/go/LICENSE).
-// Extended with the Kern constructs of the novelty inventory.
+// Extended with the Anlang constructs of the novelty inventory.
 
 package format
 
@@ -11,7 +11,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"kern/syntax"
+	"an/syntax"
 )
 
 const (
@@ -204,7 +204,7 @@ const (
 	funcParam    paramMode = iota
 	funcTParam             // type parameters of a function
 	typeTParam             // type parameters of a type
-	variantParam           // fields of an enum variant (Kern)
+	variantParam           // fields of an enum variant (Anlang)
 )
 
 func (p *printer) parameters(fields *syntax.FieldList, mode paramMode) {
@@ -341,7 +341,7 @@ func (p *printer) isOneLineFieldList(list []*syntax.Field) bool {
 	return namesSize+typeSize <= maxSize
 }
 
-// structType prints a struct type, including Kern's leading invariant and
+// structType prints a struct type, including Anlang's leading invariant and
 // layout clauses.
 func (p *printer) structType(t *syntax.StructType) {
 	p.print(syntax.Struct)
@@ -497,7 +497,7 @@ func (p *printer) interfaceType(t *syntax.InterfaceType) {
 	p.print(syntax.RBrace)
 }
 
-// enumType prints enum { ... } with one variant per line (Kern).
+// enumType prints enum { ... } with one variant per line (Anlang).
 func (p *printer) enumType(t *syntax.EnumType) {
 	p.print(syntax.Enum)
 	if len(t.Variants) == 0 && !p.commentBefore(t.Rbrace) {

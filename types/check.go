@@ -12,14 +12,14 @@ import (
 	"strconv"
 	"strings"
 
-	"kern/ir"
-	"kern/syntax"
+	"an/ir"
+	"an/syntax"
 )
 
 const unsupported = "not supported yet by this compiler (spec/24-roadmap.md, step 2)"
 
 // Package is the input of Check: the files of package main and the
-// module name from kern.mod.
+// module name from anlang.mod.
 type Package struct {
 	Module string
 	Files  []*syntax.File
@@ -93,7 +93,7 @@ func (c *checker) check() {
 			name := fd.Name.Name
 			switch {
 			case name == "init":
-				c.errorf(fd.Name.Pos(), "decl.func.no-init", "func init is not allowed in Kern: there are no package initializers")
+				c.errorf(fd.Name.Pos(), "decl.func.no-init", "func init is not allowed in Anlang: there are no package initializers")
 				continue
 			case name == "_":
 				continue
@@ -185,7 +185,7 @@ func profileSet(ps []*syntax.Name) string {
 // knownPackages lists the standard library packages that this compiler
 // can compile calls to.
 var knownPackages = map[string]bool{
-	"kern/fmt": true,
+	"an/fmt": true,
 }
 
 func (c *checker) imports(f *syntax.File) *fileScope {
@@ -196,10 +196,10 @@ func (c *checker) imports(f *syntax.File) *fileScope {
 			c.errorf(spec.Path.Pos(), "decl.import.paths", "invalid import path %s", spec.Path.Value)
 			continue
 		}
-		std := strings.HasPrefix(path, "kern/")
+		std := strings.HasPrefix(path, "an/")
 		own := strings.HasPrefix(path, c.pkg.Module+"/")
 		if !std && !own {
-			c.errorf(spec.Path.Pos(), "decl.import.paths", "import path %q must start with kern/ (standard library) or %s/ (this module)", path, c.pkg.Module)
+			c.errorf(spec.Path.Pos(), "decl.import.paths", "import path %q must start with an/ (standard library) or %s/ (this module)", path, c.pkg.Module)
 			continue
 		}
 		if !knownPackages[path] {
@@ -209,7 +209,7 @@ func (c *checker) imports(f *syntax.File) *fileScope {
 		name := path[strings.LastIndex(path, "/")+1:]
 		if spec.Name != nil {
 			if spec.Name.Name == "_" {
-				c.errorf(spec.Name.Pos(), "decl.import.no-blank-dot", "blank imports are removed in Kern: imports have no side effects")
+				c.errorf(spec.Name.Pos(), "decl.import.no-blank-dot", "blank imports are removed in Anlang: imports have no side effects")
 				continue
 			}
 			name = spec.Name.Name
@@ -278,9 +278,9 @@ func (c *checker) call(scope *fileScope, call *syntax.CallExpr, fn *ir.Func) {
 // stdCall compiles a call to a standard library function.
 //
 // Temporary: fmt.Print and fmt.Println are built into the compiler until
-// the standard library is compiled from Kern source (roadmap steps 9–10).
+// the standard library is compiled from Anlang source (roadmap steps 9–10).
 func (c *checker) stdCall(path string, sel *syntax.Name, call *syntax.CallExpr, fn *ir.Func) {
-	if path != "kern/fmt" || (sel.Name != "Print" && sel.Name != "Println") {
+	if path != "an/fmt" || (sel.Name != "Print" && sel.Name != "Println") {
 		c.errorf(sel.Pos(), "", "%s.%s: %s", path, sel.Name, unsupported)
 		return
 	}

@@ -2,13 +2,13 @@
 
 Area: `ct`.
 
-Kern has no macros. Code that Go produces with `go generate`, reflection or text templates is written in Kern itself and run by the compiler:
+Anlang has no macros. Code that Go produces with `go generate`, reflection or text templates is written in Anlang itself and run by the compiler:
 
 - **compile-time evaluation** of ordinary functions to produce constants;
-- **compile-time reflection** through package `kern/meta`;
+- **compile-time reflection** through package `an/meta`;
 - **`for const`** loops that are unrolled by the compiler;
 - **`...any` parameters**, which are compile-time tuples rather than slices of interfaces;
-- **generators** — Kern programs that the build runs with access only to declared files.
+- **generators** — Anlang programs that the build runs with access only to declared files.
 
 No construct in this file adds a keyword. `for const` is a combination of existing keywords; its syntax belongs to [05-statements](05-statements.md).
 
@@ -30,7 +30,7 @@ No construct in this file adds a keyword. `for const` is a combination of existi
 
 ## 10.2 Constants computed by functions
 
-Go restricts constants to boolean, numeric and string values given by constant expressions. Kern extends constant declarations without changing their syntax.
+Go restricts constants to boolean, numeric and string values given by constant expressions. Anlang extends constant declarations without changing their syntax.
 
 **ct.const.call** — The expression of a constant declaration MAY contain calls to compile-time evaluable functions. The constant's value is the result of evaluating the expression at compile time.
 
@@ -78,9 +78,9 @@ func makeCRCTable(poly u32) [256]u32 {
 
 **Note** — Because `int` differs between targets, a constant computed with `int` arithmetic may differ between targets. It is evaluated separately for each target of a build.
 
-## 10.4 Compile-time reflection: package `kern/meta`
+## 10.4 Compile-time reflection: package `an/meta`
 
-**ct.meta.compile-time-only** — Every function of package `kern/meta` that takes a type or produces a type descriptor is evaluated at compile time. Its results are compile-time values. There is no run-time type information (see [19-runtime](19-runtime.md)).
+**ct.meta.compile-time-only** — Every function of package `an/meta` that takes a type or produces a type descriptor is evaluated at compile time. Its results are compile-time values. There is no run-time type information (see [19-runtime](19-runtime.md)).
 
 The minimal API is:
 
@@ -128,7 +128,7 @@ The syntax `for const` *IdentifierList* `:=` `range` *Expression* *Block* is def
 
 **ct.for.sequence** — The range expression of a `for const` loop MUST be one of:
 
-1. a compile-time sequence produced by `kern/meta` (`meta.Fields(T)`, `meta.Variants(E)`, `x.Fields`);
+1. a compile-time sequence produced by `an/meta` (`meta.Fields(T)`, `meta.Variants(E)`, `x.Fields`);
 2. a parameter declared `...any` (see 10.6);
 3. an integer constant `n`, giving the values `0` … `n-1`;
 4. a constant of array or slice type, giving its elements.
@@ -165,7 +165,7 @@ Any other use — indexing, assignment, storing, conversion to a slice — is a 
 
 ### 10.6.1 Static type switch
 
-A `...any` element or a value whose type is a type parameter has a static type that is known in each instance. To branch on it, Kern permits a type switch on such values.
+A `...any` element or a value whose type is a type parameter has a static type that is known in each instance. To branch on it, Anlang permits a type switch on such values.
 
 **ct.typeswitch.static** — The operand of a type switch MAY be a value whose type is a type parameter or the iteration variable of `for const` over a `...any` tuple. Such a type switch is resolved at compile time in each instance: only the matching case is compiled, and only that case is type-checked with the case type. The other cases are not type-checked for that instance.
 
@@ -221,29 +221,29 @@ Encoding of constant text is ordinary compile-time evaluation; string literals h
 **ct.encoding.dstring** — A constant of type `[]u8` that does not contain the byte `'$'` is assignable to `dstring`. The assignment produces the bytes followed by `'$'`. A constant containing `'$'` is not assignable to `dstring`. The `dstring` type itself is defined in [02-types](02-types.md).
 
 ```go
-dos.Print(encoding.CP866("Hello from Kern!\r\n"))    // CP866 bytes, '$' appended
+dos.Print(encoding.CP866("Hello from Anlang!\r\n"))    // CP866 bytes, '$' appended
 ```
 
 ## 10.8 Generators
 
-A generator turns an external description — an SVD file, a system call table — into Kern source code during the build. Bindings to external libraries do not use generators; they are declared by hand (see [12-ffi](12-ffi.md)).
+A generator turns an external description — an SVD file, a system call table — into Anlang source code during the build. Bindings to external libraries do not use generators; they are declared by hand (see [12-ffi](12-ffi.md)).
 
 **ct.gen.program** — A generator is a `main` package of the project in profile `app`. The build runs it on the host.
 
-**ct.gen.declared** — Every generator MUST be declared together with its input files and its output package by a `generate` directive in `kern.mod` (see [20-toolchain](20-toolchain.md), **tool.mod.generate**).
+**ct.gen.declared** — Every generator MUST be declared together with its input files and its output package by a `generate` directive in `anlang.mod` (see [20-toolchain](20-toolchain.md), **tool.mod.generate**).
 
 **ct.gen.effects** — A generator's effect set MUST NOT contain I/O effects other than `ReadInput` and `WriteOutput`, and MUST NOT contain `Clock`, `Random` or `Foreign`. `ReadInput` permits reading only the declared input files; `WriteOutput` permits writing only the files of the declared output package. Violations are compile errors of the generator, and an implementation MUST also enforce them when the generator runs.
 
 **ct.gen.deterministic** — A generator MUST produce byte-identical output for identical inputs. An implementation MUST rerun a generator only when the hash of its source, its inputs or the compiler version changes, and MUST reuse cached output otherwise.
 
-**ct.gen.output** — Generator output MUST be Kern source in canonical formatting (see [01-lexical](01-lexical.md)). Each generated file MUST begin with a comment that names the generator and the hash of its inputs. Generated files are ordinary source code: they are type-checked, effect-checked and readable like any other file.
+**ct.gen.output** — Generator output MUST be Anlang source in canonical formatting (see [01-lexical](01-lexical.md)). Each generated file MUST begin with a comment that names the generator and the hash of its inputs. Generated files are ordinary source code: they are type-checked, effect-checked and readable like any other file.
 
 **ct.gen.cache** — Generator output is not part of the project and is not committed. The build produces it into the build cache, keyed by the hash of the generator's source, its inputs and the compiler version (**ct.gen.deterministic**).
 
-**ct.gen.package** — The output package is importable by its declared import path like a project package. `kern gen -show <package>` prints its source ([20-toolchain](20-toolchain.md), **tool.cmd.gen**).
+**ct.gen.package** — The output package is importable by its declared import path like a project package. `anlang gen -show <package>` prints its source ([20-toolchain](20-toolchain.md), **tool.cmd.gen**).
 
 **ct.gen.conflict** — A directory in the project with the path of a declared output package is a compile error (**tool.mod.generate.unique**).
 
 ## Open issues
 
-1. **Concrete evaluation limits.** Deferred to implementation — step 10. Implementation-defined, fixed per compiler version and edition; whether a project may raise them in `kern.mod` is decided there.
+1. **Concrete evaluation limits.** Deferred to implementation — step 10. Implementation-defined, fixed per compiler version and edition; whether a project may raise them in `anlang.mod` is decided there.

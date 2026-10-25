@@ -4,9 +4,9 @@ The runtime is the code that the toolchain links into a program in addition to t
 
 ## 19.1 General requirements
 
-**rt.lang.kern** — The runtime MUST be written in Kern, in the `core` profile, and shipped as source code with the standard library (see [18-stdlib](18-stdlib.md)).
+**rt.lang.anlang** — The runtime MUST be written in Anlang, in the `core` profile, and shipped as source code with the standard library (see [18-stdlib](18-stdlib.md)).
 
-**rt.lang.not-importable** — User code MUST NOT import the runtime package `kern/runtime`. Its facilities are reached only through the language and the standard library.
+**rt.lang.not-importable** — User code MUST NOT import the runtime package `an/runtime`. Its facilities are reached only through the language and the standard library.
 
 **rt.no-gc** — The runtime MUST NOT contain a garbage collector. Memory is managed by value semantics, copy-on-write and arenas (see [06-memory](06-memory.md)).
 
@@ -23,7 +23,7 @@ The runtime is the code that the toolchain links into a program in addition to t
 
 *Informative.*
 
-| Go runtime component | Kern |
+| Go runtime component | Anlang |
 | --- | --- |
 | garbage collector | none |
 | run-time reflection | none; compile time only (`meta`) |
@@ -57,11 +57,11 @@ The behavior of each component is specified elsewhere: memory in [06-memory](06-
 2. `Reset` — reset the device through the mechanism given by the architecture or device description. If the target has a debug channel, the reason MAY be written there first.
 3. `Halt` — disable interrupts and stop executing in a low-power wait loop. If the target has a debug channel, the reason MAY be written there first.
 
-**rt.start.data** — On targets whose memory regions separate code from writable data (**target.memory.placement**), the startup code MUST copy the initial values of writable data from the `Exec` region to RAM and zero the remaining writable data before any Kern code runs.
+**rt.start.data** — On targets whose memory regions separate code from writable data (**target.memory.placement**), the startup code MUST copy the initial values of writable data from the `Exec` region to RAM and zero the remaining writable data before any Anlang code runs.
 
 **rt.panic.app** — In the `app` and `ui` profiles, a panic MUST write a message with the panic reason and a stack trace to the standard error stream, then terminate the process with a non-zero exit status.
 
-**rt.panic.trace** — Stack traces MUST name functions, files and lines on all targets. On targets where the debug table is not part of the image, the trace MUST contain addresses that `kern` resolves with the side table (see [20-toolchain](20-toolchain.md), **tool.debug.side-table**).
+**rt.panic.trace** — Stack traces MUST name functions, files and lines on all targets. On targets where the debug table is not part of the image, the trace MUST contain addresses that `anlang` resolves with the side table (see [20-toolchain](20-toolchain.md), **tool.debug.side-table**).
 
 **Note** — Which operations can panic, and how the `Panic` effect propagates, is specified in [04-expressions](04-expressions.md) and [07-effects](07-effects.md).
 
@@ -71,7 +71,7 @@ The behavior of each component is specified elsewhere: memory in [06-memory](06-
 
 **rt.stack.reserve** — In the `app` and `ui` profiles, a task whose maximum stack depth cannot be computed (recursion, unbounded depth) MUST receive a reserve of virtual memory with a guard page. Physical memory is committed on use. A stack overflow MUST be detected and reported as a panic; it MUST NOT corrupt memory.
 
-**rt.stack.report** — The compiler MUST report every task that needed a reserve under **rt.stack.reserve**, as part of `kern size` and of the `-json` build report (see [20-toolchain](20-toolchain.md)).
+**rt.stack.report** — The compiler MUST report every task that needed a reserve under **rt.stack.reserve**, as part of `anlang size` and of the `-json` build report (see [20-toolchain](20-toolchain.md)).
 
 **rt.stack.core-recursion** — In the `core` profile, recursion in a task, an interrupt handler or `main` without a proven bound on depth MUST be rejected at compile time (see [14-embedded](14-embedded.md) for the stack analysis against the target's `Stack` size).
 
@@ -79,4 +79,4 @@ The behavior of each component is specified elsewhere: memory in [06-memory](06-
 
 **rt.dev.only** — The deterministic test scheduler (see [09-concurrency](09-concurrency.md), [20-toolchain](20-toolchain.md)) and the hot reload interpreter (see [17-ui](17-ui.md)) MUST NOT be present in a release build.
 
-**rt.dev.builds** — A *release build* is the output of `kern build`. A *development build* is a build made by `kern test`, `kern dev`, `kern debug` or `kern run` with development options. Development-only components MAY be present only in development builds.
+**rt.dev.builds** — A *release build* is the output of `anlang build`. A *development build* is a build made by `anlang test`, `anlang dev`, `anlang debug` or `anlang run` with development options. Development-only components MAY be present only in development builds.

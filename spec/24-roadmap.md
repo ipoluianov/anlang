@@ -2,7 +2,7 @@
 
 *Informative.*
 
-The plan covers the whole environment. It is split into small steps, each of which can be built and checked on its own. The compiler is written in Go; after the self-hosting steps (phase 9) it lives in Kern.
+The plan covers the whole environment. It is split into small steps, each of which can be built and checked on its own. The compiler is written in Go; after the self-hosting steps (phase 9) it lives in Anlang.
 
 ## 24.1 Working rules
 
@@ -16,7 +16,7 @@ The plan covers the whole environment. It is split into small steps, each of whi
 
 | # | Step | Done when |
 | --- | --- | --- |
-| 1 | Lexer, parser and canonical formatting for all of Go's syntax and the novelty inventory | a corpus of Go code parses; `kern fmt` is idempotent; parse → print → parse gives the same tree; fuzzing without crashes |
+| 1 | Lexer, parser and canonical formatting for all of Go's syntax and the novelty inventory | a corpus of Go code parses; `anlang fmt` is idempotent; parse → print → parse gives the same tree; fuzzing without crashes |
 | 2 | Type checking of the Go subset: structures, functions, methods, interfaces, generics, closures | conformance suite "compiles / error with rule X" for every rule |
 | 3 | `enum`, patterns in `case`, exhaustive `switch` | as above; adding a variant breaks every incomplete `switch` in the tests |
 | 4 | Value semantics: `inout`, second-class references, exclusive access | negative tests for every violation with the expected rule identifier |
@@ -83,15 +83,15 @@ The plan covers the whole environment. It is split into small steps, each of whi
 | # | Step | Done when |
 | --- | --- | --- |
 | 37 | Environment protocol (JSON-RPC), JSON diagnostics with fixes | every diagnostic of the conformance suite has a rule identifier; an applied fix yields compiling code |
-| 38 | `kern lsp` | editor scenarios over LSP: errors, go to definition, effects on hover |
-| 39 | `kern test`: property-based tests, `Clock` and `Random` substitution, record and replay | replay of a recorded run is deterministic |
-| 40 | `kern doc` with executable examples | the documentation examples of the standard library pass as tests |
-| 41 | DWARF, CodeView/PDB, `kern debug` locally and through the protocol | debugging scenarios through the protocol: breakpoint, step, reading `enum`, `Option`, `Secret` |
-| 42 | `kern flash`, `kern debug -probe` (SWD/JTAG) | test rig with real boards: flashing, breakpoint, reading registers |
-| 43 | Reports: `kern size`, memory map, stack depth | reports match the references for the reference programs |
-| 44 | `kern diff`: semantic diff of two versions of code | changes of API, effects and contracts are found on a set of reference version pairs |
-| 45 | `REQUIREMENTS`: links between requirements and tests | `kern test` reports requirements without tests, missing tests and failing tests |
-| 46 | `kern port` for Go and C | a set of real Go packages is ported; their tests pass on both versions |
+| 38 | `anlang lsp` | editor scenarios over LSP: errors, go to definition, effects on hover |
+| 39 | `anlang test`: property-based tests, `Clock` and `Random` substitution, record and replay | replay of a recorded run is deterministic |
+| 40 | `anlang doc` with executable examples | the documentation examples of the standard library pass as tests |
+| 41 | DWARF, CodeView/PDB, `anlang debug` locally and through the protocol | debugging scenarios through the protocol: breakpoint, step, reading `enum`, `Option`, `Secret` |
+| 42 | `anlang flash`, `anlang debug -probe` (SWD/JTAG) | test rig with real boards: flashing, breakpoint, reading registers |
+| 43 | Reports: `anlang size`, memory map, stack depth | reports match the references for the reference programs |
+| 44 | `anlang diff`: semantic diff of two versions of code | changes of API, effects and contracts are found on a set of reference version pairs |
+| 45 | `REQUIREMENTS`: links between requirements and tests | `anlang test` reports requirements without tests, missing tests and failing tests |
+| 46 | `anlang port` for Go and C | a set of real Go packages is ported; their tests pass on both versions |
 
 ## 24.9 Phase 8. Data safety
 
@@ -104,8 +104,8 @@ The plan covers the whole environment. It is split into small steps, each of whi
 
 | # | Step | Done when |
 | --- | --- | --- |
-| 49 | The compiler is ported from Go to Kern and built by the Go version | the Kern compiler passes the whole test suite |
-| 50 | The Kern compiler builds itself | byte-identical results of stages 1 and 2 ([22-compiler](22-compiler.md), 22.9) |
+| 49 | The compiler is ported from Go to Anlang and built by the Go version | the Anlang compiler passes the whole test suite |
+| 50 | The Anlang compiler builds itself | byte-identical results of stages 1 and 2 ([22-compiler](22-compiler.md), 22.9) |
 
 ## 24.11 Phase 10. Embedded systems and operating systems
 

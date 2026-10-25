@@ -7,14 +7,14 @@ Terms used in the specification and their Russian equivalents. Use these terms i
 | English | Русский | Meaning |
 | --- | --- | --- |
 | addressable | адресуемый | Operand that can receive temporary `inout` access: variables, slice and array elements, struct fields |
-| architecture description | описание архитектуры | Kern package with the machine model, instruction selection rules and formal instruction semantics |
+| architecture description | описание архитектуры | Anlang package with the machine model, instruction selection rules and formal instruction semantics |
 | arena | арена | Container that owns graph nodes; nodes are referenced by `arena.Ref[T]` handles with generation checks |
 | attribution (of effects) | атрибуция (эффектов) | Rule that an effect of a function passed as an argument is charged to the caller who passed it |
 | binary format | формат бинарника | Layout of the output file: flat, MZ, ELF, PE, Mach-O, wasm, Intel HEX, UF2, BIN |
 | borrow | заимствование | Exclusive `inout` access held for a longer region, as for `inout` arguments of `go` |
 | boundary (of a type invariant) | граница (инварианта типа) | Point where a type invariant must hold: construction, end of an `inout` function, passing, returning, storing |
-| callback | колбэк | Kern function passed to external code via `ffi.Callback` |
-| canonical formatting | каноническое форматирование | The single source layout produced by `kern fmt` |
+| callback | колбэк | Anlang function passed to external code via `ffi.Callback` |
+| canonical formatting | каноническое форматирование | The single source layout produced by `anlang fmt` |
 | certificate (proof) | сертификат (доказательства) | Solver output that an independent checker verifies |
 | comma-ok form | пара «значение, ok» | Result pair `(T, bool)` expressing a possibly absent value, as in Go |
 | compile-time evaluation | вычисление при компиляции | Execution of an effect-free function by the compiler to produce a constant |
@@ -26,28 +26,28 @@ Terms used in the specification and their Russian equivalents. Use these terms i
 | copy-on-write (COW) | копирование при записи | Sharing a buffer between copies until one of them is modified |
 | critical section | критическая секция | Region with exclusive access to a resource shared between execution contexts |
 | deadline | дедлайн | Time limit after which a task tree is cancelled |
-| debug probe | отладочный адаптер | SWD/JTAG adapter connecting `kern debug` to a device |
+| debug probe | отладочный адаптер | SWD/JTAG adapter connecting `anlang debug` to a device |
 | deferred effect | отложенный эффект | Effect of work that a function describes and the runtime performs later, such as a `Cmd` |
-| development build | отладочная сборка | Build by `kern test`, `kern dev`, `kern debug` or `kern run` with development options |
+| development build | отладочная сборка | Build by `anlang test`, `anlang dev`, `anlang debug` or `anlang run` with development options |
 | diagnostic | диагностика | Structured compiler message: location, rule identifier, reason, fixes |
-| edition | редакция | Language version fixed in `kern.mod` |
+| edition | редакция | Language version fixed in `anlang.mod` |
 | effect | эффект | Property of what a function may do: `Network`, `Alloc`, `Panic`, … |
 | effect summary | сводка эффектов | Effects of a function as computed per package, including parametric references |
 | enum variant | вариант enum | One alternative of an `enum` type, possibly carrying data |
 | environment effect | эффект окружения | Effect that the target must provide: `File`, `Network`, `Console`, hardware effects, … |
-| environment protocol | протокол среды | JSON-RPC 2.0 interface to all `kern` tools |
+| environment protocol | протокол среды | JSON-RPC 2.0 interface to all `anlang` tools |
 | exclusivity | исключительность | Rule that a value under `inout` access is reachable through no other path |
 | execution context | контекст исполнения | `main`, a task or an interrupt handler, for peripheral ownership |
 | execution effects | эффекты исполнения | All effects that executing a function may have, including those of functions passed to it |
 | exhaustive switch | исчерпывающий switch | `switch` over an `enum` that handles every variant |
 | external function | внешняя функция | Function without a body bound to a foreign symbol with `=` |
 | formal instruction semantics | формальная семантика команд | Machine-readable meaning of each instruction, in the style of Sail |
-| generator | генератор | Kern program run at build time with access only to declared files |
+| generator | генератор | Anlang program run at build time with access only to declared files |
 | handle | дескриптор | Value that refers to a shared object; copies refer to the same object |
 | handle type | тип-дескриптор | Type whose values are handles: synchronization types, `ffi.Handle` |
 | hardware mapping | отображение железа | Value created by `unsafe.Map` that denotes memory-mapped hardware |
 | hot reload | горячая перезагрузка | Applying code changes to a running program without restart |
-| import path | путь импорта | `kern/...` for the standard library, `<module>/...` for the project |
+| import path | путь импорта | `an/...` for the standard library, `<module>/...` for the project |
 | initialization phase | фаза инициализации | Part of `main` before interrupts and tasks are enabled |
 | inout loop variable | `inout`-переменная цикла | Range-over-func loop variable that receives `inout` access from the iterator |
 | `inout` access | `inout`-доступ | Temporary exclusive mutable access to a caller's value |
@@ -60,11 +60,11 @@ Terms used in the specification and their Russian equivalents. Use these terms i
 | logical copy | логическая копия | Copy required by value semantics, which the compiler may elide |
 | lowering | понижение | Translation of IR to architecture-specific form |
 | manifest | манифест | Application description constant (`app.Desc`) |
-| module | модуль | Project root, named in `kern.mod` |
+| module | модуль | Project root, named in `anlang.mod` |
 | novelty inventory | перечень новизны | Closed list of all differences from Go |
 | open reference | открытая ссылка | Part of an effect summary that stands for the effects of all implementations stored in data structures |
 | oracle | оракул | Independent implementation used as a reference in tests |
-| own effects | собственные эффекты | Effects charged to a function by attribution; checked by profiles and `kern.mod` |
+| own effects | собственные эффекты | Effects charged to a function by attribution; checked by profiles and `anlang.mod` |
 | ownership unit | единица владения | Peripheral instance or pin whose use is checked per execution context |
 | package | пакет | Directory of source files; unit of visibility, profile, effects and caching |
 | parametric reference | параметрическая ссылка | Part of an effect summary that stands for the effects of a parameter |
@@ -78,7 +78,7 @@ Terms used in the specification and their Russian equivalents. Use these terms i
 | proof obligation | обязательство доказательства | Condition the solver must prove |
 | range-over-func | range-over-func | `for … range f` over an iterator function, as in Go 1.23 |
 | reference program | эталонная программа | Program with known observable behavior on a target |
-| release build | выпускная сборка | Build by `kern build` without development options |
+| release build | выпускная сборка | Build by `anlang build` without development options |
 | renderer | рендер | Component that draws the UI tree: GPU, software or text |
 | requirement | требование | Entry in `REQUIREMENTS` linked to tests |
 | second-class reference | ссылка второго класса | Reference that cannot be stored or returned, such as `inout` access |
@@ -87,7 +87,7 @@ Terms used in the specification and their Russian equivalents. Use these terms i
 | side table (debug) | отдельная отладочная таблица | Debug information kept outside the binary image, used to resolve stack traces |
 | sink | приёмник | Function that accepts only validated data: SQL text, path, HTML, shell command |
 | solver | решатель | Built-in prover for contracts |
-| standard library | стандартная библиотека | Packages under `kern/`, shipped with the toolchain |
+| standard library | стандартная библиотека | Packages under `an/`, shipped with the toolchain |
 | static type switch | статический switch по типу | Type switch on a type-parameter value or `...any` element, resolved at compile time |
 | structured concurrency | структурированная конкурентность | Rule that a function returns only after all tasks it started have finished |
 | synchronization type | тип синхронизации | `chan T`, `sync.Mutex[T]`, `sync.RWMutex[T]`, `atomic.*` |

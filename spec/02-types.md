@@ -1,10 +1,10 @@
 # 2. Types
 
-This file specifies the Kern type system as a delta over the Go specification, sections "Types", "Properties of types and values", "The zero value" and "Conversions". The meaning of values at run time (copying, sharing, `inout`) is specified in [06-memory](06-memory.md).
+This file specifies the Anlang type system as a delta over the Go specification, sections "Types", "Properties of types and values", "The zero value" and "Conversions". The meaning of values at run time (copying, sharing, `inout`) is specified in [06-memory](06-memory.md).
 
 ## 2.1 Overview
 
-**type.go** — Every type of the Go specification is a Kern type with the same meaning, except as changed by this file.
+**type.go** — Every type of the Go specification is an Anlang type with the same meaning, except as changed by this file.
 
 The changes are:
 
@@ -38,9 +38,9 @@ The changes are:
 
 **type.float.target** — A target description declares floating-point support as `hard`, `soft` or `none` ([13-targets](13-targets.md)). With `soft`, operations on `f32` and `f64` are implemented in software with identical results. With `none`, a program that uses `f32` or `f64` in code reachable for that target MUST be rejected.
 
-**type.numeric.removed** — The Go predeclared types `int8`, `int16`, `int32`, `int64`, `uint8`, `uint16`, `uint32`, `uint64`, `uintptr`, `float32`, `float64`, `complex64`, `complex128`, `byte` and `rune` do not exist in Kern.
+**type.numeric.removed** — The Go predeclared types `int8`, `int16`, `int32`, `int64`, `uint8`, `uint16`, `uint32`, `uint64`, `uintptr`, `float32`, `float64`, `complex64`, `complex128`, `byte` and `rune` do not exist in Anlang.
 
-**Note** — `kern port` rewrites them: `byte` → `u8`, `rune` → `i32`, `float64` → `f64`, and so on.
+**Note** — `anlang port` rewrites them: `byte` → `u8`, `rune` → `i32`, `float64` → `f64`, and so on.
 
 **type.numeric.methods** — Predeclared types have no methods. Operations beyond the built-in operators are provided by generic functions of the standard library (`bits.WrappingAdd`, `bits.CheckedAdd`, `conv.Narrow`).
 
@@ -55,7 +55,7 @@ The changes are:
 **type.string.terminator-const** — A constant of type `string` or a constant of type `[]u8` (the result of compile-time evaluation, [10-compile-time](10-compile-time.md)) is assignable to `cstring` and to `dstring`. The terminator is appended at compile time. If the constant contains the terminator byte, the program MUST be rejected.
 
 ```go
-dos.Print(encoding.CP866("Hello from Kern!\r\n"))   // constant []u8; "$" appended at compile time
+dos.Print(encoding.CP866("Hello from Anlang!\r\n"))   // constant []u8; "$" appended at compile time
 ```
 
 **type.string.terminator-conv** — A non-constant `string` or `[]u8` value is converted to `cstring` or `dstring` only explicitly, with `cstring(x)` or `dstring(x)`. The conversion copies the bytes and appends the terminator. If the value contains the terminator byte, the conversion panics; the conversion therefore has the effects `Alloc` and `Panic` unless the absence of the terminator is proven ([07-effects](07-effects.md)).
@@ -187,7 +187,7 @@ if p, ok := n.parent.Get(); ok {
 
 **type.pointer.removed** — There are no pointer types. The type syntax `*T` is invalid, and the built-in function `new` does not exist.
 
-**Note** — Mutation of a caller's value uses `inout` ([03-declarations](03-declarations.md) §3.8, [06-memory](06-memory.md)); buffers are slices; foreign objects are `ffi.Handle`. Raw pointers exist only inside the package `kern/unsafe` ([06-memory](06-memory.md)).
+**Note** — Mutation of a caller's value uses `inout` ([03-declarations](03-declarations.md) §3.8, [06-memory](06-memory.md)); buffers are slices; foreign objects are `ffi.Handle`. Raw pointers exist only inside the package `an/unsafe` ([06-memory](06-memory.md)).
 
 **type.composite.go** — Array, slice, map, channel and function types are as in Go, with these changes:
 
@@ -229,8 +229,8 @@ A variable, field, result, element or non-variadic parameter of type `any` MUST 
 **type.handle.set** — The handle types are:
 
 - channel types `chan T`, `chan<- T`, `<-chan T`;
-- `sync.Mutex[T]` and `sync.RWMutex[T]` of package `kern/sync`;
-- the types of package `kern/atomic` (`atomic.U32` and the like).
+- `sync.Mutex[T]` and `sync.RWMutex[T]` of package `an/sync`;
+- the types of package `an/atomic` (`atomic.U32` and the like).
 
 **type.handle.copy** — A copy of a value of a handle type refers to the same object as the original. All other types have value semantics. The rules for sharing, placement and access are in [06-memory](06-memory.md) and [09-concurrency](09-concurrency.md).
 
@@ -287,7 +287,7 @@ A variable, field, result, element or non-variadic parameter of type `any` MUST 
 
 **type.zero.param-instantiation** — Instantiating a type parameter that requires a zero value with a type that has no zero value (**type.zero.none**) is a compile error. The diagnostic is reported at the instantiation site and MUST show the chain from the instantiation to the operation that uses the zero value.
 
-**type.zero.param-tools** — `kern doc` and `kern query` MUST show the inferred constraint of each type parameter ([20-toolchain](20-toolchain.md)).
+**type.zero.param-tools** — `anlang doc` and `anlang query` MUST show the inferred constraint of each type parameter ([20-toolchain](20-toolchain.md)).
 
 ```go
 func Find[T any](xs []T, pred func(T) bool) (T, bool) {
@@ -300,7 +300,7 @@ func Find[T any](xs []T, pred func(T) bool) (T, bool) {
     return zero, false
 }
 
-_, _ = Find(shapes, isBig)     // error: Shape has no zero value; Find uses the zero value of T at find.kn:7
+_, _ = Find(shapes, isBig)     // error: Shape has no zero value; Find uses the zero value of T at find.an:7
 ```
 
 **Note** — For enum types, the author controls this through the order of variants.
@@ -357,11 +357,11 @@ v, ok := conv.Narrow[u8](n)               // n not known to fit
 
 Some types of the standard library have operators. They are ordinary declared types for every other purpose; the compiler knows their operator semantics. This is not operator overloading: user-defined types cannot have operators.
 
-**type.known.wrap** — Package `kern/wrap` declares `wrap.U8`, `wrap.U16`, `wrap.U32`, `wrap.U64`, `wrap.I8`, `wrap.I16`, `wrap.I32`, `wrap.I64`. Each has the representation of the corresponding integer type. The operators `+`, `-`, `*`, `<<`, unary `-` and the bitwise operators compute modulo 2ⁿ and never panic. `/` and `%` are as for the corresponding integer type, including the panic on division by zero. Comparison operators are defined. Both operands of a binary operator MUST have the same `wrap` type, except shift counts, which follow Go.
+**type.known.wrap** — Package `an/wrap` declares `wrap.U8`, `wrap.U16`, `wrap.U32`, `wrap.U64`, `wrap.I8`, `wrap.I16`, `wrap.I32`, `wrap.I64`. Each has the representation of the corresponding integer type. The operators `+`, `-`, `*`, `<<`, unary `-` and the bitwise operators compute modulo 2ⁿ and never panic. `/` and `%` are as for the corresponding integer type, including the panic on division by zero. Comparison operators are defined. Both operands of a binary operator MUST have the same `wrap` type, except shift counts, which follow Go.
 
-**type.known.simd** — Package `kern/simd` declares vector types such as `simd.F32x4`, `simd.F64x2`, `simd.I32x4`, `simd.U8x16`. The arithmetic operators apply element-wise to two operands of the same vector type. Integer element arithmetic follows the rules of the element type (overflow checked) unless stated otherwise in [18-stdlib](18-stdlib.md). Scalars are converted to vectors explicitly (`simd.F32x4Splat(3)`).
+**type.known.simd** — Package `an/simd` declares vector types such as `simd.F32x4`, `simd.F64x2`, `simd.I32x4`, `simd.U8x16`. The arithmetic operators apply element-wise to two operands of the same vector type. Integer element arithmetic follows the rules of the element type (overflow checked) unless stated otherwise in [18-stdlib](18-stdlib.md). Scalars are converted to vectors explicitly (`simd.F32x4Splat(3)`).
 
-**type.known.fixed** — Package `kern/fixed` declares fixed-point types such as `fixed.Q16` (16.16) and `fixed.Q8` (8.8). The operators `+`, `-`, `*`, `/` and the comparison operators are defined for two operands of the same fixed type; overflow is checked as for integers.
+**type.known.fixed** — Package `an/fixed` declares fixed-point types such as `fixed.Q16` (16.16) and `fixed.Q8` (8.8). The operators `+`, `-`, `*`, `/` and the comparison operators are defined for two operands of the same fixed type; overflow is checked as for integers.
 
 **type.known.closed** — The set of library types with operators is exactly `wrap`, `simd` and `fixed` (**lex.novelty.closed**). `decimal` and other library types have methods only.
 

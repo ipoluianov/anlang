@@ -12,12 +12,12 @@ import (
 	"sort"
 	"strings"
 
-	"kern/arch/x86_64"
-	"kern/format"
-	"kern/link/elf"
-	"kern/modfile"
-	"kern/syntax"
-	"kern/types"
+	"an/arch/x86_64"
+	"an/format"
+	"an/link/elf"
+	"an/modfile"
+	"an/syntax"
+	"an/types"
 )
 
 // Target is a standard target (spec/13-targets.md, §13.13).
@@ -81,26 +81,26 @@ func HostTarget() string {
 	return runtime.GOOS + "-" + arch
 }
 
-// Project is a loaded project: its root directory and kern.mod.
+// Project is a loaded project: its root directory and anlang.mod.
 type Project struct {
 	Root string
 	Mod  *modfile.File
 }
 
-// ErrNoProject is returned when no kern.mod is found.
-var ErrNoProject = errors.New("no kern.mod found in this directory or any parent (tool.project.root)")
+// ErrNoProject is returned when no anlang.mod is found.
+var ErrNoProject = errors.New("no anlang.mod found in this directory or any parent (tool.project.root)")
 
 // Load finds the project that contains dir (tool.project.root) and parses
-// its kern.mod.
+// its anlang.mod.
 func Load(dir string) (*Project, []error) {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, []error{err}
 	}
 	for d := abs; ; d = filepath.Dir(d) {
-		data, err := os.ReadFile(filepath.Join(d, "kern.mod"))
+		data, err := os.ReadFile(filepath.Join(d, "anlang.mod"))
 		if err == nil {
-			mod, errs := modfile.Parse("kern.mod", data)
+			mod, errs := modfile.Parse("anlang.mod", data)
 			if len(errs) > 0 {
 				return nil, asErrors(errs)
 			}
@@ -145,7 +145,7 @@ func (p *Project) Build(target string) (string, []error) {
 		return "", []error{err}
 	}
 	if len(files) == 0 {
-		return "", []error{fmt.Errorf("%s: no Kern source files for target %s", p.Root, target)}
+		return "", []error{fmt.Errorf("%s: no Anlang source files for target %s", p.Root, target)}
 	}
 
 	var parsed []*syntax.File
@@ -200,11 +200,11 @@ func SelectFiles(dir string, t Target) ([]string, error) {
 	var names []string
 	for _, e := range entries {
 		name := e.Name()
-		if e.IsDir() || !strings.HasSuffix(name, ".kn") ||
+		if e.IsDir() || !strings.HasSuffix(name, ".an") ||
 			strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_") {
 			continue
 		}
-		base := strings.TrimSuffix(name, ".kn")
+		base := strings.TrimSuffix(name, ".an")
 		if strings.HasSuffix(base, "_test") {
 			continue
 		}
@@ -249,7 +249,7 @@ func asErrors(errs []*syntax.Error) []error {
 }
 
 // SourceFiles returns the paths, relative to the project root, of all
-// Kern source files of the project: every .kn file in the root and its
+// Anlang source files of the project: every .an file in the root and its
 // subdirectories, except in out/, testdata/ and directories whose names
 // begin with "." or "_".
 func (p *Project) SourceFiles() ([]string, error) {
@@ -265,7 +265,7 @@ func (p *Project) SourceFiles() ([]string, error) {
 			}
 			return nil
 		}
-		if strings.HasSuffix(name, ".kn") && !strings.HasPrefix(name, ".") && !strings.HasPrefix(name, "_") {
+		if strings.HasSuffix(name, ".an") && !strings.HasPrefix(name, ".") && !strings.HasPrefix(name, "_") {
 			rel, err := filepath.Rel(p.Root, path)
 			if err != nil {
 				return err

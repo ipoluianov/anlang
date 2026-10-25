@@ -10,15 +10,15 @@ Effects never appear in function signatures. Programs constrain effects only at 
 
 **eff.model.identity** — Two effects are the same if and only if they are declared by the same declaration: a base effect (§7.2), an effect declared with `effect.Declare` (§7.7), or a peripheral instance effect (§7.8).
 
-**eff.model.names** — In Kern source, effects are values of type `effect.Effect` from package `kern/effect`. Base effects are exported constants of that package (`effect.Alloc`, `effect.Network`). In `kern.mod`, in diagnostics and in tool output, an effect is written by its bare name (`Alloc`, `SQL`, `TIM2`); if two effects in a program share a bare name, the tools qualify it with the declaring package path.
+**eff.model.names** — In Anlang source, effects are values of type `effect.Effect` from package `an/effect`. Base effects are exported constants of that package (`effect.Alloc`, `effect.Network`). In `anlang.mod`, in diagnostics and in tool output, an effect is written by its bare name (`Alloc`, `SQL`, `TIM2`); if two effects in a program share a bare name, the tools qualify it with the declaring package path.
 
 **eff.model.foreign** — The effect `Foreign` means "may perform any action". For every constraint check (§7.6) a set that contains `Foreign` is treated as containing every effect.
 
-**Note** — `kern.md` writes base effects without a qualifier (`effect.Without(Alloc, Panic)`, `ffi.Effects{File}`). Inside Kern source the qualified form is canonical (**eff.model.names**).
+**Note** — `anlang.md` writes base effects without a qualifier (`effect.Without(Alloc, Panic)`, `ffi.Effects{File}`). Inside Anlang source the qualified form is canonical (**eff.model.names**).
 
 ## 7.2 Base effects
 
-**eff.base.set** — Package `kern/effect` declares the following base effects:
+**eff.base.set** — Package `an/effect` declares the following base effects:
 
 | Group | Effects | Meaning |
 | --- | --- | --- |
@@ -38,12 +38,12 @@ Effects never appear in function signatures. Programs constrain effects only at 
 
 | Effect | Declared by | Specified in |
 | --- | --- | --- |
-| `Detach` | `kern/task` | [09-concurrency](09-concurrency.md) |
-| `ExposeSecret` | `kern/secret` | [11-data-safety](11-data-safety.md) |
-| `SQL` | `kern/sql` | [18-stdlib](18-stdlib.md) |
-| `Privileged` | architecture packages `kern/arch/...` | [15-os](15-os.md) |
-| `GPU` | `kern/gpu` | [16-gpu](16-gpu.md) |
-| `ReadInput`, `WriteOutput` | `kern/gen` | [10-compile-time](10-compile-time.md) |
+| `Detach` | `an/task` | [09-concurrency](09-concurrency.md) |
+| `ExposeSecret` | `an/secret` | [11-data-safety](11-data-safety.md) |
+| `SQL` | `an/sql` | [18-stdlib](18-stdlib.md) |
+| `Privileged` | architecture packages `an/arch/...` | [15-os](15-os.md) |
+| `GPU` | `an/gpu` | [16-gpu](16-gpu.md) |
+| `ReadInput`, `WriteOutput` | `an/gen` | [10-compile-time](10-compile-time.md) |
 | `Camera`, `Location`, `Notifications`, `Contacts`, `Photos`, `Bluetooth`, `Background` | device packages of the `ui` profile | [17-ui](17-ui.md) |
 
 ## 7.3 Sources of effects
@@ -64,7 +64,7 @@ An effect enters a program only at a *source*. Every other function obtains effe
 
 **eff.source.asm** — An `asm` block has the effects declared for the instructions it contains by the architecture description ([13-targets](13-targets.md)).
 
-**eff.source.instruction** — A call of a function of an architecture instruction package (`kern/arch/...`) has the effects that the architecture description declares for that instruction.
+**eff.source.instruction** — A call of a function of an architecture instruction package (`an/arch/...`) has the effects that the architecture description declares for that instruction.
 
 **eff.source.external** — An external function ([12-ffi](12-ffi.md)) has exactly the effects listed in its `ffi.Effects` argument. If no `ffi.Effects` argument is given, it has the effect `Foreign`. The compiler cannot verify declared effects of external functions; tools MUST report them as unverified ([20-toolchain](20-toolchain.md)).
 
@@ -133,7 +133,7 @@ Constraints are written only at boundaries. Each constraint is a set of effects 
 | Boundary | Constrained set | Kind | Rule |
 | --- | --- | --- | --- |
 | Package profile | own effects of every function of the package | attribution | **eff.profile.allowed** |
-| `kern.mod` `effects` | own effects of every function of the matching packages | attribution | **eff.mod.deny** |
+| `anlang.mod` `effects` | own effects of every function of the matching packages | attribution | **eff.mod.deny** |
 | `ensures effect.Without(...)` | execution effects of each call of the function | execution | **eff.without.check** |
 | `interrupt`, `trap` | execution effects of the handler | execution | **eff.handler.implicit** |
 | Target `Provides`, `Lacks` | execution effects of the program | execution | **eff.target.check** |
@@ -144,7 +144,7 @@ Constraints are written only at boundaries. Each constraint is a set of effects 
 
 ### 7.6.1 `ensures effect.Without`
 
-**eff.without.form** — `effect.Without(e1, …, en)` is a compiler-known function of package `kern/effect`. It MAY appear only as the whole expression of an `ensures` clause ([08-contracts](08-contracts.md), **contract.constraint.forms**). Its arguments MUST be constant expressions of type `effect.Effect`.
+**eff.without.form** — `effect.Without(e1, …, en)` is a compiler-known function of package `an/effect`. It MAY appear only as the whole expression of an `ensures` clause ([08-contracts](08-contracts.md), **contract.constraint.forms**). Its arguments MUST be constant expressions of type `effect.Effect`.
 
 **eff.without.check** — For a function `f` with `ensures effect.Without(E)`:
 
@@ -166,7 +166,7 @@ Constraints are written only at boundaries. Each constraint is a set of effects 
 ```go
 package sql
 
-import "kern/effect"
+import "an/effect"
 
 const SQL = effect.Declare("SQL")
 
@@ -186,7 +186,7 @@ A function MAY return a description of work that the runtime performs later, suc
 
 **eff.deferred.declare** — `effect.Defer(e1, …, en)` is a compiler-known function whose arguments MUST be constants of type `effect.Effect`. It adds `e1, …, en` to the deferred effects of the function whose body contains the call. It has no run-time behavior and does not add concrete effects.
 
-**eff.deferred.attribution** — Deferred effects of a callee are charged to the caller like own effects (**eff.attr.own**): profiles and `kern.mod` rules see them. They are not execution effects of the caller: `effect.Without` and handler constraints do not see them.
+**eff.deferred.attribution** — Deferred effects of a callee are charged to the caller like own effects (**eff.attr.own**): profiles and `anlang.mod` rules see them. They are not execution effects of the caller: `effect.Without` and handler constraints do not see them.
 
 **eff.deferred.program** — The deferred effects of every function reachable in the program are part of the program's effect set. They are checked against the target (§7.6.3) and used to derive permissions ([17-ui](17-ui.md)).
 
@@ -207,10 +207,10 @@ A profile is a named set of effect constraints and language restrictions declare
 | Profile | Forbidden effects | Additional restrictions |
 | --- | --- | --- |
 | `core` | `Alloc`, `Detach` | — |
-| `app` | `Interrupts`, `Privileged`, hardware effects (class and instance effects of **eff.base.set** group Hardware) | MUST NOT import `kern/unsafe`; MUST NOT contain `asm`, `interrupt` or `trap` declarations |
+| `app` | `Interrupts`, `Privileged`, hardware effects (class and instance effects of **eff.base.set** group Hardware) | MUST NOT import `an/unsafe`; MUST NOT contain `asm`, `interrupt` or `trap` declarations |
 | `ui` | same as `app` | same as `app` |
 
-**eff.profile.privileged** — `Privileged` is closed by default in every profile: a function of a package with own effect `Privileged` is rejected unless `kern.mod` allows it for that package (**eff.mod.allow**).
+**eff.profile.privileged** — `Privileged` is closed by default in every profile: a function of a package with own effect `Privileged` is rejected unless `anlang.mod` allows it for that package (**eff.mod.allow**).
 
 **eff.profile.import** — The profiles of a package P and of a package Q that P imports MUST satisfy: for every profile p declared by P, Q declares some profile q with q ⊑ p. A stricter package is usable from a less strict one; the reverse is rejected.
 
@@ -228,9 +228,9 @@ profile core, app, ui
 
 **eff.profile.ui** — The additional rules of the `ui` profile (structure of `Update` and `View`, accessibility in types, rendering) are specified in [17-ui](17-ui.md).
 
-## 7.10 Effect constraints in `kern.mod`
+## 7.10 Effect constraints in `anlang.mod`
 
-**eff.mod.syntax** — The `effects` block of `kern.mod` contains entries `<pattern> deny {<effects>}` and `<pattern> allow {<effects>}`. The full grammar of `kern.mod` is in [20-toolchain](20-toolchain.md).
+**eff.mod.syntax** — The `effects` block of `anlang.mod` contains entries `<pattern> deny {<effects>}` and `<pattern> allow {<effects>}`. The full grammar of `anlang.mod` is in [20-toolchain](20-toolchain.md).
 
 **eff.mod.pattern** — A pattern is a package path relative to the module root. A pattern `path` matches the package `path`; a pattern `path/...` matches `path` and every package below it; the pattern `...` matches every package of the project.
 
@@ -249,6 +249,6 @@ effects (
 
 ## 7.11 Visibility of effects
 
-**eff.report.tools** — The implementation MUST make the effect summary of every function available through `kern doc`, `kern query` and the environment protocol ([20-toolchain](20-toolchain.md), [21-protocol](21-protocol.md)), including for each effect the call chain to its source.
+**eff.report.tools** — The implementation MUST make the effect summary of every function available through `anlang doc`, `anlang query` and the environment protocol ([20-toolchain](20-toolchain.md), [21-protocol](21-protocol.md)), including for each effect the call chain to its source.
 
-**eff.report.diff** — `kern diff` MUST report effects that one version of a function has and the other does not ([20-toolchain](20-toolchain.md)).
+**eff.report.diff** — `anlang diff` MUST report effects that one version of a function has and the other does not ([20-toolchain](20-toolchain.md)).

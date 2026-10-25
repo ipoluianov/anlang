@@ -1,16 +1,16 @@
 # 1. Lexical Structure
 
-This file specifies source text, tokens, keywords, contextual words and literals, and the closed lists of differences between Kern and Go. Everything not stated here is as in the Go specification, sections "Source code representation" and "Lexical elements".
+This file specifies source text, tokens, keywords, contextual words and literals, and the closed lists of differences between Anlang and Go. Everything not stated here is as in the Go specification, sections "Source code representation" and "Lexical elements".
 
 ## 1.1 Source text
 
 **lex.source.utf8** — A source file MUST be Unicode text encoded in UTF-8, as in Go.
 
-**lex.source.extension** — Kern source files have the extension `.kn`. Files with other extensions in a package directory are not source files.
+**lex.source.extension** — Anlang source files have the extension `.an`. Files with other extensions in a package directory are not source files.
 
-**lex.source.canonical** — A source file MUST be in canonical form: the byte sequence that `kern fmt` produces for it. An implementation MUST report a non-canonical file as an error in `kern build` and `kern check`, and MUST provide `kern fmt` that rewrites any syntactically valid file into canonical form. Canonical formatting is idempotent: formatting a canonical file returns it unchanged.
+**lex.source.canonical** — A source file MUST be in canonical form: the byte sequence that `anlang fmt` produces for it. An implementation MUST report a non-canonical file as an error in `anlang build` and `anlang check`, and MUST provide `anlang fmt` that rewrites any syntactically valid file into canonical form. Canonical formatting is idempotent: formatting a canonical file returns it unchanged.
 
-**Note** — The canonical form follows `gofmt`. Its exact rules are defined by the reference implementation of `kern fmt` and its tests (see [20-toolchain](20-toolchain.md)).
+**Note** — The canonical form follows `gofmt`. Its exact rules are defined by the reference implementation of `anlang fmt` and its tests (see [20-toolchain](20-toolchain.md)).
 
 ## 1.2 Tokens, comments and semicolons
 
@@ -46,7 +46,7 @@ The first 25 are the keywords of Go. The last three are new:
 | `inout` | mutable parameter, receiver or iteration variable without pointers | [03-declarations](03-declarations.md) §3.8, [06-memory](06-memory.md) |
 | `profile` | profile clause of a source file | [03-declarations](03-declarations.md) §3.3 |
 
-**Note** — Go code that uses `enum`, `inout` or `profile` as identifiers is renamed by `kern port`.
+**Note** — Go code that uses `enum`, `inout` or `profile` as identifiers is renamed by `anlang port`.
 
 ## 1.5 Contextual words
 
@@ -88,9 +88,9 @@ A contextual word has special meaning only in the positions listed below. In tho
 
 ## 1.8 Novelty inventory
 
-The novelty inventory is the closed list of everything Kern adds to Go. Adding an entry is a design decision of the same weight as adding a keyword and MUST be made by changing this table.
+The novelty inventory is the closed list of everything Anlang adds to Go. Adding an entry is a design decision of the same weight as adding a keyword and MUST be made by changing this table.
 
-**lex.novelty.closed** — A Kern feature that is not an entry of the table below, and not a removal or restriction of §1.9, is not part of the language.
+**lex.novelty.closed** — An Anlang feature that is not an entry of the table below, and not a removal or restriction of §1.9, is not part of the language.
 
 | Kind | Entries |
 | --- | --- |
@@ -115,7 +115,7 @@ The following Go features are removed or restricted. Each is specified in the fi
 | zero values | absent for some types | [02-types](02-types.md) §2.12 |
 | `init` functions and import side effects | removed | [03-declarations](03-declarations.md) §3.7 |
 | blank and dot imports | removed | [03-declarations](03-declarations.md) §3.2 |
-| import paths | only `kern/...` and `<module>/...` | [03-declarations](03-declarations.md) §3.2 |
+| import paths | only `an/...` and `<module>/...` | [03-declarations](03-declarations.md) §3.2 |
 | package-level variables | only synchronization types and hardware mappings | [03-declarations](03-declarations.md) §3.6 |
 | build constraints in comments | removed | §1.2 |
 | integer overflow | error instead of wraparound | [04-expressions](04-expressions.md) |

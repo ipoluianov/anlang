@@ -1,12 +1,12 @@
 # 21. Environment Protocol
 
-All capabilities of `kern` are available through one machine-readable protocol. AI tools and editors use it instead of parsing text output.
+All capabilities of `anlang` are available through one machine-readable protocol. AI tools and editors use it instead of parsing text output.
 
 ## 21.1 Transport
 
-**proto.transport** — The protocol MUST be JSON-RPC 2.0 over the standard input and output of the `kern` process, with the base protocol framing of the Language Server Protocol: each message is preceded by a `Content-Length` header and an empty line.
+**proto.transport** — The protocol MUST be JSON-RPC 2.0 over the standard input and output of the `anlang` process, with the base protocol framing of the Language Server Protocol: each message is preceded by a `Content-Length` header and an empty line.
 
-**proto.servers** — `kern serve` MUST implement the environment protocol (21.3–21.5). `kern lsp` MUST implement the Language Server Protocol (21.6). Both MUST operate on the project that contains the working directory of the process (see [20-toolchain](20-toolchain.md), **tool.project.root**).
+**proto.servers** — `anlang serve` MUST implement the environment protocol (21.3–21.5). `anlang lsp` MUST implement the Language Server Protocol (21.6). Both MUST operate on the project that contains the working directory of the process (see [20-toolchain](20-toolchain.md), **tool.project.root**).
 
 **proto.cancel** — Both servers MUST support the `$/cancelRequest` notification. A cancelled request MUST return the JSON-RPC error `RequestCancelled` (code -32800).
 
@@ -54,23 +54,23 @@ interface Diagnostic {
 }
 ```
 
-**proto.diag.shape** — Every diagnostic produced by `kern` MUST have the shape `Diagnostic`. The `rule` field MUST be the identifier of the violated rule in this specification.
+**proto.diag.shape** — Every diagnostic produced by `anlang` MUST have the shape `Diagnostic`. The `rule` field MUST be the identifier of the violated rule in this specification.
 
 **proto.diag.chain** — A diagnostic about an effect that is not allowed MUST carry in `chain` the call chain from the boundary to the source of the effect (for example, `TIM2 → buffer.Push → grow → Alloc`, see [07-effects](07-effects.md)).
 
 **proto.diag.fix** — Applying all edits of any one fix of a diagnostic MUST remove that diagnostic and MUST NOT introduce a new diagnostic of severity `error`.
 
-**proto.paths** — File paths in the protocol MUST be relative to the project root and use `/` as separator. Standard library files MUST be referred to with the prefix `kern/` followed by the package path and the file name.
+**proto.paths** — File paths in the protocol MUST be relative to the project root and use `/` as separator. Standard library files MUST be referred to with the prefix `an/` followed by the package path and the file name.
 
 ## 21.3 Session
 
-**proto.initialize** — The first request of a session MUST be `initialize`. Its result MUST give the `kern` version, the project's edition and the version of the protocol schema:
+**proto.initialize** — The first request of a session MUST be `initialize`. Its result MUST give the `anlang` version, the project's edition and the version of the protocol schema:
 
 ```typescript
 // request: initialize, params: {}
 interface InitializeResult {
-    kernVersion: string;
-    edition: string;         // from kern.mod
+    anlangVersion: string;
+    edition: string;         // from anlang.mod
     schemaVersion: string;
 }
 ```
@@ -79,7 +79,7 @@ interface InitializeResult {
 
 ## 21.4 Operations
 
-**proto.ops** — `kern serve` MUST provide the following methods.
+**proto.ops** — `anlang serve` MUST provide the following methods.
 
 | Method | Purpose |
 | --- | --- |
@@ -101,7 +101,7 @@ interface CheckParams { targets?: string[]; packages?: string[] }
 interface CheckResult { diagnostics: Diagnostic[] }
 ```
 
-**proto.op.check** — `check` MUST perform the checks of `kern check` (see [20-toolchain](20-toolchain.md), **tool.cmd.check**) on the current state of the project files and return all diagnostics, sorted by file, then position, then rule identifier.
+**proto.op.check** — `check` MUST perform the checks of `anlang check` (see [20-toolchain](20-toolchain.md), **tool.cmd.check**) on the current state of the project files and return all diagnostics, sorted by file, then position, then rule identifier.
 
 ### 21.4.2 query
 
@@ -158,7 +158,7 @@ interface TestResult {
 }
 ```
 
-**proto.op.test** — `test` MUST behave as `kern test` with the same selection (see [20-toolchain](20-toolchain.md), 20.9) and return per-test results sorted by package and name.
+**proto.op.test** — `test` MUST behave as `anlang test` with the same selection (see [20-toolchain](20-toolchain.md), 20.9) and return per-test results sorted by package and name.
 
 ### 21.4.5 run
 
@@ -220,24 +220,24 @@ interface RequirementsResult {
 
 ## 21.5 Determinism and stability
 
-**proto.determinism** — For the same project files, the same `kern` version and the same request, the result MUST be byte-identical. Arrays in results MUST be sorted as stated for each operation, or by location when no order is stated. Results MUST NOT contain timestamps or durations.
+**proto.determinism** — For the same project files, the same `anlang` version and the same request, the result MUST be byte-identical. Arrays in results MUST be sorted as stated for each operation, or by location when no order is stated. Results MUST NOT contain timestamps or durations.
 
 **proto.determinism.run** — **proto.determinism** applies to `run`, `test` and `debug/*` when the program runs in an emulator or under the deterministic scheduler. When the program runs on the host or on a device, outputs that depend on the environment are reported as observed.
 
 **proto.stability** — Within an edition, the same violation MUST be reported with the same rule identifier. Rule identifiers are never reused for a different meaning (see [README](README.md)).
 
-**proto.schema** — The JSON Schema of every request, result and notification of `kern serve`, and of the `-json` output of every command, MUST be published with the specification and versioned with the edition. `initialize` reports its version.
+**proto.schema** — The JSON Schema of every request, result and notification of `anlang serve`, and of the `-json` output of every command, MUST be published with the specification and versioned with the edition. `initialize` reports its version.
 
 ## 21.6 Language Server Protocol
 
-**proto.lsp.version** — `kern lsp` MUST implement the Language Server Protocol, version 3.17.
+**proto.lsp.version** — `anlang lsp` MUST implement the Language Server Protocol, version 3.17.
 
-**proto.lsp.features** — `kern lsp` MUST provide at least:
+**proto.lsp.features** — `anlang lsp` MUST provide at least:
 
 - diagnostics, with `code` set to the rule identifier;
 - code actions of kind `quickfix` for every fix of a diagnostic;
 - go to definition;
 - hover that shows the signature, the inferred effects (including parametric references) and the contracts of a function;
-- formatting, with the result of `kern fmt`.
+- formatting, with the result of `anlang fmt`.
 
-**proto.lsp.encoding** — `kern lsp` MUST support the UTF-16 position encoding and SHOULD offer UTF-8 when the client supports it.
+**proto.lsp.encoding** — `anlang lsp` MUST support the UTF-16 position encoding and SHOULD offer UTF-8 when the client supports it.

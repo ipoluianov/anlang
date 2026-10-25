@@ -11,7 +11,7 @@ SQL injection, cross-site scripting, path traversal and passwords in logs become
 
 ## 11.1 The wrapper types
 
-**safe.types.predeclared** — `Secret` and `Untrusted` are generic types predeclared in the universe block, like `Option`. Their operations are provided by packages `kern/secret` and `kern/untrusted`.
+**safe.types.predeclared** — `Secret` and `Untrusted` are generic types predeclared in the universe block, like `Option`. Their operations are provided by packages `an/secret` and `an/untrusted`.
 
 **safe.types.zero** — The zero value of `Secret[T]` and of `Untrusted[T]` wraps the zero value of `T` (see [02-types](02-types.md)).
 
@@ -70,7 +70,7 @@ func Login(user string, pass Secret[string]) (Session, error) {
 
 ### 11.2.5 Exposing secrets
 
-**safe.secret.expose** — `secret.Expose(s Secret[T]) T` returns the contents. Every call of `secret.Expose` has effect `ExposeSecret`, which propagates like any other effect (see [07-effects](07-effects.md)). `ExposeSecret` is a custom effect declared with `effect.Declare` in package `kern/secret`.
+**safe.secret.expose** — `secret.Expose(s Secret[T]) T` returns the contents. Every call of `secret.Expose` has effect `ExposeSecret`, which propagates like any other effect (see [07-effects](07-effects.md)). `ExposeSecret` is a custom effect declared with `effect.Declare` in package `an/secret`.
 
 **safe.secret.sinks** — Because of **safe.types.distinct**, a `Secret[T]` cannot reach network, file, UI or external-function parameters of type `T`. A standard library function that accepts `...any` and writes to such a sink MUST reject `Secret[T]` arguments at compile time with `meta.Reject` (**ct.reject.call**), except formatting functions, which print `***` by **safe.secret.print**.
 
@@ -105,7 +105,7 @@ A *validator* turns an `Untrusted[T]` into a meaningful type or an error.
 
 **safe.untrusted.validator** — The standard library provides validators for common types, for example `validate.Email(u Untrusted[string]) (Email, error)` and `fs.SafePath(root Path, u Untrusted[string]) (Path, error)`.
 
-**safe.untrusted.accept** — `untrusted.Accept(u Untrusted[T]) T` returns the contents without checking. It is the only way to write a new validator. Its calls are found by searching for `untrusted.Accept` and are listed by `kern query`.
+**safe.untrusted.accept** — `untrusted.Accept(u Untrusted[T]) T` returns the contents without checking. It is the only way to write a new validator. Its calls are found by searching for `untrusted.Accept` and are listed by `anlang query`.
 
 ```go
 func ParseAge(u Untrusted[string]) (Age, error) {
@@ -160,10 +160,10 @@ The constraint `ensures secret.ConstantTime()` is written like any function cons
 
 **safe.ct.instructions** *(future stage)* — Operations whose execution time on the target depends on operand values (for example division on some processors) will be rejected for secret-dependent operands, using the timing model of the architecture description (see [13-targets](13-targets.md)).
 
-## 11.5 Packages `kern/log` and `kern/html`
+## 11.5 Packages `an/log` and `an/html`
 
 This file owns the data-safety behavior of the logging and HTML packages; [18-stdlib](18-stdlib.md) lists their profiles.
 
-**safe.pkg.log** — `kern/log` MUST format its arguments by the rules of `kern/fmt`, including **safe.secret.print**. In `core` it MUST NOT allocate (**std.core.no-hidden-alloc**).
+**safe.pkg.log** — `an/log` MUST format its arguments by the rules of `an/fmt`, including **safe.secret.print**. In `core` it MUST NOT allocate (**std.core.no-hidden-alloc**).
 
-**safe.pkg.html** — `kern/html` MUST render by **safe.untrusted.html**. `html.Trusted` is its type for markup that is inserted without escaping.
+**safe.pkg.html** — `an/html` MUST render by **safe.untrusted.html**. `html.Trusted` is its type for markup that is inserted without escaping.

@@ -1,4 +1,4 @@
-// Package modfile parses kern.mod (spec/20-toolchain.md, §20.3).
+// Package modfile parses anlang.mod (spec/20-toolchain.md, §20.3).
 package modfile
 
 import (
@@ -6,10 +6,10 @@ import (
 	"regexp"
 	"strings"
 
-	"kern/syntax"
+	"an/syntax"
 )
 
-// File is a parsed kern.mod.
+// File is a parsed anlang.mod.
 type File struct {
 	Module  string   // module name
 	Edition string   // language edition, for example "1.0"
@@ -20,18 +20,18 @@ var (
 	moduleName = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)  // decl.import.module
 	edition    = regexp.MustCompile(`^[0-9]+\.[0-9]+$`)   // Edition
 	targetName = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`) // TargetName
-	directive  = regexp.MustCompile(`^(module|kern|targets|effects|generate)\b`)
+	directive  = regexp.MustCompile(`^(module|anlang|targets|effects|generate)\b`)
 )
 
 // onceRule names the rule that allows a directive at most once.
 var onceRule = map[string]string{
 	"module":  "tool.mod.module",
-	"kern":    "tool.mod.edition",
+	"anlang":  "tool.mod.edition",
 	"targets": "tool.mod.targets",
 	"effects": "tool.mod.effects",
 }
 
-// Parse parses the contents of a kern.mod file. The name is used in
+// Parse parses the contents of an anlang.mod file. The name is used in
 // error positions.
 func Parse(name string, data []byte) (*File, []*syntax.Error) {
 	f := &File{}
@@ -72,11 +72,11 @@ func Parse(name string, data []byte) (*File, []*syntax.Error) {
 		case "module":
 			if !moduleName.MatchString(arg) {
 				errorf(line, "decl.import.module", "invalid module name %q: must match [a-z][a-z0-9_]*", arg)
-			} else if arg == "kern" {
-				errorf(line, "decl.import.module", "module name kern is reserved for the standard library")
+			} else if arg == "an" {
+				errorf(line, "decl.import.module", "module name an is reserved for the standard library")
 			}
 			f.Module = arg
-		case "kern":
+		case "anlang":
 			if !edition.MatchString(arg) {
 				errorf(line, "tool.mod.edition", "invalid edition %q: want <major>.<minor>", arg)
 			}
@@ -96,10 +96,10 @@ func Parse(name string, data []byte) (*File, []*syntax.Error) {
 	}
 
 	if _, ok := seen["module"]; !ok {
-		errorf(1, "tool.mod.module", "kern.mod has no module directive")
+		errorf(1, "tool.mod.module", "anlang.mod has no module directive")
 	}
-	if _, ok := seen["kern"]; !ok {
-		errorf(1, "tool.mod.edition", "kern.mod has no kern directive")
+	if _, ok := seen["anlang"]; !ok {
+		errorf(1, "tool.mod.edition", "anlang.mod has no anlang directive")
 	}
 	return f, errs
 }

@@ -2,7 +2,7 @@
 
 Area: `ffi`.
 
-Kern calls external code in the style of Go's purego: no C compiler, no header parsing, no binding generators. An external function is declared with an ordinary Kern signature and bound to a symbol taken from a dynamic library at program start, from an object file at build time, or from a fixed address. The toolchain remains the single `kern` executable, and cross-compilation needs no other tools.
+Anlang calls external code in the style of Go's purego: no C compiler, no header parsing, no binding generators. An external function is declared with an ordinary Anlang signature and bound to a symbol taken from a dynamic library at program start, from an object file at build time, or from a fixed address. The toolchain remains the single `anlang` executable, and cross-compilation needs no other tools.
 
 ## 12.1 External function declarations
 
@@ -21,14 +21,14 @@ The declaration form `func` *FunctionName* *Signature* `=` *Expression* — a fu
 
 **ffi.decl.no-generics** — An external function MUST NOT have type parameters, MUST NOT be a method and MUST NOT have a variadic parameter.
 
-**ffi.decl.package-local** — An external function MAY be called, and used as a function value, only inside the package that declares it. A call from another package is a compile error regardless of the function name. The package exposes ordinary Kern wrappers instead.
+**ffi.decl.package-local** — An external function MAY be called, and used as a function value, only inside the package that declares it. A call from another package is a compile error regardless of the function name. The package exposes ordinary Anlang wrappers instead.
 
-**ffi.decl.variadic-c** — A C function with a variable number of arguments is declared once for each argument list the program uses, each declaration with its own Kern name and fixed signature.
+**ffi.decl.variadic-c** — A C function with a variable number of arguments is declared once for each argument list the program uses, each declaration with its own Anlang name and fixed signature.
 
 ```go
 package sqlite
 
-import "kern/ffi"
+import "an/ffi"
 
 const lib = ffi.Library{
     Linux:   "libsqlite3.so.0",
@@ -47,9 +47,9 @@ func sqlite3_close(db ffi.Handle) i32                    = lib.Symbol("sqlite3_c
 
 **ffi.effects.foreign** — If the binding has no `ffi.Effects` argument, the function has the single effect `Foreign`.
 
-**ffi.effects.foreign-deny** — `Foreign` means "may do anything". A boundary that denies any effect — a profile, a target, a `kern.mod` constraint, `effect.Without(...)`, an `interrupt` or `trap` handler — also rejects `Foreign` (see [07-effects](07-effects.md)).
+**ffi.effects.foreign-deny** — `Foreign` means "may do anything". A boundary that denies any effect — a profile, a target, a `anlang.mod` constraint, `effect.Without(...)`, an `interrupt` or `trap` handler — also rejects `Foreign` (see [07-effects](07-effects.md)).
 
-**ffi.effects.unverified** — Implementations MUST mark declared effects of external functions as unverified in effect reports, in `kern query` answers and in `kern diff` output, and MUST report changes to them separately from inferred effects (see [20-toolchain](20-toolchain.md)).
+**ffi.effects.unverified** — Implementations MUST mark declared effects of external functions as unverified in effect reports, in `anlang query` answers and in `anlang diff` output, and MUST report changes to them separately from inferred effects (see [20-toolchain](20-toolchain.md)).
 
 **ffi.effects.callback** — When an `ffi.Callback(f)` value is passed to an external function, the effects of `f` are added to the effects of that call and attributed to the caller, as for any function passed as an argument (see [07-effects](07-effects.md)).
 
@@ -71,7 +71,7 @@ func sqlite3_close(db ffi.Handle) i32                    = lib.Symbol("sqlite3_c
 
 **ffi.static.availability** — `ffi.Static` bindings are available on all targets, including DOS, microcontrollers and kernels. If a function bound to an `ffi.Static` descriptor is reachable in a build for an architecture whose field is empty, the build fails.
 
-**ffi.static.formats** — The `kern` toolchain MUST include a linker for relocatable object files and archives in ELF, Mach-O and COFF formats. No C compiler or external linker is used.
+**ffi.static.formats** — The `anlang` toolchain MUST include a linker for relocatable object files and archives in ELF, Mach-O and COFF formats. No C compiler or external linker is used.
 
 **ffi.static.abi-check** — The toolchain MUST check at build time that each object file matches the architecture and C ABI of the target (machine type, word size, endianness, floating-point ABI). A mismatch is a build error.
 
@@ -102,7 +102,7 @@ func sqlite3_close(db ffi.Handle) i32                    = lib.Symbol("sqlite3_c
 
 ## 12.4 Calling convention
 
-**ffi.abi.c** — External functions and callbacks use the C ABI of the target, taken from the architecture and platform descriptions (see [13-targets](13-targets.md)). The internal Kern ABI MAY differ.
+**ffi.abi.c** — External functions and callbacks use the C ABI of the target, taken from the architecture and platform descriptions (see [13-targets](13-targets.md)). The internal Anlang ABI MAY differ.
 
 **ffi.abi.blocking** — A call to an external function may block. The scheduler's treatment of long blocking calls is defined in [09-concurrency](09-concurrency.md).
 
@@ -110,7 +110,7 @@ func sqlite3_close(db ffi.Handle) i32                    = lib.Symbol("sqlite3_c
 
 **ffi.types.params** — A parameter of an external function MUST have one of the following types:
 
-| Kern type | External side |
+| Anlang type | External side |
 | --- | --- |
 | `i8` … `i64`, `u8` … `u64`, `int`, `uint`, `usize` | integer type of the same width and signedness |
 | `f32`, `f64` | `float`, `double` |
@@ -149,7 +149,7 @@ func sqlite3_close(db ffi.Handle) i32                    = lib.Symbol("sqlite3_c
 
 **ffi.callback.lifetime** — A callback stays valid until the program exits. The number of callbacks that can be created is limited by an implementation-defined constant of at least 1024; creating more panics.
 
-**ffi.callback.context** — When external code calls a callback from a thread that the Kern runtime did not create, the runtime MUST run the callback as a task with `Normal` priority and return its result to the caller.
+**ffi.callback.context** — When external code calls a callback from a thread that the Anlang runtime did not create, the runtime MUST run the callback as a task with `Normal` priority and return its result to the caller.
 
 ```go
 type DB struct {
@@ -168,12 +168,12 @@ func Open(path string) (DB, error) {
 
 ## 12.6 Not supported
 
-**ffi.unsupported** — The following are not part of Kern:
+**ffi.unsupported** — The following are not part of Anlang:
 
 - parsing C headers — declarations are written by hand, usually by an AI from the library's documentation;
-- C macros and `inline` functions — their logic is rewritten in Kern;
-- compiling C source — the project contains only Kern code and ready object files;
-- exporting Kern code as a C library — callbacks cover the first stage.
+- C macros and `inline` functions — their logic is rewritten in Anlang;
+- compiling C source — the project contains only Anlang code and ready object files;
+- exporting Anlang code as a C library — callbacks cover the first stage.
 
 **Note** — The toolchain contains no C compiler, external linker or SDK of other languages. The exception is code signing of iOS applications with Apple's tools (see [17-ui](17-ui.md)).
 

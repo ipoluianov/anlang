@@ -1,7 +1,7 @@
 // Command hello prints a greeting.
 package main
 
-import "kern/fmt"
+import "an/fmt"
 
 func main() {
 	fmt.Println("Hello, World!")

@@ -7,7 +7,7 @@ import (
 
 func parse(t *testing.T, src string) *File {
 	t.Helper()
-	f, errs := Parse("t.kn", []byte(src))
+	f, errs := Parse("t.an", []byte(src))
 	if len(errs) > 0 {
 		t.Fatalf("%v", errs)
 	}
@@ -18,13 +18,13 @@ func TestParseHello(t *testing.T) {
 	f := parse(t, `// Command hello prints a greeting.
 package main
 
-import "kern/fmt"
+import "an/fmt"
 
 func main() {
 	fmt.Println("Hello, World!")
 }
 `)
-	if f.Name.Name != "main" || len(f.Imports) != 1 || f.Imports[0].Path.Value != `"kern/fmt"` {
+	if f.Name.Name != "main" || len(f.Imports) != 1 || f.Imports[0].Path.Value != `"an/fmt"` {
 		t.Fatalf("file %+v", f)
 	}
 	fn := f.Decls[1].(*FuncDecl)
@@ -38,7 +38,7 @@ func main() {
 }
 
 func TestParseProfileAndImports(t *testing.T) {
-	f := parse(t, "package main\n\nprofile core, app\n\nimport (\n\t\"kern/dos\"\n\tenc \"kern/encoding\"\n)\n")
+	f := parse(t, "package main\n\nprofile core, app\n\nimport (\n\t\"an/dos\"\n\tenc \"an/encoding\"\n)\n")
 	if names := f.Profiles(); len(names) != 2 || names[0].Name != "core" || names[1].Name != "app" {
 		t.Errorf("profiles %v", names)
 	}
@@ -47,9 +47,9 @@ func TestParseProfileAndImports(t *testing.T) {
 	}
 }
 
-// TestParseKern checks every Kern construct of the novelty inventory
+// TestParseAnlang checks every Anlang construct of the novelty inventory
 // (spec/01-lexical.md, §1.8) that has its own syntax.
-func TestParseKern(t *testing.T) {
+func TestParseAnlang(t *testing.T) {
 	f := parse(t, `package main
 
 profile core
@@ -219,15 +219,15 @@ func TestParseErrors(t *testing.T) {
 		msg  string
 	}{
 		{"func main() {}", "lex.token.go", "expected 'package'"},
-		{"package main\nimport . \"kern/fmt\"", "decl.import.no-blank-dot", "dot imports"},
-		{"package main\nfunc main() {}\nimport \"kern/fmt\"", "lex.token.go", "imports must appear"},
+		{"package main\nimport . \"an/fmt\"", "decl.import.no-blank-dot", "dot imports"},
+		{"package main\nfunc main() {}\nimport \"an/fmt\"", "lex.token.go", "imports must appear"},
 		{"package main\nfunc main() {", "lex.token.go", "expected '}'"},
 		{"package main\nfunc f() { x := []int{1,\n2\n} }", "lex.token.go", "missing ','"},
 		{"package main\nfunc f() { for const x := 0; x < 1; x++ {} }", "lex.token.go", "for const requires a range clause"},
 		{"package main\nfunc f(a int, string) {}", "lex.token.go", "missing parameter type"},
 	}
 	for _, tt := range tests {
-		_, errs := Parse("t.kn", []byte(tt.src))
+		_, errs := Parse("t.an", []byte(tt.src))
 		if len(errs) == 0 {
 			t.Errorf("%q: no error", tt.src)
 			continue

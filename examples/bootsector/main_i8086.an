@@ -7,17 +7,17 @@
 // program does not compile, and the error shows the size of each package.
 //
 // The file name ends in _i8086 because only such files may import the
-// instruction package kern/arch/i8086.
+// instruction package an/arch/i8086.
 package main
 
 profile core
 
 import (
-	"kern/arch/i8086"
-	"kern/bios"
+	"an/arch/i8086"
+	"an/bios"
 )
 
-const greeting = []u8("Hello from a Kern boot sector!\r\nBoot drive: 0x")
+const greeting = []u8("Hello from an Anlang boot sector!\r\nBoot drive: 0x")
 
 func main() {
 	puts(greeting)

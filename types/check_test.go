@@ -4,15 +4,15 @@ import (
 	"strings"
 	"testing"
 
-	"kern/ir"
-	"kern/syntax"
+	"an/ir"
+	"an/syntax"
 )
 
 func check(t *testing.T, srcs ...string) (*ir.Program, []*syntax.Error) {
 	t.Helper()
 	var files []*syntax.File
 	for i, src := range srcs {
-		f, errs := syntax.Parse(string(rune('a'+i))+".kn", []byte(src))
+		f, errs := syntax.Parse(string(rune('a'+i))+".an", []byte(src))
 		if len(errs) > 0 {
 			t.Fatalf("parse: %v", errs)
 		}
@@ -24,7 +24,7 @@ func check(t *testing.T, srcs ...string) (*ir.Program, []*syntax.Error) {
 func TestCheckHello(t *testing.T) {
 	prog, errs := check(t, `package main
 
-import "kern/fmt"
+import "an/fmt"
 
 func main() {
     fmt.Println("Hello,", "World!")
@@ -69,11 +69,11 @@ func TestCheckErrors(t *testing.T) {
 		{"package main\nfunc init() {}\nfunc main() {}", "decl.func.no-init", "init"},
 		{"package main\nfunc main() {}\nfunc main() {}", "decl.func.go", "redeclared"},
 		{"package main\nprofile kernel\nfunc main() {}", "decl.profile.names", "unknown profile"},
-		{"package main\nimport \"fmt\"\nfunc main() {}", "decl.import.paths", "must start with kern/"},
-		{"package main\nimport _ \"kern/fmt\"\nfunc main() {}", "decl.import.no-blank-dot", "blank imports"},
-		{"package main\nimport \"kern/fmt\"\nfunc main() {}", "", "imported and not used"},
+		{"package main\nimport \"fmt\"\nfunc main() {}", "decl.import.paths", "must start with an/"},
+		{"package main\nimport _ \"an/fmt\"\nfunc main() {}", "decl.import.no-blank-dot", "blank imports"},
+		{"package main\nimport \"an/fmt\"\nfunc main() {}", "", "imported and not used"},
 		{"package main\nfunc main() { g() }", "", "undefined: g"},
-		{"package main\nimport \"kern/fmt\"\nfunc main() { fmt.Println(1) }", "", "not supported yet"},
+		{"package main\nimport \"an/fmt\"\nfunc main() { fmt.Println(1) }", "", "not supported yet"},
 	}
 	for _, tt := range tests {
 		_, errs := check(t, tt.src)

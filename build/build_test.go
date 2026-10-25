@@ -38,7 +38,7 @@ func TestMatchSuffix(t *testing.T) {
 
 func TestSelectFiles(t *testing.T) {
 	dir := t.TempDir()
-	for _, name := range []string{"main.kn", "io_linux.kn", "io_dos.kn", "main_test.kn", "_draft.kn", ".hidden.kn", "notes.txt"} {
+	for _, name := range []string{"main.an", "io_linux.an", "io_dos.an", "main_test.an", "_draft.an", ".hidden.an", "notes.txt"} {
 		if err := os.WriteFile(filepath.Join(dir, name), nil, 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -48,7 +48,7 @@ func TestSelectFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(got, " ") != "io_linux.kn main.kn" {
+	if strings.Join(got, " ") != "io_linux.an main.an" {
 		t.Errorf("got %v", got)
 	}
 }
@@ -79,13 +79,13 @@ func requireLinuxAMD64(t *testing.T) {
 // TestHelloExample builds examples/hello, runs it and checks its output.
 func TestHelloExample(t *testing.T) {
 	requireLinuxAMD64(t)
-	src, err := os.ReadFile("../examples/hello/main.kn")
+	src, err := os.ReadFile("../examples/hello/main.an")
 	if err != nil {
 		t.Fatal(err)
 	}
 	p := newProject(t, map[string]string{
-		"kern.mod": "module  hello\nkern    1.0\ntargets linux-x86_64\n",
-		"main.kn":  string(src),
+		"anlang.mod": "module  hello\nanlang  1.0\ntargets linux-x86_64\n",
+		"main.an":    string(src),
 	})
 	out, errs := p.Build("linux-x86_64")
 	if len(errs) > 0 {
@@ -106,8 +106,8 @@ func TestPrintFailurePanics(t *testing.T) {
 		t.Skip("no /dev/full")
 	}
 	p := newProject(t, map[string]string{
-		"kern.mod": "module  p\nkern    1.0\n",
-		"main.kn":  "package main\n\nimport \"kern/fmt\"\n\nfunc main() {\n\tfmt.Println(\"x\")\n}\n",
+		"anlang.mod": "module  p\nanlang  1.0\n",
+		"main.an":    "package main\n\nimport \"an/fmt\"\n\nfunc main() {\n\tfmt.Println(\"x\")\n}\n",
 	})
 	out, errs := p.Build("linux-x86_64")
 	if len(errs) > 0 {
@@ -134,10 +134,10 @@ func TestPrintFailurePanics(t *testing.T) {
 func TestCallsAndOrder(t *testing.T) {
 	requireLinuxAMD64(t)
 	p := newProject(t, map[string]string{
-		"kern.mod": "module  p\nkern    1.0\n",
-		"main.kn": `package main
+		"anlang.mod": "module  p\nanlang  1.0\n",
+		"main.an": `package main
 
-import "kern/fmt"
+import "an/fmt"
 
 func main() {
 	first()
@@ -145,9 +145,9 @@ func main() {
 	last()
 }
 `,
-		"helpers.kn": `package main
+		"helpers.an": `package main
 
-import f "kern/fmt"
+import f "an/fmt"
 
 func first() {
 	f.Print("one ")
@@ -175,8 +175,8 @@ func last() {
 // (spec/20-toolchain.md, reproducibility).
 func TestReproducible(t *testing.T) {
 	files := map[string]string{
-		"kern.mod": "module  p\nkern    1.0\n",
-		"main.kn":  "package main\n\nimport \"kern/fmt\"\n\nfunc main() {\n\tfmt.Println(\"x\")\n}\n",
+		"anlang.mod": "module  p\nanlang  1.0\n",
+		"main.an":    "package main\n\nimport \"an/fmt\"\n\nfunc main() {\n\tfmt.Println(\"x\")\n}\n",
 	}
 	var outs [][]byte
 	for i := 0; i < 2; i++ {
@@ -197,7 +197,7 @@ func TestReproducible(t *testing.T) {
 }
 
 func TestUnsupportedTarget(t *testing.T) {
-	p := newProject(t, map[string]string{"kern.mod": "module  p\nkern    1.0\n"})
+	p := newProject(t, map[string]string{"anlang.mod": "module  p\nanlang  1.0\n"})
 	_, errs := p.Build("dos-com")
 	if len(errs) == 0 || !strings.Contains(errs[0].Error(), "step 13") {
 		t.Errorf("got %v", errs)
@@ -210,11 +210,11 @@ func TestUnsupportedTarget(t *testing.T) {
 
 func TestNonCanonicalRejected(t *testing.T) {
 	p := newProject(t, map[string]string{
-		"kern.mod": "module  p\nkern    1.0\n",
-		"main.kn":  "package main\n\nfunc main() {\n    f()\n}\n\nfunc f() {}\n",
+		"anlang.mod": "module  p\nanlang  1.0\n",
+		"main.an":    "package main\n\nfunc main() {\n    f()\n}\n\nfunc f() {}\n",
 	})
 	_, errs := p.Build("linux-x86_64")
-	if len(errs) != 1 || !strings.Contains(errs[0].Error(), "main.kn:4:1") || !strings.Contains(errs[0].Error(), "lex.source.canonical") {
-		t.Errorf("got %v, want lex.source.canonical at main.kn:4", errs)
+	if len(errs) != 1 || !strings.Contains(errs[0].Error(), "main.an:4:1") || !strings.Contains(errs[0].Error(), "lex.source.canonical") {
+		t.Errorf("got %v, want lex.source.canonical at main.an:4", errs)
 	}
 }

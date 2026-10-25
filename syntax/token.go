@@ -1,4 +1,4 @@
-// Package syntax implements the lexer and parser of Kern source files
+// Package syntax implements the lexer and parser of Anlang source files
 // (spec/01-lexical.md).
 package syntax
 
@@ -18,7 +18,7 @@ const (
 	Float
 	Rune
 	String
-	Imag // Go only: imaginary literals are removed in Kern
+	Imag // Go only: imaginary literals are removed in Anlang
 
 	// Operators and punctuation (lex.operator.go).
 	Add    // +
@@ -160,7 +160,7 @@ func Lookup(name string) Kind {
 	return Ident
 }
 
-// lookupGo is Lookup with the keywords of Go only: the Kern keywords
+// lookupGo is Lookup with the keywords of Go only: the Anlang keywords
 // enum, inout and profile are identifiers.
 func lookupGo(name string) Kind {
 	k := Lookup(name)

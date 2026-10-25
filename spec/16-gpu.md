@@ -1,6 +1,6 @@
 # 16. GPU Programming
 
-This file specifies GPU functions: shaders and compute kernels written in Kern, their data access rules, dispatch and shader targets.
+This file specifies GPU functions: shaders and compute kernels written in Anlang, their data access rules, dispatch and shader targets.
 
 A GPU function is executed by many GPU threads at the same time. The rules below make data races between those threads impossible by construction. The syntax of the `gpu` declaration is the production `GpuFunctionDecl` in [03-declarations](03-declarations.md) §3.10.
 
@@ -17,7 +17,7 @@ A GPU function is executed by many GPU threads at the same time. The rules below
 3. `go` statements, `select`, channel operations or `defer`;
 4. `asm` or use of `unsafe`.
 
-**gpu.subset.effects** — A GPU function and every function it calls MUST have an empty effect set, except for the effects introduced by the `kern/gpu` operations of this file. In particular they MUST NOT have `Alloc`, `Block`, `Tasks` or `Panic`; overflow and bounds checks MUST therefore be proven or handled explicitly ([08-contracts](08-contracts.md)).
+**gpu.subset.effects** — A GPU function and every function it calls MUST have an empty effect set, except for the effects introduced by the `an/gpu` operations of this file. In particular they MUST NOT have `Alloc`, `Block`, `Tasks` or `Panic`; overflow and bounds checks MUST therefore be proven or handled explicitly ([08-contracts](08-contracts.md)).
 
 **gpu.subset.profile** — Every package that contains a GPU function or a function called from one MUST allow the `core` profile ([07-effects](07-effects.md)).
 
@@ -29,7 +29,7 @@ A GPU function is executed by many GPU threads at the same time. The rules below
 
 **gpu.param.types** — Each parameter of a GPU function MUST be of one of these types:
 
-1. a *GPU data type*: `bool`, a fixed-size integer type, `f32`, `f64`, a `kern/simd` vector type, a `kern/fixed` type, or an array or struct type whose elements or fields are GPU data types;
+1. a *GPU data type*: `bool`, a fixed-size integer type, `f32`, `f64`, a `an/simd` vector type, a `an/fixed` type, or an array or struct type whose elements or fields are GPU data types;
 2. a slice of a GPU data type (an *input buffer*);
 3. `gpu.Out[T]` where `T` is a GPU data type (an *output buffer*).
 

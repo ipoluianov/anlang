@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"kern/syntax"
+	"an/syntax"
 )
 
 // sameTree reports whether two parsed files have the same syntax tree,

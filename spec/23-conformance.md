@@ -1,6 +1,6 @@
 # 23. Conformance and Testing of the Environment
 
-Most of the compiler is expected to be written by AI. Checks of `kern` itself are therefore as mechanical and decisive as the checks of user code. This file specifies the test suites an implementation of `kern` MUST maintain and pass.
+Most of the compiler is expected to be written by AI. Checks of `anlang` itself are therefore as mechanical and decisive as the checks of user code. This file specifies the test suites an implementation of `anlang` MUST maintain and pass.
 
 ## 23.1 Conformance suite
 
@@ -10,7 +10,7 @@ Most of the compiler is expected to be written by AI. Checks of `kern` itself ar
 
 **conf.suite.expectation** — A negative test passes only if compilation fails and the set of rule identifiers in the error diagnostics equals the expected set. A positive test passes only if compilation succeeds without errors.
 
-**conf.suite.shared** — The same conformance suite MUST be passed by the compiler written in Go and by the compiler written in Kern.
+**conf.suite.shared** — The same conformance suite MUST be passed by the compiler written in Go and by the compiler written in Anlang.
 
 **conf.suite.implementation-rules** — For every normative implementation requirement (rules that constrain the toolchain), the suite SHOULD contain an automated check, unless the requirement is checked by another kind of test in this file.
 
@@ -24,11 +24,11 @@ Most of the compiler is expected to be written by AI. Checks of `kern` itself ar
 
 ## 23.4 Comparison with Go
 
-**conf.go.common-subset** — Programs written in the common subset of Kern and Go (without `enum`, `inout`, contracts and other constructs of the novelty inventory) MUST produce the same output when compiled by Go and by Kern.
+**conf.go.common-subset** — Programs written in the common subset of Anlang and Go (without `enum`, `inout`, contracts and other constructs of the novelty inventory) MUST produce the same output when compiled by Go and by Anlang.
 
 ## 23.5 Fuzzing
 
-**conf.fuzz** — The parser, the type checker, the solver and the linker MUST be fuzzed. For any input, `kern` MUST NOT crash, hang beyond its configured limits or produce an internal error; it MUST either succeed or report diagnostics.
+**conf.fuzz** — The parser, the type checker, the solver and the linker MUST be fuzzed. For any input, `anlang` MUST NOT crash, hang beyond its configured limits or produce an internal error; it MUST either succeed or report diagnostics.
 
 **conf.fuzz.allocator** — The `app` allocator MUST be fuzzed, and the memory-checking mode of tests MUST find no errors.
 
@@ -40,7 +40,7 @@ Most of the compiler is expected to be written by AI. Checks of `kern` itself ar
 
 ## 23.7 Self-hosting
 
-**conf.self-hosting** — Let *B1* be the executable produced by the Go version of the compiler from the Kern sources of the compiler, and *B2* the executable produced by *B1* from the same sources, for the same target. *B1* and *B2* MUST be byte-identical (see [22-compiler](22-compiler.md), 22.9).
+**conf.self-hosting** — Let *B1* be the executable produced by the Go version of the compiler from the Anlang sources of the compiler, and *B2* the executable produced by *B1* from the same sources, for the same target. *B1* and *B2* MUST be byte-identical (see [22-compiler](22-compiler.md), 22.9).
 
 ## 23.8 External oracles
 
@@ -52,7 +52,7 @@ Most of the compiler is expected to be written by AI. Checks of `kern` itself ar
 - text shaping against a reference shaping test suite;
 - GPU output against format validators.
 
-**conf.oracle.scope** — External tools MAY be used only in the tests of the environment. They MUST NOT be part of the toolchain or required by any `kern` command (see [22-compiler](22-compiler.md), **impl.single-binary**).
+**conf.oracle.scope** — External tools MAY be used only in the tests of the environment. They MUST NOT be part of the toolchain or required by any `anlang` command (see [22-compiler](22-compiler.md), **impl.single-binary**).
 
 ## 23.9 Performance
 

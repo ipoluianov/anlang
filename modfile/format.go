@@ -7,13 +7,13 @@ import (
 )
 
 // order is the canonical order of directives (tool.mod.format).
-var order = map[string]int{"module": 0, "kern": 1, "targets": 2, "effects": 3, "generate": 4}
+var order = map[string]int{"module": 0, "anlang": 1, "targets": 2, "effects": 3, "generate": 4}
 
 // keyWidth is the column at which directive values start: the length of
 // the longest single-line directive name plus one space.
 const keyWidth = len("targets") + 1
 
-// Format returns the canonical form of a kern.mod file: directives in
+// Format returns the canonical form of an anlang.mod file: directives in
 // canonical order, one per line, values aligned, comments kept with the
 // directive that follows them or that they end. The file must be valid.
 func Format(data []byte) []byte {

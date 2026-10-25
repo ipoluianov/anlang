@@ -10,15 +10,15 @@
 
 **eff.model.identity** — Два эффекта совпадают тогда и только тогда, когда они объявлены одним объявлением: базовым эффектом (§7.2), эффектом, объявленным через `effect.Declare` (§7.7), или эффектом экземпляра периферии (§7.8).
 
-**eff.model.names** — В исходном коде Kern эффекты — значения типа `effect.Effect` из пакета `kern/effect`. Базовые эффекты — экспортируемые константы этого пакета (`effect.Alloc`, `effect.Network`). В `kern.mod`, в диагностиках и в выводе инструментов эффект записывается голым именем (`Alloc`, `SQL`, `TIM2`); если у двух эффектов программы одинаковое голое имя, инструменты уточняют его путём объявившего пакета.
+**eff.model.names** — В исходном коде Anlang эффекты — значения типа `effect.Effect` из пакета `an/effect`. Базовые эффекты — экспортируемые константы этого пакета (`effect.Alloc`, `effect.Network`). В `anlang.mod`, в диагностиках и в выводе инструментов эффект записывается голым именем (`Alloc`, `SQL`, `TIM2`); если у двух эффектов программы одинаковое голое имя, инструменты уточняют его путём объявившего пакета.
 
 **eff.model.foreign** — Эффект `Foreign` означает «может делать что угодно». При любой проверке ограничений (§7.6) множество, содержащее `Foreign`, считается содержащим все эффекты.
 
-**Примечание** — В `kern.md` базовые эффекты записаны без квалификатора (`effect.Without(Alloc, Panic)`, `ffi.Effects{File}`). В исходниках на Kern каноническая форма — с квалификатором (**eff.model.names**).
+**Примечание** — В `anlang.md` базовые эффекты записаны без квалификатора (`effect.Without(Alloc, Panic)`, `ffi.Effects{File}`). В исходниках на Anlang каноническая форма — с квалификатором (**eff.model.names**).
 
 ## 7.2 Базовые эффекты
 
-**eff.base.set** — Пакет `kern/effect` объявляет следующие базовые эффекты:
+**eff.base.set** — Пакет `an/effect` объявляет следующие базовые эффекты:
 
 | Группа | Эффекты | Значение |
 | --- | --- | --- |
@@ -38,12 +38,12 @@
 
 | Эффект | Кем объявлен | Где описан |
 | --- | --- | --- |
-| `Detach` | `kern/task` | [09-concurrency](09-concurrency.ru.md) |
-| `ExposeSecret` | `kern/secret` | [11-data-safety](11-data-safety.ru.md) |
-| `SQL` | `kern/sql` | [18-stdlib](18-stdlib.ru.md) |
-| `Privileged` | пакеты архитектур `kern/arch/...` | [15-os](15-os.ru.md) |
-| `GPU` | `kern/gpu` | [16-gpu](16-gpu.ru.md) |
-| `ReadInput`, `WriteOutput` | `kern/gen` | [10-compile-time](10-compile-time.ru.md) |
+| `Detach` | `an/task` | [09-concurrency](09-concurrency.ru.md) |
+| `ExposeSecret` | `an/secret` | [11-data-safety](11-data-safety.ru.md) |
+| `SQL` | `an/sql` | [18-stdlib](18-stdlib.ru.md) |
+| `Privileged` | пакеты архитектур `an/arch/...` | [15-os](15-os.ru.md) |
+| `GPU` | `an/gpu` | [16-gpu](16-gpu.ru.md) |
+| `ReadInput`, `WriteOutput` | `an/gen` | [10-compile-time](10-compile-time.ru.md) |
 | `Camera`, `Location`, `Notifications`, `Contacts`, `Photos`, `Bluetooth`, `Background` | пакеты устройства профиля `ui` | [17-ui](17-ui.ru.md) |
 
 ## 7.3 Источники эффектов
@@ -64,7 +64,7 @@
 
 **eff.source.asm** — Блок `asm` имеет эффекты, которые описание архитектуры объявляет для входящих в него команд ([13-targets](13-targets.ru.md)).
 
-**eff.source.instruction** — Вызов функции из пакета команд архитектуры (`kern/arch/...`) имеет эффекты, которые описание архитектуры объявляет для этой команды.
+**eff.source.instruction** — Вызов функции из пакета команд архитектуры (`an/arch/...`) имеет эффекты, которые описание архитектуры объявляет для этой команды.
 
 **eff.source.external** — Внешняя функция ([12-ffi](12-ffi.ru.md)) имеет ровно те эффекты, что перечислены в её аргументе `ffi.Effects`. Если аргумент `ffi.Effects` не указан, она имеет эффект `Foreign`. Компилятор не может проверить объявленные эффекты внешних функций; инструменты ДОЛЖНЫ показывать их как непроверенные ([20-toolchain](20-toolchain.ru.md)).
 
@@ -133,7 +133,7 @@ func Serve(l Listener, h Handler) error                  // C = {Network, Block,
 | Граница | Ограничиваемое множество | Вид | Правило |
 | --- | --- | --- | --- |
 | Профиль пакета | собственные эффекты каждой функции пакета | атрибуция | **eff.profile.allowed** |
-| `effects` в `kern.mod` | собственные эффекты каждой функции подходящих пакетов | атрибуция | **eff.mod.deny** |
+| `effects` в `anlang.mod` | собственные эффекты каждой функции подходящих пакетов | атрибуция | **eff.mod.deny** |
 | `ensures effect.Without(...)` | эффекты исполнения каждого вызова функции | исполнение | **eff.without.check** |
 | `interrupt`, `trap` | эффекты исполнения обработчика | исполнение | **eff.handler.implicit** |
 | `Provides`, `Lacks` цели | эффекты исполнения программы | исполнение | **eff.target.check** |
@@ -144,7 +144,7 @@ func Serve(l Listener, h Handler) error                  // C = {Network, Block,
 
 ### 7.6.1 `ensures effect.Without`
 
-**eff.without.form** — `effect.Without(e1, …, en)` — известная компилятору функция пакета `kern/effect`. Она МОЖЕТ встречаться только как всё выражение строки `ensures` ([08-contracts](08-contracts.ru.md), **contract.constraint.forms**). Её аргументы ДОЛЖНЫ быть константными выражениями типа `effect.Effect`.
+**eff.without.form** — `effect.Without(e1, …, en)` — известная компилятору функция пакета `an/effect`. Она МОЖЕТ встречаться только как всё выражение строки `ensures` ([08-contracts](08-contracts.ru.md), **contract.constraint.forms**). Её аргументы ДОЛЖНЫ быть константными выражениями типа `effect.Effect`.
 
 **eff.without.check** — Для функции `f` с `ensures effect.Without(E)`:
 
@@ -166,7 +166,7 @@ func Serve(l Listener, h Handler) error                  // C = {Network, Block,
 ```go
 package sql
 
-import "kern/effect"
+import "an/effect"
 
 const SQL = effect.Declare("SQL")
 
@@ -186,7 +186,7 @@ func (db DB) Query(q string, args ...any) (Rows, error) {
 
 **eff.deferred.declare** — `effect.Defer(e1, …, en)` — известная компилятору функция, аргументы которой ДОЛЖНЫ быть константами типа `effect.Effect`. Она добавляет `e1, …, en` к отложенным эффектам функции, в теле которой стоит вызов. Во время выполнения она ничего не делает и конкретных эффектов не добавляет.
 
-**eff.deferred.attribution** — Отложенные эффекты вызываемой функции засчитываются вызывающей так же, как собственные эффекты (**eff.attr.own**): их видят профили и правила `kern.mod`. Эффектами исполнения вызывающей они не являются: `effect.Without` и ограничения обработчиков их не видят.
+**eff.deferred.attribution** — Отложенные эффекты вызываемой функции засчитываются вызывающей так же, как собственные эффекты (**eff.attr.own**): их видят профили и правила `anlang.mod`. Эффектами исполнения вызывающей они не являются: `effect.Without` и ограничения обработчиков их не видят.
 
 **eff.deferred.program** — Отложенные эффекты всех функций, достижимых в программе, входят в множество эффектов программы. Они проверяются по цели (§7.6.3) и используются для вывода разрешений ([17-ui](17-ui.ru.md)).
 
@@ -207,10 +207,10 @@ func (db DB) Query(q string, args ...any) (Rows, error) {
 | Профиль | Запрещённые эффекты | Дополнительные ограничения |
 | --- | --- | --- |
 | `core` | `Alloc`, `Detach` | — |
-| `app` | `Interrupts`, `Privileged`, эффекты железа (эффекты классов и экземпляров из группы «Железо» в **eff.base.set**) | НЕ ДОЛЖЕН импортировать `kern/unsafe`; НЕ ДОЛЖЕН содержать `asm`, объявлений `interrupt` и `trap` |
+| `app` | `Interrupts`, `Privileged`, эффекты железа (эффекты классов и экземпляров из группы «Железо» в **eff.base.set**) | НЕ ДОЛЖЕН импортировать `an/unsafe`; НЕ ДОЛЖЕН содержать `asm`, объявлений `interrupt` и `trap` |
 | `ui` | те же, что у `app` | те же, что у `app` |
 
-**eff.profile.privileged** — `Privileged` по умолчанию закрыт во всех профилях: функция пакета с собственным эффектом `Privileged` отвергается, если `kern.mod` не разрешает его для этого пакета (**eff.mod.allow**).
+**eff.profile.privileged** — `Privileged` по умолчанию закрыт во всех профилях: функция пакета с собственным эффектом `Privileged` отвергается, если `anlang.mod` не разрешает его для этого пакета (**eff.mod.allow**).
 
 **eff.profile.import** — Профили пакета P и импортируемого им пакета Q ДОЛЖНЫ удовлетворять условию: для каждого профиля p, объявленного P, Q объявляет какой-то профиль q, такой что q ⊑ p. Более строгий пакет можно использовать из менее строгого; обратное отвергается.
 
@@ -228,9 +228,9 @@ profile core, app, ui
 
 **eff.profile.ui** — Дополнительные правила профиля `ui` (устройство `Update` и `View`, доступность в типах, отрисовка) описаны в [17-ui](17-ui.ru.md).
 
-## 7.10 Ограничения эффектов в `kern.mod`
+## 7.10 Ограничения эффектов в `anlang.mod`
 
-**eff.mod.syntax** — Блок `effects` в `kern.mod` содержит записи `<шаблон> deny {<эффекты>}` и `<шаблон> allow {<эффекты>}`. Полная грамматика `kern.mod` — в [20-toolchain](20-toolchain.ru.md).
+**eff.mod.syntax** — Блок `effects` в `anlang.mod` содержит записи `<шаблон> deny {<эффекты>}` и `<шаблон> allow {<эффекты>}`. Полная грамматика `anlang.mod` — в [20-toolchain](20-toolchain.ru.md).
 
 **eff.mod.pattern** — Шаблон — путь пакета относительно корня модуля. Шаблон `path` подходит пакету `path`; шаблон `path/...` подходит `path` и всем пакетам под ним; шаблон `...` подходит всем пакетам проекта.
 
@@ -249,6 +249,6 @@ effects (
 
 ## 7.11 Видимость эффектов
 
-**eff.report.tools** — Реализация ДОЛЖНА делать сводку эффектов каждой функции доступной через `kern doc`, `kern query` и протокол среды ([20-toolchain](20-toolchain.ru.md), [21-protocol](21-protocol.ru.md)), включая для каждого эффекта цепочку вызовов до его источника.
+**eff.report.tools** — Реализация ДОЛЖНА делать сводку эффектов каждой функции доступной через `anlang doc`, `anlang query` и протокол среды ([20-toolchain](20-toolchain.ru.md), [21-protocol](21-protocol.ru.md)), включая для каждого эффекта цепочку вызовов до его источника.
 
-**eff.report.diff** — `kern diff` ДОЛЖЕН показывать эффекты, которые есть у одной версии функции и нет у другой ([20-toolchain](20-toolchain.ru.md)).
+**eff.report.diff** — `anlang diff` ДОЛЖЕН показывать эффекты, которые есть у одной версии функции и нет у другой ([20-toolchain](20-toolchain.ru.md)).

@@ -2,7 +2,7 @@
 
 Area: `target`.
 
-A build target combines three independent descriptions: an **architecture**, a **platform** and one or more **binary formats**. All three are declarative data written as Kern constants, in the standard library or in the project. Adding an architecture does not require changing the compiler.
+A build target combines three independent descriptions: an **architecture**, a **platform** and one or more **binary formats**. All three are declarative data written as Anlang constants, in the standard library or in the project. Adding an architecture does not require changing the compiler.
 
 | Layer | Describes | Examples |
 | --- | --- | --- |
@@ -14,11 +14,11 @@ Shader targets for GPU functions (`spirv`, `wgsl`, `msl`) are defined in [16-gpu
 
 ## 13.1 Target packages
 
-**target.pkg.description** — A *target package* is a package that declares an exported constant `Description` of type `target.Desc` (package `kern/target`). The constant is evaluated at compile time (see [10-compile-time](10-compile-time.md)); a misspelled field or a value of the wrong type is an ordinary compile error.
+**target.pkg.description** — A *target package* is a package that declares an exported constant `Description` of type `target.Desc` (package `an/target`). The constant is evaluated at compile time (see [10-compile-time](10-compile-time.md)); a misspelled field or a value of the wrong type is an ordinary compile error.
 
-**target.pkg.name** — The *target name* is the last element of the target package's directory path. A directory name MAY contain hyphens, for example `kern/target/dos-com` with package clause `package doscom`.
+**target.pkg.name** — The *target name* is the last element of the target package's directory path. A directory name MAY contain hyphens, for example `an/target/dos-com` with package clause `package doscom`.
 
-**target.pkg.location** — Standard targets are the packages under `kern/target/`. A project MAY declare its own target packages anywhere in the module, for example `myprogram/boards/myboard`.
+**target.pkg.location** — Standard targets are the packages under `an/target/`. A project MAY declare its own target packages anywhere in the module, for example `myprogram/boards/myboard`.
 
 **target.pkg.pure** — A target package MUST NOT have effects other than those permitted in compile-time evaluation (**ct.eval.evaluable**). It MAY read files in its own directory, such as an SVD file (**ct.eval.read-input**).
 
@@ -26,9 +26,9 @@ Shader targets for GPU functions (`spirv`, `wgsl`, `msl`) are defined in [16-gpu
 package doscom
 
 import (
-    "kern/arch"
-    "kern/platform"
-    "kern/target"
+    "an/arch"
+    "an/platform"
+    "an/target"
 )
 
 const Description = target.Desc{
@@ -70,7 +70,7 @@ const Description = target.Desc{
 
 **target.effects.provides** — Every environment effect reachable from the program's entry points in the build for a target MUST be listed in the target's `Provides`. A reachable environment effect that is not listed is a compile error that shows the call chain to its source.
 
-**target.effects.lacks** — `Lacks` lists environment effects the target explicitly does not have. A reachable effect listed in `Lacks` is a compile error with a diagnostic that says the platform lacks it. `Lacks` does not change which programs compile; it changes the diagnostic and the answers of `kern query`.
+**target.effects.lacks** — `Lacks` lists environment effects the target explicitly does not have. A reachable effect listed in `Lacks` is a compile error with a diagnostic that says the platform lacks it. `Lacks` does not change which programs compile; it changes the diagnostic and the answers of `anlang query`.
 
 **target.effects.foreign** — `Foreign` is accepted on a target only if `Lacks` is empty (**ffi.effects.foreign-deny** in [12-ffi](12-ffi.md)).
 
@@ -78,7 +78,7 @@ const Description = target.Desc{
 
 ## 13.4 Platforms
 
-**target.platform.desc** — A platform is described by a constant of type `platform.Platform` in a Kern package. The description states:
+**target.platform.desc** — A platform is described by a constant of type `platform.Platform` in an Anlang package. The description states:
 
 1. the environment effects the platform can provide;
 2. whether it has dynamic loading (`ffi.Library`, see [12-ffi](12-ffi.md));
@@ -88,7 +88,7 @@ const Description = target.Desc{
 6. the profiles allowed for the `main` package;
 7. the default `OnPanic` action;
 8. limits on background execution, for platforms that restrict it (see [17-ui](17-ui.md));
-9. for a platform implemented in Kern, its system call table (`abi.Table`, see [15-os](15-os.md)).
+9. for a platform implemented in Anlang, its system call table (`abi.Table`, see [15-os](15-os.md)).
 
 **target.platform.profile** — The profile of the `main` package MUST be one of the profiles the platform allows. Packages in stricter profiles are callable from any profile (see [07-effects](07-effects.md)).
 
@@ -104,13 +104,13 @@ const Description = target.Desc{
 
 ### 13.5.1 Architecture descriptions
 
-An *architecture description* consists of three components, all Kern data:
+An *architecture description* consists of three components, all Anlang data:
 
-1. **Machine model** — registers and register classes, word size, endianness, alignment, pointer kinds and address spaces, stack direction, calling conventions (the internal Kern ABI and the C ABI), interrupt and trap entry, the names and handler signatures of the exceptions available to `trap` (see [15-os](15-os.md)), which instructions are privileged (effect `Privileged`, see [15-os](15-os.md)), and a timing model per instruction used for WCET (see [14-embedded](14-embedded.md)).
+1. **Machine model** — registers and register classes, word size, endianness, alignment, pointer kinds and address spaces, stack direction, calling conventions (the internal Anlang ABI and the C ABI), interrupt and trap entry, the names and handler signatures of the exceptions available to `trap` (see [15-os](15-os.md)), which instructions are privileged (effect `Privileged`, see [15-os](15-os.md)), and a timing model per instruction used for WCET (see [14-embedded](14-embedded.md)).
 2. **Instruction selection rules** — declarative rules that map patterns of IR operations to instruction sequences, with operand constraints. Example: addition of two 16-bit values → `ADD r16, r/m16`.
 3. **Formal instruction semantics** — the effect of each instruction on machine state, in the style of Sail.
 
-**target.arch.value** — An architecture is identified by a constant of type `arch.Arch` in package `kern/arch` (for example `arch.I8086`, `arch.ARMv7M`, `arch.X86_64`) or in a project package. The constant refers to the three components.
+**target.arch.value** — An architecture is identified by a constant of type `arch.Arch` in package `an/arch` (for example `arch.I8086`, `arch.ARMv7M`, `arch.X86_64`) or in a project package. The constant refers to the three components.
 
 **target.arch.no-compiler-change** — An implementation MUST derive the code generator for an architecture from its instruction selection rules. Adding an architecture MUST NOT require changing the compiler.
 
@@ -119,16 +119,16 @@ An *architecture description* consists of three components, all Kern data:
 **target.arch.generated** — From the formal semantics an implementation MUST generate:
 
 1. an assembler and disassembler for the architecture;
-2. the instruction package `kern/arch/<name>` (13.5.2);
+2. the instruction package `an/arch/<name>` (13.5.2);
 3. an interpreter used by the built-in emulators (see [20-toolchain](20-toolchain.md)).
 
 ### 13.5.2 Instruction packages
 
-**target.arch.instr-package** — The instruction package `kern/arch/<name>` exposes the architecture's instructions and registers as ordinary Kern functions and types, for example `i8086.Int(0x21, i8086.Regs{AH: 0x09})`, `armv7m.WFI()`, `x86_64.ReadCR2()`. Named operands are passed as a struct, since Kern has no named arguments.
+**target.arch.instr-package** — The instruction package `an/arch/<name>` exposes the architecture's instructions and registers as ordinary Anlang functions and types, for example `i8086.Int(0x21, i8086.Regs{AH: 0x09})`, `armv7m.WFI()`, `x86_64.ReadCR2()`. Named operands are passed as a struct, since Anlang has no named arguments.
 
 **target.arch.instr-effects** — The effects of each instruction function are derived from the formal semantics: an instruction that changes interrupt state has `Interrupts`, a privileged instruction has `Privileged`, and so on. The compiler knows which registers each instruction clobbers.
 
-**target.arch.import-suffix** — A file MAY import `kern/arch/<name>` only if its name carries the architecture suffix `_<name>` (for example `print_i8086.kn`), as defined in [03-declarations](03-declarations.md). Architecture description packages themselves are exempt.
+**target.arch.import-suffix** — A file MAY import `an/arch/<name>` only if its name carries the architecture suffix `_<name>` (for example `print_i8086.an`), as defined in [03-declarations](03-declarations.md). Architecture description packages themselves are exempt.
 
 **target.arch.asm** — The assembler for `asm` blocks (see [05-statements](05-statements.md)) is the one generated from the same description.
 
@@ -188,7 +188,7 @@ const Description = target.Desc{
 
 ## 13.9 Binary formats
 
-**target.format.interface** — A binary format is a value implementing interface `target.Format`. The linker hands it the linked image — segments with addresses and contents, the entry point and symbols — and the format produces the output file. Formats are Kern code like architectures; adding one does not change the compiler.
+**target.format.interface** — A binary format is a value implementing interface `target.Format`. The linker hands it the linked image — segments with addresses and contents, the entry point and symbols — and the format produces the output file. Formats are Anlang code like architectures; adding one does not change the compiler.
 
 **target.format.all** — A build produces one output file for each format listed in `Formats`, in `out/<target>/`.
 
@@ -221,15 +221,15 @@ const Description = target.Desc{
 
 1. If it contains `/`, it is the import path of a target package.
 2. Otherwise it is a target name. The implementation searches the module for target packages with that name (**target.pkg.name**). If exactly one is found, it is used; if more than one, the build fails.
-3. If none is found in the module, `kern/target/<name>` is used; if it does not exist, the build fails.
+3. If none is found in the module, `an/target/<name>` is used; if it does not exist, the build fails.
 
-**target.select.default** — Without `-target`, the targets listed in `kern.mod` are built (see [20-toolchain](20-toolchain.md)).
+**target.select.default** — Without `-target`, the targets listed in `anlang.mod` are built (see [20-toolchain](20-toolchain.md)).
 
 **target.select.files** — For each target, source files are selected by their platform and architecture suffixes as defined in [03-declarations](03-declarations.md).
 
 ## 13.12 Multi-target builds
 
-**target.multi.flag** — `kern build -target a,b,c` builds all listed targets in one run.
+**target.multi.flag** — `anlang build -target a,b,c` builds all listed targets in one run.
 
 **target.multi.equivalent** — The result for each target MUST be identical to building that target alone. An implementation MAY share work between targets — for example type, effect and contract checking of packages whose selected file sets are the same — but MUST NOT let one target's result depend on another's.
 
@@ -248,7 +248,7 @@ const Description = target.Desc{
 
 Architecture names inside target names keep their own spelling (`x86_64`).
 
-**target.std.required** — The implementation MUST provide the following target packages under `kern/target/`. The step column is the roadmap step that introduces the target ([24-roadmap](24-roadmap.md)); a target is required from the release that completes that step.
+**target.std.required** — The implementation MUST provide the following target packages under `an/target/`. The step column is the roadmap step that introduces the target ([24-roadmap](24-roadmap.md)); a target is required from the release that completes that step.
 
 | Target | Architecture | Platform | Formats | Step |
 | --- | --- | --- | --- | --- |

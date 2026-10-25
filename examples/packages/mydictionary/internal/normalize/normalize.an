@@ -4,7 +4,7 @@
 // may import it. Importing it from package main is a compile error.
 package normalize
 
-import "kern/strings"
+import "an/strings"
 
 // Word trims surrounding white space and converts w to lower case.
 func Word(w string) string {
