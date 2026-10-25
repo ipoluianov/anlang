@@ -74,11 +74,11 @@ The target of a build is chosen with `-target`, never in code ([13-targets](13-t
 
 **decl.file.ignored** — Files whose names begin with `.` or `_` are ignored.
 
-**decl.file.suffix** — Let the file name without `.kn` be split at `_` into elements. Then:
+**decl.file.suffix** — Let *N* be the file name without `.kn`. Suffixes are matched against the end of *N*, not by splitting at `_`, because architecture names may contain `_` (`x86_64`). Then:
 
-1. If the last element is `test`, the file is a *test file* and is included only when tests are built ([20-toolchain](20-toolchain.md)). The element is removed before the next steps.
-2. If the last element is the name of an architecture and the element before it is the name of a platform (`_dos_i8086`), the file is included only for targets with that platform and architecture.
-3. Otherwise, if the last element is the name of an architecture (`_i8086`) or of a platform (`_linux`, `_dos`), the file is included only for targets with that architecture or platform.
+1. If *N* ends with `_test`, the file is a *test file* and is included only when tests are built ([20-toolchain](20-toolchain.md)). The suffix is removed from *N* before the next steps.
+2. If *N* ends with `_<platform>_<architecture>` (`_dos_i8086`, `_linux_x86_64`), the file is included only for targets with that platform and architecture.
+3. Otherwise, if *N* ends with `_<architecture>` (`_i8086`, `_x86_64`) or `_<platform>` (`_linux`, `_dos`), the file is included only for targets with that architecture or platform.
 4. Otherwise the file is included for every target.
 
 **decl.file.names** — The names of platforms and architectures are those of the target descriptions known to the build: the standard library and the project ([13-targets](13-targets.md)). A platform name and an architecture name MUST NOT coincide.

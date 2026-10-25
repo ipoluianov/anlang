@@ -182,6 +182,7 @@ Provisional technical choices accepted as written on 2026-10-25. The rule text i
 | 4 | 18-stdlib | Error identity | `errors.New` errors compare by value (equal text, equal error); `errors.As` has the comma-ok form `As[T](err) (T, bool)`; the recommended form for a package's errors is an `enum` with `Error() string`, identity from the type (**std.errors.value**, **std.errors.as**, **std.errors.enum**) |
 | 5 | 13-targets, 15-os | BIOS boot sector target | Target `kern/target/bios-boot` (i8086, `core`); format `target.BootSector`: image at `0x7C00`, at most 510 bytes, padded, signature `0x55 0xAA`, 512-byte file; entry `func main()` with `DS=ES=SS=0`, `SP=0x7C00`; `bios.BootDrive()`; returning from `main` halts (**os.boot.bios**) |
 | 6 | 13-targets | Standard targets and their names | Naming rules (OS: `<platform>-<arch>`; DOS/BIOS by output; boot: `<environment>-<arch>`; microcontrollers by chip; mobile by platform; `web`) and the list of 22 required targets with the roadmap step of each; architecture `armv6m` added for `rp2040` (**target.std.name**, **target.std.required**) |
+| 7 | 03-declarations | File suffixes with `_` in architecture names | Suffixes are matched against the end of the file name instead of splitting at `_`, so `main_x86_64.kn` and `main_linux_x86_64.kn` select correctly (**decl.file.suffix**); found while implementing the build driver |
 
 ## 2. Deferred to implementation
 
