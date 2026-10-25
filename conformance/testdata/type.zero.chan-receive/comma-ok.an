@@ -1,0 +1,16 @@
+// want: ok
+
+package main
+
+type Shape enum {
+	Circle{r f64}
+	Rect{w, h f64}
+}
+
+func main() {
+	c := make(chan Shape, 1)
+	c <- Circle(1)
+	s, ok := <-c
+	_, _ = s, ok
+	<-c
+}

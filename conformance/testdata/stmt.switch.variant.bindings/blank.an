@@ -1,0 +1,17 @@
+// want: ok
+
+package main
+
+type Shape enum {
+	Circle{r f64}
+	Rect{w, h f64}
+}
+
+func main() {
+	s := Rect(1, 2)
+	switch s {
+	case Circle{_}:
+	case Rect{w, _}:
+		_ = w
+	}
+}

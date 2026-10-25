@@ -1,0 +1,15 @@
+// want: ok
+
+package main
+
+type Mode enum {
+	Inc
+	Dec
+	Reset
+}
+
+func main() {
+	var m Mode = Inc
+	m = Dec
+	_ = m
+}

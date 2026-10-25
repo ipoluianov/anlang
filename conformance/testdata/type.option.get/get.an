@@ -1,0 +1,10 @@
+// want: ok
+
+package main
+
+func main() {
+	o := Some("x")
+	if v, ok := o.Get(); ok {
+		_ = v
+	}
+}

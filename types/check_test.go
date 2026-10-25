@@ -30,9 +30,7 @@ func TestCheckErrors(t *testing.T) {
 		msg string
 	}{
 		{"package main\ntype T struct{}\nfunc (t inout T) M() {}\nfunc main() {}", "inout receivers: not supported yet"},
-		{"package main\ntype E enum { A }\nfunc main() {}", "enum types: not supported yet by this compiler (spec/24-roadmap.md, step 3)"},
 		{"package main\nfunc f(x inout int) {}\nfunc main() {}", "inout parameters: not supported yet by this compiler (spec/24-roadmap.md, step 4)"},
-		{"package main\nfunc main() { var o Option[int]; _ = o }", "Option: not supported yet"},
 		{"package main\nfunc main() { for const i := range 3 { _ = i } }", "for const: not supported yet"},
 	}
 	for _, tt := range tests {
@@ -188,5 +186,66 @@ func main() {
 	want := "decl.visibility.go decl.visibility.go decl.visibility.go decl.visibility.go decl.visibility.go"
 	if strings.Join(got, " ") != want {
 		t.Errorf("got %v, want five decl.visibility.go errors", errs)
+	}
+}
+
+// TestAddVariant checks the acceptance criterion of roadmap step 3:
+// adding a variant to an enum type breaks every switch over it that has
+// no default case (stmt.switch.variant.exhaustive).
+func TestAddVariant(t *testing.T) {
+	src := `package main
+
+type Shape enum {
+	Circle{r f64}
+	Rect{w, h f64}
+	%s
+}
+
+func Area(s Shape) f64 {
+	switch s {
+	case Circle{r}:
+		return 3 * r * r
+	case Rect{w, h}:
+		return w * h
+	}
+}
+
+func Name(s Shape) string {
+	switch s {
+	case Circle{_}:
+		return "circle"
+	default:
+		return "other"
+	}
+}
+
+func Kind(s Shape) int {
+	n := 0
+	switch s {
+	case Circle, Rect:
+		n = 1
+	}
+	return n
+}
+
+func main() {
+	_ = Area(Circle(1)) + f64(Kind(Rect(1, 2)))
+	_ = Name(Circle(1))
+}
+`
+	if _, errs := check(t, strings.Replace(src, "%s", "", 1)); len(errs) > 0 {
+		t.Fatalf("before: %v", errs)
+	}
+	_, errs := check(t, strings.Replace(src, "%s", "Square{side f64}", 1))
+	var lines []int
+	for _, e := range errs {
+		if e.Rule != "stmt.switch.variant.exhaustive" || !strings.Contains(e.Msg, "missing Square") {
+			t.Errorf("unexpected error %v", e)
+		}
+		lines = append(lines, e.Pos.Line)
+	}
+	// The switches in Area and Kind; Name has a default case.
+	if len(lines) != 2 || lines[0] != 10 || lines[1] != 29 {
+		t.Errorf("errors at lines %v, want 10 and 29", lines)
 	}
 }

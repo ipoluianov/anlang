@@ -57,6 +57,11 @@ func (c *checker) objDecl(obj Object) {
 		c.varDecl(vars, di.typ, inits)
 	case *TypeName:
 		c.typeDecl(obj, di.tspec)
+	case *Variant:
+		c.objDecl(di.enumOf)
+		if obj.typ == nil {
+			obj.typ = Typ[Invalid]
+		}
 	case *Func:
 		// The type parameters of the function and of the receiver are
 		// declared in a scope between the file scope and the body.
@@ -162,6 +167,9 @@ func (c *checker) varDecl(vars []*Var, typ syntax.Expr, inits []syntax.Expr) {
 		t = c.typExpr(typ)
 	}
 	if len(inits) == 0 {
+		if t != nil && len(vars) > 0 {
+			c.zeroUse(typ.Pos(), t, "type.zero.var", "variable declaration without an initializer")
+		}
 		for _, v := range vars {
 			if t == nil {
 				v.typ = Typ[Invalid]
@@ -239,6 +247,7 @@ func (c *checker) multiValue(e syntax.Expr, n int, commaOK bool) []*operand {
 		return xs
 	}
 	if (x.mode == commaok || x.mode == mapindex) && commaOK && n == 2 {
+		c.dropPendingZero(e)
 		c.recordCommaOK(&x)
 		return []*operand{
 			{mode: value, expr: e, typ: x.typ},
@@ -283,16 +292,16 @@ func (c *checker) typeDecl(obj *TypeName, spec *syntax.TypeSpec) {
 	}
 	named := &Named{Obj: obj, methods: c.methods[obj]}
 	obj.typ = named
-	if _, ok := spec.Type.(*syntax.EnumType); ok {
-		named.underlying = Typ[Invalid]
-		c.notSupported(spec.Type.Pos(), 3, "enum types")
-		return
-	}
 	if spec.TypeParams != nil {
 		// The type parameters are in scope in the type declaration.
 		c.scope = NewScope(c.scope)
 		defer c.closeScope()
 		named.TypeParams = c.declareTypeParams(spec.TypeParams)
+	}
+	if et, ok := spec.Type.(*syntax.EnumType); ok {
+		named.underlying = c.enumType(et, named)
+		c.validType(named, named, nil)
+		return
 	}
 	rhs := c.typExprAny(spec.Type)
 	if isTypeParam(rhs) {
@@ -352,6 +361,13 @@ func (c *checker) validType(root *Named, t Type, path []*Named) {
 	case *Struct:
 		for _, f := range t.Fields {
 			c.validType(root, f.typ, path)
+		}
+	case *Enum:
+		// Variant fields are stored in the enum value, as struct fields.
+		for _, v := range t.Variants {
+			for _, f := range v.fields {
+				c.validType(root, f.typ, path)
+			}
 		}
 	case *Interface:
 		for _, e := range t.Embeddeds {
@@ -510,7 +526,23 @@ func (c *checker) declStmt(d *syntax.GenDecl) {
 			obj := &TypeName{object{pos: s.Name.Pos(), name: s.Name.Name}}
 			// The type is in scope in its own declaration (decl.visibility.go).
 			c.declare(s.Name, obj)
+			et, isEnum := s.Type.(*syntax.EnumType)
+			if isEnum {
+				c.newVariants(obj, et)
+			}
 			c.typeDecl(obj, s)
+			if isEnum {
+				for i, v := range c.enumVariants[obj] {
+					if alt := c.scope.Lookup(v.name); alt != nil {
+						if av, ok := alt.(*Variant); ok && av.enum == v.enum {
+							continue // reported by enumType (type.enum.nonempty)
+						}
+						c.errorf(v.pos, "type.enum.variant-scope", "%s redeclared in this block (previous declaration at %s)", v.name, alt.Pos())
+						continue
+					}
+					c.declare(et.Variants[i].Name, v)
+				}
+			}
 		}
 	}
 }

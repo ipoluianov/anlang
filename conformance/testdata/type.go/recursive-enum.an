@@ -1,0 +1,12 @@
+// want: type.go
+
+package main
+
+type T enum {
+	Leaf
+	Node{l, r T}
+}
+
+func main() {
+
+}

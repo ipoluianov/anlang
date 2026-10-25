@@ -1,0 +1,12 @@
+// want: type.zero.make
+
+package main
+
+type Shape enum {
+	Circle{r f64}
+	Rect{w, h f64}
+}
+
+func main() {
+	_ = make([]Shape, 3)
+}

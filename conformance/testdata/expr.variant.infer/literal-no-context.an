@@ -1,0 +1,12 @@
+// want: expr.variant.infer
+
+package main
+
+type Tree[T any] enum {
+	Leaf
+	Node{v T}
+}
+
+func main() {
+	_ = Leaf
+}

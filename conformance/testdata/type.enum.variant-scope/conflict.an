@@ -1,0 +1,16 @@
+// want: decl.visibility.go
+// checks: type.enum.variant-scope
+
+package main
+
+type Mode enum {
+	Inc
+	Dec
+	Reset
+}
+
+func Inc() {}
+
+func main() {
+
+}

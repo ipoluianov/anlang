@@ -1,0 +1,14 @@
+// want: ok
+
+package main
+
+type Shape enum {
+	Circle{r f64}
+	Rect{w, h f64}
+}
+
+func main() {
+	s := make([]Shape, 0, 8)
+	s = append(s, Circle(1))
+	_ = s
+}

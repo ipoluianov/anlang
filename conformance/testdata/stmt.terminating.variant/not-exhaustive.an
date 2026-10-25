@@ -1,0 +1,23 @@
+// want: stmt.go
+// checks: stmt.terminating.variant
+
+package main
+
+type Mode enum {
+	Inc
+	Dec
+	Reset
+}
+
+func f(m Mode) int {
+	switch m {
+	case Inc:
+		return 1
+	default:
+		break
+	}
+}
+
+func main() {
+
+}

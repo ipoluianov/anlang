@@ -190,6 +190,7 @@ func (c *checker) genericReceiver(ix *syntax.IndexExpr) (Type, []*TypeParam) {
 	m := newSubstMap(n.TypeParams, targs)
 	for i, tp := range rtps {
 		tp.bound = c.subst(n.TypeParams[i].bound, m)
+		tp.origParam = n.TypeParams[i]
 	}
 	t := c.instantiate(ix.Pos(), n, targs, false)
 	c.recordType(ix, typexpr, t, nil)

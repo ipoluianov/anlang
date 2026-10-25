@@ -171,6 +171,10 @@ func (c *checker) isTerminating(s syntax.Stmt, label string) bool {
 	case *syntax.SwitchStmt:
 		// A switch on an invalid tag may be an exhaustive switch on an
 		// enum type (stmt.terminating.variant); no further error.
+		if c.variantSwitches[s] {
+			// Exhaustive or with default (stmt.terminating.variant).
+			return c.clausesTerminateAll(s.Body, label)
+		}
 		return c.invalidSwitch[s] || c.clausesTerminate(s.Body, label)
 	case *syntax.TypeSwitchStmt:
 		return c.clausesTerminate(s.Body, label)
@@ -184,6 +188,18 @@ func (c *checker) isTerminating(s syntax.Stmt, label string) bool {
 		return true
 	}
 	return false
+}
+
+// clausesTerminateAll reports whether every clause ends in a terminating
+// statement and no break refers to the switch.
+func (c *checker) clausesTerminateAll(body *syntax.BlockStmt, label string) bool {
+	for _, cl := range body.List {
+		cl := cl.(*syntax.CaseClause)
+		if !c.isTerminatingList(cl.Body, "") || hasBreakList(cl.Body, label, true) {
+			return false
+		}
+	}
+	return true
 }
 
 func (c *checker) clausesTerminate(body *syntax.BlockStmt, label string) bool {

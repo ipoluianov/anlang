@@ -578,8 +578,11 @@ func (c *checker) builtinCall(x *operand, e *syntax.CallExpr, id builtinID) {
 		if !nargs(1, 1) {
 			return
 		}
-		switch core(args[0].typ).(type) {
-		case *Map, *Slice:
+		switch u := core(args[0].typ).(type) {
+		case *Map:
+		case *Slice:
+			// Clearing a slice sets its elements to zero values (type.zero.uses).
+			c.zeroUse(args[0].expr.Pos(), u.Elem, "type.zero.uses", "clear of a slice")
 		default:
 			c.errorf(args[0].expr.Pos(), "expr.go", "invalid argument: %s must be a map or slice", args[0])
 		}
@@ -640,6 +643,10 @@ func (c *checker) makeCall(x *operand, e *syntax.CallExpr) {
 	var sizes []int64
 	for _, a := range e.Args[1:] {
 		sizes = append(sizes, c.index(a, -1))
+	}
+	if s, ok := core(t).(*Slice); ok && sizes[0] != 0 {
+		// The elements up to the length are zero values (type.zero.make).
+		c.zeroUse(e.Args[1].Pos(), s.Elem, "type.zero.make", "make with a non-zero length")
 	}
 	if len(sizes) == 2 && sizes[0] >= 0 && sizes[1] >= 0 && sizes[0] > sizes[1] {
 		c.errorf(e.Args[1].Pos(), "expr.go", "invalid argument: length and capacity swapped")

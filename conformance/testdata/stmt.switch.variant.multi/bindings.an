@@ -1,0 +1,15 @@
+// want: stmt.switch.variant.multi
+
+package main
+
+type Shape enum {
+	Circle{r f64}
+	Rect{w, h f64}
+}
+
+func main() {
+	s := Circle(1)
+	switch s {
+	case Circle{r}, Rect{w, h}:
+	}
+}

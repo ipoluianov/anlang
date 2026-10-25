@@ -1,0 +1,13 @@
+// want: type.enum.patterns
+
+package main
+
+type Shape enum {
+	Circle{r f64}
+	Rect{w, h f64}
+}
+
+func main() {
+	c := Circle(1)
+	_ = c.r
+}

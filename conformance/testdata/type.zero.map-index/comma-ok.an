@@ -1,0 +1,16 @@
+// want: ok
+
+package main
+
+type Shape enum {
+	Circle{r f64}
+	Rect{w, h f64}
+}
+
+func main() {
+	m := map[string]Shape{}
+	m["a"] = Circle(1)
+	if s, ok := m["a"]; ok {
+		_ = s
+	}
+}

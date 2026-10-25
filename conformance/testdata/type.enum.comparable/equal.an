@@ -1,0 +1,16 @@
+// want: ok
+
+package main
+
+type Mode enum {
+	Inc
+	Dec
+	Reset
+}
+
+func main() {
+	m := Inc
+	_ = m == Dec
+	k := map[Mode]int{Inc: 1}
+	_ = k
+}

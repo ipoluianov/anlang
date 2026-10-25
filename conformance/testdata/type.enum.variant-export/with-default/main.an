@@ -1,0 +1,15 @@
+// want: ok
+
+package main
+
+import "conf/lib"
+
+func main() {
+	switch lib.Check("") {
+	case lib.EmptyWord:
+	case lib.TooLong{word, max}:
+		_, _ = word, max
+	default:
+	}
+	_ = lib.TooLong{word: "w", max: 3}
+}

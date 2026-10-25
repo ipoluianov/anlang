@@ -14,6 +14,19 @@ type TypeParam struct {
 	Obj   *TypeName
 	index int
 	bound Type // the constraint: an interface type
+
+	zero      *zeroReason // why it requires a zero value, if it does (type.zero.param-constraint)
+	origParam *TypeParam  // for a receiver type parameter, the type parameter of the generic type
+}
+
+// RequiresZero reports whether the type parameter has the inferred
+// constraint "requires a zero value", and describes why
+// (type.zero.param-tools).
+func (t *TypeParam) RequiresZero() (bool, string) {
+	if t.zero == nil {
+		return false, ""
+	}
+	return true, zeroChain(t)
 }
 
 func (t *TypeParam) Underlying() Type {
@@ -460,6 +473,24 @@ func (c *checker) subst(t Type, m substMap) Type {
 		if changed {
 			return &Interface{Methods: methods, Embeddeds: embeddeds, isComparable: t.isComparable}
 		}
+	case *Enum:
+		changed := false
+		variants := make([]*Variant, len(t.Variants))
+		for i, v := range t.Variants {
+			nv := *v
+			nv.orig, nv.ctor = v.origin(), nil
+			nv.fields = nil
+			for _, f := range v.fields {
+				nf := *f
+				nf.typ = c.subst(f.typ, m)
+				changed = changed || nf.typ != f.typ
+				nv.fields = append(nv.fields, &nf)
+			}
+			variants[i] = &nv
+		}
+		if changed {
+			return &Enum{Variants: variants}
+		}
 	case *Union:
 		changed := false
 		var terms []*Term
@@ -541,6 +572,7 @@ func (c *checker) instantiate(pos syntax.Pos, orig *Named, targs []Type, verify 
 	}
 	if verify {
 		c.later(func() { c.verify(pos, orig.Obj.name, orig.TypeParams, targs) })
+		c.recordZeroEdges(pos, orig.Obj.name, orig.TypeParams, targs)
 	}
 	if n := c.instances[key.String()]; n != nil {
 		return n
@@ -816,6 +848,7 @@ func (c *checker) instantiateSig(pos syntax.Pos, name string, sig *Signature, ta
 		}
 	}
 	c.later(func() { c.verify(pos, name, tps, targs) })
+	c.recordZeroEdges(pos, name, tps, targs)
 	ns := *c.subst(sig, newSubstMap(tps, targs)).(*Signature)
 	ns.TypeParams = nil
 	return &ns
@@ -1063,8 +1096,8 @@ func (c *checker) inferCall(e *syntax.CallExpr, sig *Signature, targs []Type, ar
 		if pt == nil || a.mode == invalid {
 			return nil
 		}
-		if isUntyped(a.typ) {
-			continue
+		if isUntyped(a.typ) || isGenericEnumValue(a.typ) {
+			continue // typed by the parameter after inference
 		}
 		u.self = true
 		ok := u.unify(pt, a.typ)

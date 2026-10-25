@@ -1,0 +1,23 @@
+// want: stmt.switch.variant.name
+
+package main
+
+type Mode enum {
+	Inc
+	Dec
+	Reset
+}
+
+type Shape enum {
+	Circle{r f64}
+	Rect{w, h f64}
+}
+
+func main() {
+	m := Inc
+	switch m {
+	case Inc, Dec, Reset:
+	case Circle{r}:
+		_ = r
+	}
+}

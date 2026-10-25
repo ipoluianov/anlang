@@ -90,13 +90,18 @@ type checker struct {
 	methods      map[*TypeName][]*Func // methods by receiver base type
 	lazy         map[*TypeName]*lazyAlias
 
-	invalidSwitch map[*syntax.SwitchStmt]bool // switches with an invalid tag
-	instances     map[string]*Named           // instances of generic types
-	inArgs        bool                        // checking call arguments
-	delayed       []func()                    // checks run when declarations and bodies are complete
-	interfaces    []interfaceInfo             // interface types, checked for method conflicts at the end
-	objList       []Object                    // package-level objects in source order, including blank ones
-	objPath       []Object                    // objects whose declarations are being checked
+	invalidSwitch   map[*syntax.SwitchStmt]bool // switches with an invalid tag
+	instances       map[string]*Named           // instances of generic types
+	enumVariants    map[*TypeName][]*Variant    // variants of enum type declarations
+	variantSwitches map[*syntax.SwitchStmt]bool // variant switches: whether exhaustive or with default
+	inArgs          bool                        // checking call arguments
+	funcName        string                      // the function whose body is checked
+	zeroEdges       []zeroEdge                  // type arguments, for the zero value constraint
+	pendingZero     map[syntax.Expr]pendingZero // single-value map index and receive expressions
+	delayed         []func()                    // checks run when declarations and bodies are complete
+	interfaces      []interfaceInfo             // interface types, checked for method conflicts at the end
+	objList         []Object                    // package-level objects in source order, including blank ones
+	objPath         []Object                    // objects whose declarations are being checked
 
 	untyped map[syntax.Expr]untypedInfo
 
@@ -109,16 +114,17 @@ type checker struct {
 
 // declInfo is the declaration of a package-level object.
 type declInfo struct {
-	file  *Scope
-	from  *syntax.ValueSpec // spec that gives the type and initializer of a constant
-	typ   syntax.Expr       // type of a constant or variable; may be nil
-	init  syntax.Expr       // initializer of a constant or variable; may be nil
-	iota  int               // index of the constant spec
-	vars  []*Var            // all variables of a spec with a multi-value initializer
-	tspec *syntax.TypeSpec  // type declaration
-	fdecl *syntax.FuncDecl  // function declaration
-	scope *Scope            // scope of the type parameters of a function, the parent of its body
-	spec  *syntax.ValueSpec // const or var spec
+	file   *Scope
+	from   *syntax.ValueSpec // spec that gives the type and initializer of a constant
+	typ    syntax.Expr       // type of a constant or variable; may be nil
+	init   syntax.Expr       // initializer of a constant or variable; may be nil
+	iota   int               // index of the constant spec
+	vars   []*Var            // all variables of a spec with a multi-value initializer
+	tspec  *syntax.TypeSpec  // type declaration
+	enumOf *TypeName         // enum type of a variant
+	fdecl  *syntax.FuncDecl  // function declaration
+	scope  *Scope            // scope of the type parameters of a function, the parent of its body
+	spec   *syntax.ValueSpec // const or var spec
 }
 
 // Check checks package main. The Info is returned even if there are
@@ -139,9 +145,12 @@ func Check(conf *Config, files []*syntax.File) (*Info, []*syntax.Error) {
 		methods:  map[*TypeName][]*Func{},
 		lazy:     map[*TypeName]*lazyAlias{},
 
-		invalidSwitch: map[*syntax.SwitchStmt]bool{},
-		instances:     map[string]*Named{},
-		untyped:       map[syntax.Expr]untypedInfo{},
+		invalidSwitch:   map[*syntax.SwitchStmt]bool{},
+		instances:       map[string]*Named{},
+		pendingZero:     map[syntax.Expr]pendingZero{},
+		enumVariants:    map[*TypeName][]*Variant{},
+		variantSwitches: map[*syntax.SwitchStmt]bool{},
+		untyped:         map[syntax.Expr]untypedInfo{},
 	}
 	if c.intBits == 0 {
 		c.intBits = 64
@@ -199,6 +208,10 @@ func (c *checker) check() {
 			if scope == nil {
 				scope = c.decls[f].file
 			}
+			c.funcName = f.name
+			if r := f.Signature().Recv; r != nil {
+				c.funcName = fmt.Sprintf("%s.%s", r.typ, f.name)
+			}
 			c.funcBody(scope, f.Signature(), d.Recv, d.Type, d.Body, false)
 		}
 	}
@@ -207,6 +220,8 @@ func (c *checker) check() {
 	for i := 0; i < len(c.delayed); i++ {
 		c.delayed[i]()
 	}
+	c.checkPendingZero()
+	c.checkZeroEdges()
 
 	for _, s := range fileScopes {
 		for _, name := range s.Names() {
@@ -360,11 +375,15 @@ func (c *checker) collectGenDecl(fs *Scope, d *syntax.GenDecl) {
 			obj := &TypeName{object{pos: s.Name.Pos(), name: s.Name.Name}}
 			c.declarePkg(s.Name, obj, &declInfo{file: fs, tspec: s})
 			if et, ok := s.Type.(*syntax.EnumType); ok {
-				// Until enum types are supported (roadmap step 3), the
-				// variants are declared invalid, so their uses report no
-				// further errors.
-				for _, v := range et.Variants {
-					c.declarePkg(v.Name, &Const{object: object{pos: v.Name.Pos(), name: v.Name.Name, typ: Typ[Invalid]}}, &declInfo{file: fs})
+				// The variants are declared in the package block
+				// (type.enum.variant-scope).
+				seen := map[string]bool{}
+				for i, v := range c.newVariants(obj, et) {
+					if seen[v.name] {
+						continue // reported by enumType (type.enum.nonempty)
+					}
+					seen[v.name] = true
+					c.declarePkg(et.Variants[i].Name, v, &declInfo{file: fs, enumOf: obj})
 				}
 			}
 		}
@@ -440,7 +459,11 @@ func (c *checker) declarePkg(name *syntax.Name, obj Object, di *declInfo) bool {
 		c.info.Defs[name] = nil
 		obj.base().parent = c.pkgScope
 	} else if alt := c.pkgScope.Insert(obj); alt != nil {
-		c.errorf(name.Pos(), "decl.visibility.go", "%s redeclared in this block (previous declaration at %s)", name.Name, alt.Pos())
+		rule := "decl.visibility.go"
+		if _, ok := obj.(*Variant); ok {
+			rule = "type.enum.variant-scope"
+		}
+		c.errorf(name.Pos(), rule, "%s redeclared in this block (previous declaration at %s)", name.Name, alt.Pos())
 		return false
 	} else {
 		c.info.Defs[name] = obj

@@ -9,6 +9,12 @@ import (
 // compositeLit checks a composite literal (expr.lit.go). hint is the
 // type of the literal if its type is elided.
 func (c *checker) compositeLit(x *operand, e *syntax.CompositeLit, hint Type) {
+	if e.Type != nil {
+		if v := c.variantOf(e.Type); v != nil {
+			c.variantLit(x, e, v, hint)
+			return
+		}
+	}
 	var typ Type
 	switch t := e.Type.(type) {
 	case nil:
@@ -22,7 +28,7 @@ func (c *checker) compositeLit(x *operand, e *syntax.CompositeLit, hint Type) {
 		if _, ok := t.Len.(*syntax.Ellipsis); ok {
 			// [...]T: the length is given by the elements.
 			elem := c.typExpr(t.Elt)
-			n := c.indexedElems(e.Elts, elem, -1)
+			n := c.indexedElems(e, elem, -1)
 			typ = &Array{Len: n, Elem: elem}
 			c.recordType(e.Type, typexpr, typ, nil)
 			x.mode, x.typ = value, typ
@@ -41,9 +47,9 @@ func (c *checker) compositeLit(x *operand, e *syntax.CompositeLit, hint Type) {
 	case *Struct:
 		c.structLit(e, u)
 	case *Array:
-		c.indexedElems(e.Elts, u.Elem, u.Len)
+		c.indexedElems(e, u.Elem, u.Len)
 	case *Slice:
-		c.indexedElems(e.Elts, u.Elem, -1)
+		c.indexedElems(e, u.Elem, -1)
 	case *Map:
 		c.mapLit(e, u)
 	default:
@@ -70,6 +76,7 @@ func (c *checker) skipElems(e *syntax.CompositeLit) {
 
 func (c *checker) structLit(e *syntax.CompositeLit, t *Struct) {
 	if len(e.Elts) == 0 {
+		c.omittedFields(e, t, nil)
 		return
 	}
 	if _, keyed := e.Elts[0].(*syntax.KeyValueExpr); keyed {
@@ -107,6 +114,7 @@ func (c *checker) structLit(e *syntax.CompositeLit, t *Struct) {
 			seen[key.Name] = true
 			c.fieldValue(kv.Value, field.typ)
 		}
+		c.omittedFields(e, t, seen)
 		return
 	}
 	for i, el := range e.Elts {
@@ -128,6 +136,16 @@ func (c *checker) structLit(e *syntax.CompositeLit, t *Struct) {
 	}
 }
 
+// omittedFields checks the fields that a struct literal omits: they get
+// their zero values (type.zero.literal, expr.lit.no-zero).
+func (c *checker) omittedFields(e *syntax.CompositeLit, t *Struct, given map[string]bool) {
+	for _, f := range t.Fields {
+		if !given[f.name] {
+			c.zeroUse(e.Rbrace, f.typ, "type.zero.literal", "the literal omits field "+f.name)
+		}
+	}
+}
+
 // fieldValue checks a field value of a struct literal: unlike elements
 // of arrays, slices and maps, it cannot elide its type (expr.lit.go).
 func (c *checker) fieldValue(e syntax.Expr, t Type) {
@@ -146,7 +164,8 @@ func (c *checker) element(e syntax.Expr, t Type, context string) {
 // indexedElems checks the elements of an array or slice literal and
 // returns the length: the largest index plus one. length is the array
 // length, or -1 for slices and [...]T.
-func (c *checker) indexedElems(elts []syntax.Expr, elem Type, length int64) int64 {
+func (c *checker) indexedElems(e *syntax.CompositeLit, elem Type, length int64) int64 {
+	elts := e.Elts
 	seen := map[int64]bool{}
 	var next, max int64
 	for _, el := range elts {
@@ -179,6 +198,14 @@ func (c *checker) indexedElems(elts []syntax.Expr, elem Type, length int64) int6
 		if next > max {
 			max = next
 		}
+	}
+	// Elements not given get their zero values (type.zero.literal).
+	total := length
+	if total < 0 {
+		total = max
+	}
+	if int64(len(seen)) < total {
+		c.zeroUse(e.Rbrace, elem, "type.zero.literal", "the literal leaves elements unset")
 	}
 	return max
 }

@@ -1,0 +1,10 @@
+// want: type.enum.defined
+
+package main
+
+func main() {
+	var e enum {
+		A
+	}
+	_ = e
+}

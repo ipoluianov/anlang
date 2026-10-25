@@ -1,0 +1,13 @@
+// want: expr.cmp.go
+// checks: type.enum.comparable
+
+package main
+
+type E enum {
+	V{xs []int}
+}
+
+func main() {
+	a := V(nil)
+	_ = a == a
+}

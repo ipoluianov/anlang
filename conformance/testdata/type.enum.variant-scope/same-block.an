@@ -1,0 +1,15 @@
+// want: type.enum.variant-scope
+
+package main
+
+type A enum {
+	X
+}
+
+type B enum {
+	X
+}
+
+func main() {
+
+}

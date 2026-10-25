@@ -1,0 +1,9 @@
+// want: ok
+
+package main
+
+func main() {
+	child := Some(1)
+	var p Option[string] = None
+	_, _ = child, p
+}

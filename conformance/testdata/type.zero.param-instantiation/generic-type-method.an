@@ -1,0 +1,22 @@
+// want: type.zero.param-instantiation
+
+package main
+
+type Shape enum {
+	Circle{r f64}
+	Rect{w, h f64}
+}
+
+type Box[T any] struct {
+	items []T
+}
+
+func (b Box[T]) Pop() T {
+	var z T
+	return z
+}
+
+func main() {
+	var b Box[Shape]
+	_ = b
+}

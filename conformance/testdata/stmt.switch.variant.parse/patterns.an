@@ -1,0 +1,21 @@
+// want: ok
+
+package main
+
+type Shape enum {
+	Circle{r f64}
+	Rect{w, h f64}
+}
+
+func Area(s Shape) f64 {
+	switch s {
+	case Circle{r}:
+		return 3 * r * r
+	case Rect{w, h}:
+		return w * h
+	}
+}
+
+func main() {
+	_ = Area(Circle(1))
+}

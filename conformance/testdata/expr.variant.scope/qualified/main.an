@@ -1,0 +1,11 @@
+// want: decl.visibility.go
+// checks: expr.variant.scope
+
+package main
+
+import "conf/lib"
+
+func main() {
+	_ = lib.EmptyWord
+	_ = lib.internal
+}

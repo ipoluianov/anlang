@@ -1,0 +1,13 @@
+// want: ok
+
+package main
+
+func main() {
+	var o Option[int] = None
+	o = Some(3)
+	switch o {
+	case None:
+	case Some{v}:
+		_ = v
+	}
+}

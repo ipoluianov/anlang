@@ -316,6 +316,13 @@ func (c *checker) assignment(x *operand, t Type, context string) {
 		x.invalidate()
 		return
 	}
+	if isGenericEnumValue(x.typ) {
+		if t == nil || !resolveGenericEnum(x, t) {
+			c.genericEnumError(x)
+			return
+		}
+		c.recordType(x.expr, x.mode, x.typ, nil)
+	}
 	if t == nil {
 		// Declaration without a type: the operand's default type.
 		c.defaultUntyped(x)

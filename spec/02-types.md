@@ -277,7 +277,7 @@ A variable, field, result, element or non-variadic parameter of type `any` MUST 
 - **type.zero.literal** — A composite literal of a struct type MUST give every field whose type has no zero value.
 - **type.zero.make** — `make([]T, n)` and `make([]T, n, m)` are rejected unless `n` is the constant 0; `make` with a capacity remains allowed.
 - **type.zero.map-index** — For a map with element type `T`, the single-value index expression `m[k]` is rejected; only the comma-ok form `v, ok := m[k]` is allowed, and `v` is usable only where `ok` is true.
-- **type.zero.chan-receive** — For a channel with element type `T`, the single-value receive `<-ch` is rejected; only the comma-ok form `v, ok := <-ch` is allowed, because a receive from a closed channel yields the zero value.
+- **type.zero.chan-receive** — For a channel with element type `T`, the single-value receive `<-ch` is rejected; only the comma-ok form `v, ok := <-ch` is allowed, because a receive from a closed channel yields the zero value. A receive whose value is discarded — a receive statement `<-ch`, or `case <-ch:` in `select` — is permitted.
 
 **Zero values of type parameters.** No constraint expresses "has a zero value"; the requirement is inferred, like an effect summary ([07-effects](07-effects.md)).
 

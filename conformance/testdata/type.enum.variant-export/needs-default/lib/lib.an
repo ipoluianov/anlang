@@ -1,0 +1,11 @@
+package lib
+
+type Error enum {
+	EmptyWord
+	TooLong{word string, max int}
+	internal
+}
+
+func Check(s string) Error {
+	return internal
+}

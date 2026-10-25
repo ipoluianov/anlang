@@ -9,6 +9,7 @@ import (
 
 // funcContext is the state of the function body being checked.
 type funcContext struct {
+	name    string // the declared function or method, for diagnostics
 	sig     *Signature
 	generic *Signature // the enclosing generic function, if any
 	vars    []*Var     // local variables (decl.var.unused)
@@ -25,6 +26,7 @@ const (
 	breakOK stmtContext = 1 << iota
 	continueOK
 	fallthroughOK
+	variantSwitchOK // directly in a case clause of a variant switch
 )
 
 // funcBody checks the body of a function declared in file scope file.
@@ -34,11 +36,11 @@ const (
 func (c *checker) funcBody(parent *Scope, sig *Signature, recv *syntax.FieldList, ft *syntax.FuncType, body *syntax.BlockStmt, literal bool) {
 	savedScope, savedFn := c.scope, c.fn
 	defer func() { c.scope, c.fn = savedScope, savedFn }()
-	c.fn = &funcContext{sig: sig, labels: map[string]*Label{}}
+	c.fn = &funcContext{sig: sig, labels: map[string]*Label{}, name: c.funcName}
 	if len(sig.TypeParams) > 0 {
 		c.fn.generic = sig
 	} else if literal && savedFn != nil {
-		c.fn.generic = savedFn.generic
+		c.fn.generic, c.fn.name = savedFn.generic, savedFn.name
 	}
 	c.scope = NewScope(parent)
 	c.scope.isFunc = true
@@ -48,6 +50,14 @@ func (c *checker) funcBody(parent *Scope, sig *Signature, recv *syntax.FieldList
 	}
 	c.declareParams(ft.Params, sig.Params)
 	c.declareParams(ft.Results, sig.Results)
+	if ft.Results != nil {
+		// Named results start with the zero value (type.zero.uses).
+		for _, v := range sig.Results.Vars {
+			if v.name != "" {
+				c.zeroUse(v.pos, v.typ, "type.zero.uses", "named result "+v.name)
+			}
+		}
+	}
 	c.collectLabels(body)
 	c.stmtList(0, body.List)
 	if sig.Results.Len() > 0 && !c.isTerminatingList(body.List, "") {
@@ -289,7 +299,8 @@ func (c *checker) exprStmt(s *syntax.ExprStmt) {
 		return
 	case x.mode == commaok:
 		if u, ok := unparen(s.X).(*syntax.UnaryExpr); ok && u.Op == syntax.Arrow {
-			return // receive
+			c.dropPendingZero(s.X) // the received value is discarded
+			return
 		}
 	}
 	c.errorf(s.X.Pos(), "stmt.go", "%s is not used", exprString(s.X))
@@ -460,6 +471,9 @@ func (c *checker) lhsVar(e syntax.Expr) (Type, bool) {
 	}
 	var x operand
 	c.expr(&x, e)
+	if x.mode == mapindex {
+		c.dropPendingZero(e) // m[k] = v does not read m[k]
+	}
 	if !c.lhsAddressable(e, &x) {
 		return Typ[Invalid], false
 	}
@@ -679,7 +693,9 @@ func (c *checker) branchStmt(ctxt stmtContext, s *syntax.BranchStmt) {
 			c.errorf(s.Pos(), "stmt.go", "continue is not in a loop")
 		}
 	case syntax.Fallthrough:
-		if ctxt&fallthroughOK == 0 {
+		if ctxt&variantSwitchOK != 0 {
+			c.errorf(s.Pos(), "stmt.switch.variant.no-fallthrough", "fallthrough is not permitted in a variant switch")
+		} else if ctxt&fallthroughOK == 0 {
 			c.errorf(s.Pos(), "stmt.go", "fallthrough statement out of place")
 		}
 	case syntax.Goto:
@@ -709,6 +725,15 @@ func (c *checker) switchStmt(ctxt stmtContext, s *syntax.SwitchStmt) {
 	} else {
 		tag = operand{mode: constant_, typ: Typ[Bool], val: constBool(true)}
 	}
+	if tag.mode != invalid && isGenericEnumValue(tag.typ) {
+		c.genericEnumError(&tag)
+	}
+	if tag.mode != invalid && s.Tag != nil {
+		if enum := enumOf(tag.typ); enum != nil {
+			c.variantSwitch(ctxt, s, &tag, enum)
+			return
+		}
+	}
 
 	seen := map[string]syntax.Pos{}
 	var dflt *syntax.CaseClause
@@ -737,6 +762,19 @@ func (c *checker) switchStmt(ctxt stmtContext, s *syntax.SwitchStmt) {
 			c.caseValue(&tag, e, s.Tag != nil, seen)
 		}
 		c.openScope()
+		if tag.mode == invalid {
+			// Bindings of what may be variant patterns are declared
+			// invalid, so their uses report no further errors.
+			for _, e := range cl.List {
+				if _, elts, braces := patternParts(e); braces {
+					for _, b := range elts {
+						if id, ok := b.(*syntax.Name); ok && id.Name != "_" && c.scope.Lookup(id.Name) == nil {
+							c.declare(id, &Var{object: object{pos: id.Pos(), name: id.Name, typ: Typ[Invalid]}, used: true})
+						}
+					}
+				}
+			}
+		}
 		inner := ctxt | breakOK
 		if i < len(clauses)-1 {
 			inner |= fallthroughOK

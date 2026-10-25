@@ -1,0 +1,22 @@
+// want: type.zero.param-instantiation
+// checks: type.zero.param-constraint
+
+package main
+
+type Shape enum {
+	Circle{r f64}
+	Rect{w, h f64}
+}
+
+func Find[T any](xs []T) T {
+	var z T
+	return z
+}
+
+func Outer[U any](xs []U) U {
+	return Find(xs)
+}
+
+func main() {
+	_ = Outer([]Shape{Circle(1)})
+}

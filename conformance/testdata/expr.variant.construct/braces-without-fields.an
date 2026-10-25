@@ -1,0 +1,13 @@
+// want: expr.variant.construct
+
+package main
+
+type Mode enum {
+	Inc
+	Dec
+	Reset
+}
+
+func main() {
+	_ = Inc{}
+}

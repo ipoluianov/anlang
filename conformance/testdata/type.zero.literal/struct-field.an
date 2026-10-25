@@ -1,0 +1,17 @@
+// want: type.zero.literal
+
+package main
+
+type Shape enum {
+	Circle{r f64}
+	Rect{w, h f64}
+}
+
+type Box struct {
+	s Shape
+	n int
+}
+
+func main() {
+	_ = Box{n: 1}
+}

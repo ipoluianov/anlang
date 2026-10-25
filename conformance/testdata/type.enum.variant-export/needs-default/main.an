@@ -1,0 +1,14 @@
+// want: stmt.switch.variant.exhaustive
+// checks: type.enum.variant-export
+
+package main
+
+import "conf/lib"
+
+func main() {
+	switch lib.Check("") {
+	case lib.EmptyWord:
+	case lib.TooLong{word, max}:
+		_, _ = word, max
+	}
+}

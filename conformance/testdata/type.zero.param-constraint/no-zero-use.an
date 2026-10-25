@@ -1,0 +1,16 @@
+// want: ok
+
+package main
+
+type Shape enum {
+	Circle{r f64}
+	Rect{w, h f64}
+}
+
+func First[T any](xs []T) T {
+	return xs[0]
+}
+
+func main() {
+	_ = First([]Shape{Circle(1)})
+}

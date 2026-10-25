@@ -1,0 +1,18 @@
+// want: stmt.switch.variant.no-fallthrough
+
+package main
+
+type Mode enum {
+	Inc
+	Dec
+	Reset
+}
+
+func main() {
+	m := Inc
+	switch m {
+	case Inc:
+		fallthrough
+	default:
+	}
+}

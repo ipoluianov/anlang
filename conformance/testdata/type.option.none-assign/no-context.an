@@ -1,0 +1,8 @@
+// want: type.option.none-assign
+
+package main
+
+func main() {
+	x := None
+	_ = x
+}

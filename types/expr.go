@@ -17,6 +17,9 @@ func (c *checker) expr(x *operand, e syntax.Expr) {
 // elided type.
 func (c *checker) exprHint(x *operand, e syntax.Expr, hint Type) {
 	c.rawExpr(x, e, hint)
+	if hint != nil && resolveGenericEnum(x, hint) {
+		c.recordType(e, x.mode, x.typ, nil)
+	}
 	if x.mode == value && isGeneric(x.typ) && hint != nil {
 		if ts, ok := core(hint).(*Signature); ok {
 			c.inferFromTarget(x, ts)
@@ -211,6 +214,9 @@ func (c *checker) ident(x *operand, id *syntax.Name, wantType bool) {
 		x.mode, x.typ = value, obj.typ
 	case *Builtin:
 		x.mode, x.typ, x.id = builtin, Typ[Invalid], obj.id
+	case *Variant:
+		c.objDecl(obj)
+		c.variantOperand(x, obj)
 	case *Nil:
 		x.mode, x.typ = value, Typ[UntypedNil]
 	}
@@ -260,6 +266,8 @@ func (c *checker) selector(x *operand, e *syntax.SelectorExpr) {
 				x.mode, x.typ = variable, obj.typ
 			case *Func:
 				x.mode, x.typ = value, obj.typ
+			case *Variant:
+				c.variantOperand(x, obj)
 			}
 			return
 		}
@@ -291,6 +299,10 @@ func (c *checker) selector(x *operand, e *syntax.SelectorExpr) {
 	case *Func:
 		// A method value or the callee of a method call.
 		c.info.Uses[e.Sel] = obj
+		if n, ok := x.typ.(*Named); ok && n.orig == universeOption && obj.name == "Get" {
+			// Get returns the zero value for None (type.option.get).
+			c.zeroUse(e.Sel.Pos(), n.targs[0], "type.option.get", "Option.Get")
+		}
 		x.mode, x.typ, x.val = value, methodType(obj), nil
 		return
 	}
@@ -298,6 +310,8 @@ func (c *checker) selector(x *operand, e *syntax.SelectorExpr) {
 	case ambiguous:
 		c.errorf(e.Sel.Pos(), "type.struct.go", "ambiguous selector %s", exprString(e))
 	case incomplete(x.typ):
+	case enumOf(x.typ) != nil:
+		c.errorf(e.Sel.Pos(), "type.enum.patterns", "%s undefined: the fields of an enum value are reached through patterns in a switch", exprString(e))
 	case c.hidden(x.typ, e.Sel.Name):
 		c.errorf(e.Sel.Pos(), "decl.visibility.go", "%s undefined (cannot refer to unexported field or method %s)", exprString(e), e.Sel.Name)
 	default:
@@ -408,6 +422,7 @@ func (c *checker) unary(x *operand, e *syntax.UnaryExpr) {
 			return
 		}
 		x.mode, x.typ, x.val = commaok, ch.Elem, nil
+		c.addPendingZero(e, ch.Elem, "type.zero.chan-receive", "single-value receive "+exprString(e))
 		return
 	case syntax.Tilde:
 		c.errorf(e.Pos(), "expr.go", "invalid use of ~ outside a type constraint")
@@ -539,6 +554,11 @@ func (c *checker) binary(x *operand, e *syntax.BinaryExpr) {
 // matchTypes converts an untyped operand to the type of the other
 // operand of a binary operation.
 func (c *checker) matchTypes(x, y *operand) {
+	// A variant value of a generic enum type gets the instance of the
+	// other operand (expr.variant.infer).
+	if resolveGenericEnum(x, y.typ) || resolveGenericEnum(y, x.typ) {
+		return
+	}
 	// nil compared with a value of a type that has nil.
 	if x.isNil() && hasNil(y.typ) || y.isNil() && hasNil(x.typ) {
 		if x.isNil() && !isUntyped(y.typ) {
@@ -828,6 +848,7 @@ func (c *checker) indexExpr(x *operand, e *syntax.IndexExpr) {
 		c.expr(&k, idx)
 		c.assignment(&k, t.Key, "map index")
 		x.mode, x.typ = mapindex, t.Elem
+		c.addPendingZero(e, t.Elem, "type.zero.map-index", "single-value map index "+exprString(e))
 		return
 	}
 	if tp, ok := x.typ.(*TypeParam); ok {

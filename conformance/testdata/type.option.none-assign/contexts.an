@@ -1,0 +1,12 @@
+// want: ok
+
+package main
+
+func f(o Option[string]) {}
+
+func main() {
+	var o Option[int] = None
+	o = None
+	_ = o == None
+	f(None)
+}

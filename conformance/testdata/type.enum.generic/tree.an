@@ -1,0 +1,13 @@
+// want: ok
+
+package main
+
+type Tree[T any] enum {
+	Leaf
+	Node{value T, children []Tree[T]}
+}
+
+func main() {
+	t := Node(1, []Tree[int]{Leaf})
+	_ = t
+}

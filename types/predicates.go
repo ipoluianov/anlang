@@ -232,6 +232,16 @@ func comparableIn(t Type, seen []*Named) bool {
 		return true
 	case *Array:
 		return comparableIn(t.Elem, seen)
+	case *Enum:
+		// All fields of all variants (type.enum.comparable).
+		for _, v := range t.Variants {
+			for _, f := range v.fields {
+				if !comparableIn(f.typ, seen) {
+					return false
+				}
+			}
+		}
+		return true
 	case *Interface:
 		return true
 	}

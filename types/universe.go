@@ -42,15 +42,14 @@ var (
 	universeAny   *TypeName
 	universeError *Named
 	universeIota  *Const
+
+	universeOption    *Named
+	universeOptionGet *Func
 )
 
 // notYet lists predeclared identifiers that this compiler does not
 // support yet, with the roadmap step that adds them.
-var notYet = map[string]int{
-	"Option": 3,
-	"None":   3,
-	"Some":   3,
-}
+var notYet = map[string]int{}
 
 // removed lists Go predeclared identifiers that do not exist in Anlang,
 // with the rule that removes them and the replacement, if any.
@@ -98,6 +97,8 @@ func init() {
 	universeError.underlying = &Interface{Methods: []*Func{errorMethod}}
 	Universe.Insert(errObj)
 
+	declareOption()
+
 	cmpObj := &TypeName{object{name: "comparable"}}
 	cmpObj.typ = &Named{Obj: cmpObj, underlying: &Interface{isComparable: true}}
 	Universe.Insert(cmpObj)
@@ -128,4 +129,43 @@ func newStdPackage(path string, funcs ...builtinID) *Package {
 		pkg.Scope.Insert(&Builtin{object: object{name: builtinNames[id], typ: Typ[Invalid]}, id: id, pkg: path})
 	}
 	return pkg
+}
+
+// declareOption declares the predeclared generic enum type Option, its
+// variants None and Some, and its method Get (type.option.decl):
+//
+//	type Option[T any] enum {
+//	    None
+//	    Some{value T}
+//	}
+//
+//	func (o Option[T]) Get() (T, bool)
+func declareOption() {
+	obj := &TypeName{object{name: "Option"}}
+	tobj := &TypeName{object{name: "T"}}
+	tp := &TypeParam{Obj: tobj, bound: universeAny.typ}
+	tobj.typ = tp
+	opt := &Named{Obj: obj, TypeParams: []*TypeParam{tp}}
+	obj.typ = opt
+	none := &Variant{object: object{name: "None", typ: opt}, enum: opt, index: 0}
+	value := &Var{object: object{name: "value", typ: tp}, field: true}
+	some := &Variant{object: object{name: "Some", typ: opt}, enum: opt, index: 1, data: true, fields: []*Var{value}}
+	opt.underlying = &Enum{Variants: []*Variant{none, some}}
+
+	get := &Func{object: object{name: "Get"}}
+	get.typ = &Signature{
+		Recv:   &Var{object: object{name: "o", typ: opt}, param: true},
+		Params: &Tuple{},
+		Results: &Tuple{Vars: []*Var{
+			{object: object{typ: tp}, param: true},
+			{object: object{typ: Typ[Bool]}, param: true},
+		}},
+		RecvTypeParams: []*TypeParam{tp},
+	}
+	opt.methods = []*Func{get}
+	universeOption, universeOptionGet = opt, get
+
+	Universe.Insert(obj)
+	Universe.Insert(none)
+	Universe.Insert(some)
 }

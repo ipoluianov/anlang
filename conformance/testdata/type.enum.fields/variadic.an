@@ -1,0 +1,11 @@
+// want: type.enum.fields
+
+package main
+
+type E enum {
+	V{xs ...int}
+}
+
+func main() {
+
+}

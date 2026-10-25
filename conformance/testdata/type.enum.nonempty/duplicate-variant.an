@@ -1,0 +1,12 @@
+// want: type.enum.nonempty
+
+package main
+
+type E enum {
+	A
+	A
+}
+
+func main() {
+
+}

@@ -1,0 +1,17 @@
+// want: ok
+
+package main
+
+type Shape enum {
+	Circle{r f64}
+	Rect{w, h f64}
+}
+
+type Error enum {
+	TooLong{word string, max int}
+}
+
+func main() {
+	_ = Rect(2, 3)
+	_ = TooLong{word: "x", max: 1}
+}

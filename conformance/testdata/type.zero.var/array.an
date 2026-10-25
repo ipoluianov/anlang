@@ -1,0 +1,13 @@
+// want: type.zero.var
+
+package main
+
+type Shape enum {
+	Circle{r f64}
+	Rect{w, h f64}
+}
+
+func main() {
+	var a [2]Shape
+	_ = a
+}

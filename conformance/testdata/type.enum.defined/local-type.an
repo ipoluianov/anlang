@@ -1,0 +1,12 @@
+// want: ok
+
+package main
+
+func main() {
+	type Light enum {
+		Red
+		Green
+	}
+	l := Green
+	_ = l == Red
+}

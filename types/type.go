@@ -446,6 +446,8 @@ func writeType(b *strings.Builder, t Type) {
 		b.WriteString(t.Obj.name)
 	case *Union:
 		b.WriteString(t.String())
+	case *Enum:
+		writeEnum(b, t)
 	case *lazyAlias:
 		b.WriteString(t.obj.name)
 	default:
