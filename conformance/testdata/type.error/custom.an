@@ -1,0 +1,22 @@
+// want: ok
+
+package main
+
+type NotFound struct {
+	key string
+}
+
+func (e NotFound) Error() string {
+	return e.key
+}
+
+func find() (int, error) {
+	return 0, NotFound{"k"}
+}
+
+func main() {
+	_, err := find()
+	if err != nil {
+		_ = err.Error()
+	}
+}

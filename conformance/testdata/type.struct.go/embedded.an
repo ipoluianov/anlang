@@ -1,0 +1,27 @@
+// want: ok
+
+package main
+
+type Shape interface {
+	Area() f64
+}
+
+type Rect struct {
+	W, H f64
+}
+
+func (r Rect) Area() f64 {
+	return r.W * r.H
+}
+
+type Square struct {
+	Rect
+	label string
+}
+
+func main() {
+	sq := Square{Rect{1, 2}, "sq"}
+	_ = sq.W + sq.Area() + sq.Rect.H
+	var s Shape = sq
+	_ = s
+}

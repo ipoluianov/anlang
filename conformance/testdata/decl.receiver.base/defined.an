@@ -1,0 +1,14 @@
+// want: ok
+
+package main
+
+type Celsius f64
+
+func (c Celsius) F() f64 {
+	return f64(c)*9/5 + 32
+}
+
+func main() {
+	var c Celsius = 3
+	_ = c.F()
+}

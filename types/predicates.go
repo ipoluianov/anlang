@@ -3,6 +3,7 @@ package types
 import (
 	"go/constant"
 	"math"
+	"slices"
 )
 
 func isBasic(t Type, info BasicInfo) bool {
@@ -96,23 +97,33 @@ func Identical(x, y Type) bool { return identical(x, y, false) }
 // struct tags are ignored, as in conversions (type.conv.go).
 func identicalIgnoreTags(x, y Type) bool { return identical(x, y, true) }
 
-func identical(x, y Type, noTags bool) bool {
+// ifacePair is a pair of interface types being compared, to stop the
+// comparison of interfaces that refer to each other.
+type ifacePair struct {
+	x, y *Interface
+	prev *ifacePair
+}
+
+func identical(x, y Type, noTags bool) bool { return identicalIn(x, y, noTags, nil) }
+
+func identicalIn(x, y Type, noTags bool, pairs *ifacePair) bool {
+	x, y = unalias(x), unalias(y)
 	if x == y {
 		return true
 	}
 	switch x := x.(type) {
 	case *Array:
 		y, ok := y.(*Array)
-		return ok && x.Len == y.Len && identical(x.Elem, y.Elem, noTags)
+		return ok && x.Len == y.Len && identicalIn(x.Elem, y.Elem, noTags, pairs)
 	case *Slice:
 		y, ok := y.(*Slice)
-		return ok && identical(x.Elem, y.Elem, noTags)
+		return ok && identicalIn(x.Elem, y.Elem, noTags, pairs)
 	case *Map:
 		y, ok := y.(*Map)
-		return ok && identical(x.Key, y.Key, noTags) && identical(x.Elem, y.Elem, noTags)
+		return ok && identicalIn(x.Key, y.Key, noTags, pairs) && identicalIn(x.Elem, y.Elem, noTags, pairs)
 	case *Chan:
 		y, ok := y.(*Chan)
-		return ok && x.Dir == y.Dir && identical(x.Elem, y.Elem, noTags)
+		return ok && x.Dir == y.Dir && identicalIn(x.Elem, y.Elem, noTags, pairs)
 	case *Struct:
 		y, ok := y.(*Struct)
 		if !ok || len(x.Fields) != len(y.Fields) || x.Layout != y.Layout {
@@ -120,7 +131,7 @@ func identical(x, y Type, noTags bool) bool {
 		}
 		for i, f := range x.Fields {
 			g := y.Fields[i]
-			if f.name != g.name || !noTags && x.Tags[i] != y.Tags[i] || !identical(f.typ, g.typ, noTags) {
+			if f.name != g.name || !noTags && x.Tags[i] != y.Tags[i] || !identicalIn(f.typ, g.typ, noTags, pairs) {
 				return false
 			}
 		}
@@ -131,14 +142,14 @@ func identical(x, y Type, noTags bool) bool {
 			return false
 		}
 		for i := range x.Len() {
-			if !identical(x.Vars[i].typ, y.Vars[i].typ, noTags) {
+			if !identicalIn(x.Vars[i].typ, y.Vars[i].typ, noTags, pairs) {
 				return false
 			}
 		}
 		return true
 	case *Signature:
 		y, ok := y.(*Signature)
-		if !ok || x.Variadic != y.Variadic || !identical(x.Params, y.Params, noTags) || !identical(x.Results, y.Results, noTags) {
+		if !ok || x.Variadic != y.Variadic || !identicalIn(x.Params, y.Params, noTags, pairs) || !identicalIn(x.Results, y.Results, noTags, pairs) {
 			return false
 		}
 		for i := range x.Params.Len() {
@@ -149,11 +160,17 @@ func identical(x, y Type, noTags bool) bool {
 		return true
 	case *Interface:
 		y, ok := y.(*Interface)
-		if !ok || len(x.Methods) != len(y.Methods) {
+		if !ok || len(x.MethodSet()) != len(y.MethodSet()) {
 			return false
 		}
-		for _, m := range x.Methods {
-			if n := lookupMethod(y, m.name); n == nil || !identical(m.typ, n.typ, noTags) {
+		for p := pairs; p != nil; p = p.prev {
+			if p.x == x && p.y == y || p.x == y && p.y == x {
+				return true
+			}
+		}
+		pairs = &ifacePair{x, y, pairs}
+		for _, m := range x.MethodSet() {
+			if n := lookupFunc(y.MethodSet(), m.name); n == nil || !identicalIn(m.typ, n.typ, noTags, pairs) {
 				return false
 			}
 		}
@@ -162,55 +179,43 @@ func identical(x, y Type, noTags bool) bool {
 	return false
 }
 
-func lookupMethod(t *Interface, name string) *Func {
-	for _, m := range t.Methods {
-		if m.name == name {
-			return m
-		}
-	}
-	return nil
-}
-
 // comparable reports whether values of t can be compared with == and !=
 // (expr.cmp.go). Channels, as handle types, compare only with nil
 // (expr.cmp.sync).
-func comparable(t Type) bool {
+func comparable(t Type) bool { return comparableIn(t, nil) }
+
+// comparableIn is comparable; seen holds the defined types being checked,
+// so that invalid recursive types do not recurse forever.
+func comparableIn(t Type, seen []*Named) bool {
+	if n, ok := t.(*Named); ok {
+		if slices.Contains(seen, n) {
+			return true
+		}
+		seen = append(seen, n)
+	}
 	switch t := t.Underlying().(type) {
 	case *Basic:
 		// Invalid types are comparable, so no further error is reported.
 		return t.kind != UntypedNil
 	case *Struct:
 		for _, f := range t.Fields {
-			if !comparable(f.typ) {
+			if !comparableIn(f.typ, seen) {
 				return false
 			}
 		}
 		return true
 	case *Array:
-		return comparable(t.Elem)
+		return comparableIn(t.Elem, seen)
 	case *Interface:
 		return true
 	}
 	return false
 }
 
-// implements reports whether a value of type v satisfies interface t.
-func implements(v Type, t *Interface) bool {
-	if vi, ok := v.Underlying().(*Interface); ok {
-		for _, m := range t.Methods {
-			if n := lookupMethod(vi, m.name); n == nil || !Identical(m.typ, n.typ) {
-				return false
-			}
-		}
-		return true
-	}
-	// Methods of defined types arrive with methods (roadmap step 2).
-	return t.Empty()
-}
-
-// assignable reports whether a value of type v is assignable to type t
+// assignableTo reports whether a value of type v is assignable to type t
 // (type.assign.go). v must not be untyped.
-func assignable(v, t Type) bool {
+func (c *checker) assignableTo(v, t Type) bool {
+	v, t = unalias(v), unalias(t)
 	if Identical(v, t) {
 		return true
 	}
@@ -223,7 +228,7 @@ func assignable(v, t Type) bool {
 		}
 	}
 	if ti, ok := tu.(*Interface); ok {
-		return implements(v, ti)
+		return c.missingMethod(v, ti) == ""
 	}
 	if vc, ok := vu.(*Chan); ok && vc.Dir == SendRecv {
 		if tc, ok := tu.(*Chan); ok && Identical(vc.Elem, tc.Elem) && (!vNamed || !tNamed) {

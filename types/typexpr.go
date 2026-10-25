@@ -47,7 +47,9 @@ func (c *checker) typInternal(e syntax.Expr) Type {
 		case invalid:
 			return Typ[Invalid]
 		case typexpr:
-			if isEmptyInterface(x.typ) {
+			// A declared type with an empty interface is rejected at its
+			// declaration, whose type literal is interface{}.
+			if c.info.Uses[e] == universeAny {
 				c.errorf(e.Pos(), "type.any.positions", "%s may be used only as a type constraint or as the element type of a final ...any parameter", e.Name)
 				return Typ[Invalid]
 			}
@@ -96,7 +98,11 @@ func (c *checker) typInternal(e syntax.Expr) Type {
 		elem := c.typExpr(e.Value)
 		if isValid(key) && !comparable(key) {
 			if n, ok := key.(*Named); !ok || n.underlying != nil {
-				c.errorf(e.Key.Pos(), "type.composite.go", "invalid map key type %s", key)
+				rule := "type.composite.go"
+				if _, ok := key.Underlying().(*Chan); ok {
+					rule = "expr.cmp.sync" // channels are handles and not comparable
+				}
+				c.errorf(e.Key.Pos(), rule, "invalid map key type %s", key)
 			}
 		}
 		return &Map{Key: key, Elem: elem}
@@ -122,8 +128,7 @@ func (c *checker) typInternal(e syntax.Expr) Type {
 			c.errorf(e.Pos(), "type.interface.empty-value", "interface{} may be used only as a type constraint or as the element type of a final ...any parameter")
 			return Typ[Invalid]
 		}
-		c.notSupported(e.Pos(), 2, "interface types")
-		return Typ[Invalid]
+		return c.interfaceType(e)
 
 	case *syntax.EnumType:
 		c.errorf(e.Pos(), "type.enum.defined", "an enum type may appear only as the underlying type in a type declaration")
@@ -202,7 +207,35 @@ func (c *checker) structType(e *syntax.StructType) Type {
 			}
 		}
 		if len(f.Names) == 0 {
-			c.notSupported(f.Type.Pos(), 2, "embedded fields")
+			// An embedded field is named by its type name (type.struct.go).
+			var name *syntax.Name
+			switch ft := unparen(f.Type).(type) {
+			case *syntax.Name:
+				name = ft
+			case *syntax.SelectorExpr:
+				name = ft.Sel
+			case *syntax.StarExpr:
+				// Reported as a pointer type; the field is kept, so that
+				// literals and selectors report no further errors.
+				name, _ = unparen(ft.X).(*syntax.Name)
+				typ = Typ[Invalid]
+			}
+			if name == nil {
+				if isValid(typ) {
+					c.errorf(f.Type.Pos(), "type.struct.go", "embedded field type %s must be a type name", exprString(f.Type))
+				}
+				continue
+			}
+			v := &Var{object: object{pos: name.Pos(), name: name.Name, typ: typ}, field: true, embedded: true}
+			if prev, ok := seen[name.Name]; ok {
+				c.errorf(name.Pos(), "type.struct.go", "%s redeclared (previous declaration at %s)", name.Name, prev)
+			}
+			seen[name.Name] = name.Pos()
+			t.Fields = append(t.Fields, v)
+			t.Tags = append(t.Tags, tag)
+			if t.Layout != "" && isValid(typ) && !layoutField(typ) {
+				c.errorf(f.Type.Pos(), "type.layout.fields", "field of type %s in a struct with layout %s: want integer, floating-point, array or layout struct types", typ, t.Layout)
+			}
 			continue
 		}
 		for _, name := range f.Names {
@@ -233,6 +266,7 @@ func layoutField(t Type) bool {
 	case *Array:
 		return layoutField(t.Elem)
 	case *Struct:
+		// The fields of a layout struct were checked at its declaration.
 		return t.Layout != ""
 	}
 	return false

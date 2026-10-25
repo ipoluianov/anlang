@@ -1,0 +1,17 @@
+// want: stmt.error.unused
+
+package main
+
+type E struct{}
+
+func (e E) Error() string {
+	return ""
+}
+
+func fail() E {
+	return E{}
+}
+
+func main() {
+	fail()
+}

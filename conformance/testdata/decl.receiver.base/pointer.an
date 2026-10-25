@@ -1,0 +1,12 @@
+// want: type.pointer.removed
+// checks: decl.receiver.base
+
+package main
+
+type T struct{}
+
+func (t *T) M() {}
+
+func main() {
+
+}

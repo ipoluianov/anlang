@@ -37,6 +37,8 @@ type Info struct {
 	Scope *Scope
 	// Funcs are the package-level functions in source order.
 	Funcs []*Func
+	// Methods are the methods in source order.
+	Methods []*Func
 	// Main is func main.
 	Main *Func
 }
@@ -75,9 +77,14 @@ type checker struct {
 	info     *Info
 	pkgScope *Scope
 
-	decls   map[Object]*declInfo
-	objList []Object // package-level objects in source order, including blank ones
-	objPath []Object // objects whose declarations are being checked
+	decls        map[Object]*declInfo
+	methodDecls  []methodDecl
+	aliasMethods []aliasMethod
+	methods      map[*TypeName][]*Func // methods by receiver base type
+	lazy         map[*TypeName]*lazyAlias
+	interfaces   []interfaceInfo // interface types, checked for method conflicts at the end
+	objList      []Object        // package-level objects in source order, including blank ones
+	objPath      []Object        // objects whose declarations are being checked
 
 	untyped map[syntax.Expr]untypedInfo
 
@@ -116,6 +123,8 @@ func Check(conf *Config, files []*syntax.File) (*Info, []*syntax.Error) {
 		},
 		pkgScope: NewScope(Universe),
 		decls:    map[Object]*declInfo{},
+		methods:  map[*TypeName][]*Func{},
+		lazy:     map[*TypeName]*lazyAlias{},
 		untyped:  map[syntax.Expr]untypedInfo{},
 	}
 	if c.intBits == 0 {
@@ -153,17 +162,21 @@ func (c *checker) notSupported(pos syntax.Pos, step int, what string) {
 func (c *checker) check() {
 	c.checkPackageClauses()
 	fileScopes := c.collectObjects()
+	c.collectMethods()
 
 	for _, obj := range c.objList {
 		c.objDecl(obj)
 	}
+	c.checkMethods()
 	c.checkMain()
 
-	for _, f := range c.info.Funcs {
+	for _, f := range append(c.info.Funcs, c.info.Methods...) {
 		if d := c.decls[f].fdecl; d.Body != nil {
-			c.funcBody(c.decls[f].file, f.name, f.Signature(), d.Type, d.Body)
+			c.funcBody(c.decls[f].file, f.name, f.Signature(), d, d.Body)
 		}
 	}
+
+	c.checkInterfaces()
 
 	for _, s := range fileScopes {
 		for _, name := range s.Names() {
@@ -336,7 +349,7 @@ func (c *checker) checkVarArity(s *syntax.ValueSpec) {
 func (c *checker) collectFunc(fs *Scope, d *syntax.FuncDecl) {
 	switch {
 	case d.Recv != nil:
-		c.notSupported(d.Pos(), 2, "methods")
+		c.methodDecls = append(c.methodDecls, methodDecl{fs, d})
 		return
 	case d.Type.TypeParams != nil:
 		c.notSupported(d.Pos(), 2, "generic functions")

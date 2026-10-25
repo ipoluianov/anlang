@@ -1,0 +1,22 @@
+// want: ok
+
+package main
+
+type Shape interface {
+	Area() f64
+}
+
+type Rect struct {
+	W, H f64
+}
+
+func (r Rect) Area() f64 {
+	return r.W * r.H
+}
+
+func main() {
+	var s Shape = Rect{1, 2}
+	r, ok := s.(Rect)
+	_, _ = r, ok
+	_ = s.(Rect).W
+}

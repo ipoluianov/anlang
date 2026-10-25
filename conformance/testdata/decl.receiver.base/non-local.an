@@ -1,0 +1,9 @@
+// want: decl.receiver.base
+
+package main
+
+func (i int) M() {}
+
+func main() {
+
+}

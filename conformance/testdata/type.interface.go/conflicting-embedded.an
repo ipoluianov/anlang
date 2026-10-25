@@ -1,0 +1,21 @@
+// want: type.interface.go
+
+package main
+
+type A interface {
+	M() int
+}
+
+type B interface {
+	M() string
+}
+
+type C interface {
+	A
+	B
+}
+
+func main() {
+	var c C
+	_ = c
+}

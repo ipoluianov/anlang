@@ -1,0 +1,11 @@
+// want: decl.extern.no-method
+
+package main
+
+type T struct{}
+
+func (t T) M() = 1
+
+func main() {
+
+}

@@ -46,14 +46,18 @@ type TypeName struct {
 // Var is a variable, a parameter, a result or a struct field.
 type Var struct {
 	object
-	inout bool // an inout parameter (decl.param.inout)
-	field bool
-	param bool // a parameter or a result
-	used  bool
+	inout    bool // an inout parameter (decl.param.inout)
+	field    bool
+	embedded bool // an embedded struct field
+	param    bool // a parameter or a result
+	used     bool
 }
 
 // Inout reports whether v is an inout parameter.
 func (v *Var) Inout() bool { return v.inout }
+
+// Embedded reports whether v is an embedded struct field.
+func (v *Var) Embedded() bool { return v.embedded }
 
 // IsField reports whether v is a struct field.
 func (v *Var) IsField() bool { return v.field }

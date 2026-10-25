@@ -257,7 +257,7 @@ func (c *checker) constConversion(x *operand, t Type, tb *Basic) {
 // convertible reports whether a non-constant value of type v can be
 // converted to type t, and otherwise the violated rule.
 func (c *checker) convertible(v, t Type) (string, bool) {
-	if assignable(v, t) {
+	if c.assignableTo(v, t) {
 		return "", true
 	}
 	vu, tu := v.Underlying(), t.Underlying()

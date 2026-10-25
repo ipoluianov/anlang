@@ -70,8 +70,7 @@ var deviations = map[string]bool{
 // with the reason. The test fails on any other mismatch, and on an entry
 // here that no longer mismatches.
 var knownMismatches = map[string]string{
-	"src/internal/types/testdata/fixedbugs/issue25838.go": "alias cycles through a defined type need lazily resolved aliases",
-	"test/fixedbugs/bug233.go":                            "fmt.Print as a function value: an/fmt is built into the compiler until steps 9–10",
+	"test/fixedbugs/bug233.go": "fmt.Print as a function value: an/fmt is built into the compiler until steps 9–10",
 }
 
 // goImporter provides package fmt to go/types with the signatures of

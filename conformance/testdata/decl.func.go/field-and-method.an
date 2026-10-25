@@ -1,0 +1,13 @@
+// want: decl.func.go
+
+package main
+
+type T struct {
+	M int
+}
+
+func (t T) M() {}
+
+func main() {
+
+}

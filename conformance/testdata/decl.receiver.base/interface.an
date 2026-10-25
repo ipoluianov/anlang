@@ -1,0 +1,13 @@
+// want: decl.receiver.base
+
+package main
+
+type I interface {
+	M()
+}
+
+func (i I) N() {}
+
+func main() {
+
+}

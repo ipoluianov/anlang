@@ -2,6 +2,7 @@ package types
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -202,6 +203,7 @@ func (t *Tuple) At(i int) *Var { return t.Vars[i] }
 // Signature is a function type. If Variadic is set, the last parameter
 // has a slice type []T and is written ...T.
 type Signature struct {
+	Recv     *Var // receiver of a method; nil for functions and method values
 	Params   *Tuple
 	Results  *Tuple
 	Variadic bool
@@ -209,18 +211,100 @@ type Signature struct {
 
 // Interface is an interface type.
 type Interface struct {
-	Methods []*Func
+	Methods   []*Func // explicitly declared methods
+	Embeddeds []Type  // embedded interfaces
+
+	all       []*Func // method set, sorted by name; valid if complete
+	complete  bool
+	computing bool
+}
+
+// MethodSet returns the methods of t, including those of embedded
+// interfaces, sorted by name. If two embedded interfaces have methods
+// with the same name, the first one is taken; the conflict is reported
+// when the interface type is checked.
+func (t *Interface) MethodSet() []*Func {
+	if t.complete {
+		return t.all
+	}
+	if t.computing {
+		return t.Methods // an interface embedding itself
+	}
+	t.computing = true
+	defer func() { t.computing = false }()
+	// The set is not cached while an embedded interface is still being
+	// declared.
+	complete := true
+	all := append([]*Func(nil), t.Methods...)
+	for _, e := range t.Embeddeds {
+		if n, ok := e.(*Named); ok && n.underlying == nil {
+			complete = false
+		}
+		if u, ok := e.Underlying().(*Interface); ok {
+			for _, m := range u.MethodSet() {
+				if lookupFunc(all, m.name) == nil {
+					all = append(all, m)
+				}
+			}
+			complete = complete && u.complete
+		}
+	}
+	sort.Slice(all, func(i, j int) bool { return all[i].name < all[j].name })
+	t.all, t.complete = all, complete
+	return all
+}
+
+func lookupFunc(funcs []*Func, name string) *Func {
+	for _, f := range funcs {
+		if f.name == name {
+			return f
+		}
+	}
+	return nil
 }
 
 // Empty reports whether the interface has an empty method set
 // (type.interface.empty-value).
-func (t *Interface) Empty() bool { return len(t.Methods) == 0 }
+func (t *Interface) Empty() bool { return len(t.MethodSet()) == 0 }
+
+// lazyAlias is the type of an alias that is used in a cycle through a
+// defined type before its declaration is complete. It stands for the
+// aliased type, actual, once that is known.
+type lazyAlias struct {
+	obj     *TypeName
+	actual  Type
+	waiting []*Named // defined types whose underlying type is the alias
+}
+
+func (t *lazyAlias) Underlying() Type {
+	if t.actual == nil {
+		return Typ[Invalid]
+	}
+	return t.actual.Underlying()
+}
+
+func (t *lazyAlias) String() string { return t.obj.name }
+
+// unalias returns the type a resolved lazy alias stands for.
+func unalias(t Type) Type {
+	for {
+		l, ok := t.(*lazyAlias)
+		if !ok || l.actual == nil {
+			return t
+		}
+		t = l.actual
+	}
+}
 
 // Named is a defined type.
 type Named struct {
 	Obj        *TypeName
-	underlying Type // nil while the declaration is being checked
+	underlying Type    // nil while the declaration is being checked
+	methods    []*Func // methods declared with receiver type Named (decl.receiver.base)
 }
+
+// Methods returns the methods declared for t, in source order.
+func (t *Named) Methods() []*Func { return t.methods }
 
 func (t *Array) Underlying() Type     { return t }
 func (t *Slice) Underlying() Type     { return t }
@@ -298,13 +382,17 @@ func writeType(b *strings.Builder, t Type) {
 		b.WriteString("func")
 		writeSignature(b, t)
 	case *Interface:
-		if t.Empty() {
-			b.WriteString("interface{}")
-			return
-		}
+		// Embedded interfaces are written by name: the method set of an
+		// interface may refer to the interface itself.
 		b.WriteString("interface{")
-		for i, m := range t.Methods {
+		for i, e := range t.Embeddeds {
 			if i > 0 {
+				b.WriteString("; ")
+			}
+			writeType(b, e)
+		}
+		for i, m := range t.Methods {
+			if i > 0 || len(t.Embeddeds) > 0 {
 				b.WriteString("; ")
 			}
 			b.WriteString(m.name)
@@ -313,6 +401,8 @@ func writeType(b *strings.Builder, t Type) {
 		b.WriteString("}")
 	case *Named:
 		b.WriteString(t.Obj.name)
+	case *lazyAlias:
+		b.WriteString(t.obj.name)
 	default:
 		fmt.Fprintf(b, "%T", t)
 	}

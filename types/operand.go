@@ -214,7 +214,7 @@ func (c *checker) convertUntyped(x *operand, target Type, rule, context string) 
 			if x.mode == invalid {
 				return
 			}
-			if !implements(def, t) {
+			if c.missingMethod(def, t) != "" {
 				c.mismatch(x, target, rule, context)
 			}
 			return
@@ -296,8 +296,12 @@ func (c *checker) assignment(x *operand, t Type, context string) {
 		x.invalidate()
 		return
 	}
-	if !assignable(x.typ, t) {
-		c.errorf(x.expr.Pos(), "type.assign.go", "cannot use %s as %s value in %s", x, t, context)
+	if !c.assignableTo(x.typ, t) {
+		if ti, ok := t.Underlying().(*Interface); ok {
+			c.errorf(x.expr.Pos(), "type.interface.go", "cannot use %s as %s value in %s: %s does not implement %s (%s)", x, t, context, x.typ, t, c.missingMethod(x.typ, ti))
+		} else {
+			c.errorf(x.expr.Pos(), "type.assign.go", "cannot use %s as %s value in %s", x, t, context)
+		}
 		x.invalidate()
 	}
 }

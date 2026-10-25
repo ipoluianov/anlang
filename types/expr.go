@@ -41,6 +41,9 @@ func (c *checker) rawExpr(x *operand, e syntax.Expr, hint Type) {
 	x.mode, x.typ, x.val, x.expr = invalid, Typ[Invalid], nil, e
 	c.exprInternal(x, e, hint)
 	x.expr = e
+	if x.mode != typexpr {
+		x.typ = unalias(x.typ)
+	}
 	switch x.mode {
 	case constant_, variable, mapindex, value, commaok:
 		if hasInvalid(x.typ) {
@@ -91,13 +94,7 @@ func (c *checker) exprInternal(x *operand, e syntax.Expr, hint Type) {
 		c.sliceExpr(x, e)
 
 	case *syntax.TypeAssertExpr:
-		c.expr(x, e.X)
-		if e.Type == nil {
-			c.errorf(e.Pos(), "expr.go", "use of .(type) outside type switch")
-		} else {
-			c.notSupported(e.Pos(), 2, "type assertions")
-		}
-		x.invalidate()
+		c.typeAssert(x, e)
 
 	case *syntax.CallExpr:
 		c.callExpr(x, e)
@@ -169,8 +166,12 @@ func (c *checker) ident(x *operand, id *syntax.Name, wantType bool) {
 		x.mode, x.typ, x.val = constant_, obj.typ, obj.Val
 	case *TypeName:
 		c.objDecl(obj)
+		if obj.typ == nil && c.lazy[obj] != nil {
+			x.mode, x.typ = typexpr, c.lazy[obj]
+			return
+		}
 		if obj.typ == nil {
-			// A local type used in its own alias declaration.
+			// A type used in its own alias declaration.
 			c.errorf(id.Pos(), "type.go", "invalid recursive type: %s refers to itself", id.Name)
 			return
 		}
@@ -229,8 +230,7 @@ func (c *checker) selector(x *operand, e *syntax.SelectorExpr) {
 	case invalid:
 		return
 	case typexpr:
-		c.notSupported(e.Pos(), 2, "method expressions")
-		x.invalidate()
+		c.methodExpr(x, e)
 		return
 	}
 	c.singleValue(x)
@@ -238,25 +238,92 @@ func (c *checker) selector(x *operand, e *syntax.SelectorExpr) {
 	if x.mode == invalid {
 		return
 	}
-	if s, ok := x.typ.Underlying().(*Struct); ok {
-		for _, f := range s.Fields {
-			if f.name == e.Sel.Name && f.name != "_" {
-				c.info.Uses[e.Sel] = f
-				if x.mode != variable {
-					x.mode = value
-				}
-				x.typ = f.typ
-				return
-			}
+	obj, _, ambiguous := c.lookupFieldOrMethod(x.typ, e.Sel.Name)
+	switch obj := obj.(type) {
+	case *Var:
+		c.info.Uses[e.Sel] = obj
+		if x.mode != variable {
+			x.mode = value
 		}
+		x.typ, x.val = obj.typ, nil
+		return
+	case *Func:
+		// A method value or the callee of a method call.
+		c.info.Uses[e.Sel] = obj
+		x.mode, x.typ, x.val = value, methodType(obj), nil
+		return
 	}
-	if i, ok := x.typ.Underlying().(*Interface); ok && lookupMethod(i, e.Sel.Name) != nil {
-		c.notSupported(e.Sel.Pos(), 2, "method calls")
+	if ambiguous {
+		c.errorf(e.Sel.Pos(), "type.struct.go", "ambiguous selector %s", exprString(e))
+	} else {
+		c.errorf(e.Sel.Pos(), "expr.go", "%s undefined (type %s has no field or method %s)", exprString(e), x.typ, e.Sel.Name)
+	}
+	x.invalidate()
+}
+
+// typeAssert checks a type assertion x.(T) (type.interface.go). The
+// single-value form panics when it fails (expr.call.type-assert).
+func (c *checker) typeAssert(x *operand, e *syntax.TypeAssertExpr) {
+	c.expr(x, e.X)
+	if e.Type == nil {
+		c.errorf(e.Pos(), "expr.go", "use of .(type) outside type switch")
 		x.invalidate()
 		return
 	}
-	c.errorf(e.Sel.Pos(), "expr.go", "%s undefined (type %s has no field or method %s)", exprString(e), x.typ, e.Sel.Name)
-	x.invalidate()
+	t := c.typExpr(e.Type)
+	if x.mode == invalid {
+		return
+	}
+	xi, ok := x.typ.Underlying().(*Interface)
+	if !ok {
+		c.errorf(e.X.Pos(), "expr.go", "invalid operation: %s is not an interface", x)
+		x.invalidate()
+		return
+	}
+	if !isValid(t) {
+		x.invalidate()
+		return
+	}
+	if !c.possibleType(e.Type, x, xi, t, "type assertion") {
+		x.invalidate()
+		return
+	}
+	x.mode, x.typ, x.val = commaok, t, nil
+}
+
+// possibleType reports whether a value of interface type xi can hold a
+// value of type t; if not, the assertion or case e is impossible.
+func (c *checker) possibleType(e syntax.Expr, x *operand, xi *Interface, t Type, what string) bool {
+	if _, ok := t.Underlying().(*Interface); ok {
+		return true
+	}
+	if why := c.missingMethod(t, xi); why != "" {
+		c.errorf(e.Pos(), "type.interface.go", "impossible %s: %s does not implement %s (%s)", what, t, x.typ, why)
+		return false
+	}
+	return true
+}
+
+// methodExpr checks a method expression T.M: a function whose first
+// parameter is the receiver.
+func (c *checker) methodExpr(x *operand, e *syntax.SelectorExpr) {
+	t := x.typ
+	obj, _, ambiguous := c.lookupFieldOrMethod(t, e.Sel.Name)
+	m, ok := obj.(*Func)
+	if !ok {
+		if ambiguous {
+			c.errorf(e.Sel.Pos(), "type.struct.go", "ambiguous selector %s", exprString(e))
+		} else {
+			c.errorf(e.Sel.Pos(), "expr.go", "%s undefined (type %s has no method %s)", exprString(e), t, e.Sel.Name)
+		}
+		x.invalidate()
+		return
+	}
+	c.info.Uses[e.Sel] = m
+	sig := methodType(m)
+	recv := &Var{object: object{pos: e.Pos(), typ: t}, param: true}
+	params := append([]*Var{recv}, sig.Params.Vars...)
+	x.mode, x.typ, x.val = value, &Signature{Params: &Tuple{Vars: params}, Results: sig.Results, Variadic: sig.Variadic}, nil
 }
 
 func (c *checker) unary(x *operand, e *syntax.UnaryExpr) {
@@ -480,7 +547,7 @@ func (c *checker) comparison(x, y *operand, xNil, yNil bool, e *syntax.BinaryExp
 		} else if !hasNil(other.typ) {
 			rule, bad = "expr.cmp.nil", "mismatched types "+other.typ.String()+" and untyped nil"
 		}
-	case !comparableTypes(x.typ, y.typ):
+	case !c.comparableTypes(x.typ, y.typ):
 		bad = "mismatched types " + x.typ.String() + " and " + y.typ.String()
 	case e.Op == syntax.Eql || e.Op == syntax.Neq:
 		z := x
@@ -518,11 +585,11 @@ func (c *checker) comparison(x, y *operand, xNil, yNil bool, e *syntax.BinaryExp
 
 // comparableTypes reports whether operands of types x and y may be
 // compared: one must be assignable to the type of the other (expr.cmp.go).
-func comparableTypes(x, y Type) bool {
+func (c *checker) comparableTypes(x, y Type) bool {
 	if isUntyped(x) || isUntyped(y) {
 		return Identical(x, y) || isUntyped(x) && isUntyped(y) && isNumeric(x) && isNumeric(y)
 	}
-	return assignable(x, y) || assignable(y, x)
+	return c.assignableTo(x, y) || c.assignableTo(y, x)
 }
 
 // maxShift bounds the shift count of constant shifts.

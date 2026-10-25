@@ -1,0 +1,13 @@
+// want: type.interface.go
+
+package main
+
+type I interface {
+	M()
+	M()
+}
+
+func main() {
+	var i I
+	_ = i
+}

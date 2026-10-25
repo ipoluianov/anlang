@@ -1,0 +1,21 @@
+// want: type.struct.go
+
+package main
+
+type A struct {
+	X int
+}
+
+type B struct {
+	X int
+}
+
+type C struct {
+	A
+	B
+}
+
+func main() {
+	var c C
+	_ = c.X
+}

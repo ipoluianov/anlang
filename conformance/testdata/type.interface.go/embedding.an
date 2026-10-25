@@ -1,0 +1,22 @@
+// want: ok
+
+package main
+
+type Reader interface {
+	Read() int
+}
+
+type Writer interface {
+	Write(n int)
+}
+
+type ReadWriter interface {
+	Reader
+	Writer
+}
+
+func main() {
+	var rw ReadWriter
+	var r Reader = rw
+	_ = r
+}

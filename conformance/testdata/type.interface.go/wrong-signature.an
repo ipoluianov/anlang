@@ -1,0 +1,20 @@
+// want: type.interface.go
+
+package main
+
+type Shape interface {
+	Area() f64
+}
+
+type Rect struct {
+	W, H f64
+}
+
+func (r Rect) Area() int {
+	return 0
+}
+
+func main() {
+	var s Shape = Rect{1, 2}
+	_ = s
+}

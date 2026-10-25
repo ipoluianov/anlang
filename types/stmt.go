@@ -1,6 +1,7 @@
 package types
 
 import (
+	"slices"
 	"sort"
 
 	"an/syntax"
@@ -26,13 +27,17 @@ const (
 )
 
 // funcBody checks the body of a function declared in file scope file.
-func (c *checker) funcBody(file *Scope, name string, sig *Signature, ft *syntax.FuncType, body *syntax.BlockStmt) {
+func (c *checker) funcBody(file *Scope, name string, sig *Signature, d *syntax.FuncDecl, body *syntax.BlockStmt) {
+	ft := d.Type
 	savedScope, savedFn := c.scope, c.fn
 	defer func() { c.scope, c.fn = savedScope, savedFn }()
 	c.fn = &funcContext{sig: sig, labels: map[string]*Label{}}
 	c.scope = NewScope(file)
 	c.scope.isFunc = true
 
+	if sig.Recv != nil {
+		c.declareParams(d.Recv, &Tuple{Vars: []*Var{sig.Recv}})
+	}
 	c.declareParams(ft.Params, sig.Params)
 	c.declareParams(ft.Results, sig.Results)
 	c.collectLabels(body)
@@ -81,7 +86,13 @@ func (c *checker) declareParams(list *syntax.FieldList, t *Tuple) {
 			continue
 		}
 		for _, name := range f.Names {
-			c.declare(name, t.Vars[i])
+			// Duplicate names are reported by funcType.
+			v := t.Vars[i]
+			if name.Name == "_" {
+				c.info.Defs[name] = nil
+			} else if c.scope.Insert(v) == nil {
+				c.info.Defs[name] = v
+			}
 			i++
 		}
 	}
@@ -154,7 +165,7 @@ func (c *checker) stmt(ctxt stmtContext, s syntax.Stmt) {
 			c.errorf(s.X.Pos(), "stmt.go", "invalid operation: %s%s (non-numeric type %s)", exprString(s.X), s.Tok, x.typ)
 			return
 		}
-		c.assignable(s.X, &x)
+		c.lhsAddressable(s.X, &x)
 
 	case *syntax.AssignStmt:
 		switch s.Tok {
@@ -199,7 +210,7 @@ func (c *checker) stmt(ctxt stmtContext, s syntax.Stmt) {
 		c.switchStmt(ctxt, s)
 
 	case *syntax.TypeSwitchStmt:
-		c.notSupported(s.Pos(), 2, "type switches")
+		c.typeSwitchStmt(ctxt, s)
 
 	case *syntax.SelectStmt:
 		c.selectStmt(ctxt, s)
@@ -311,7 +322,7 @@ func (c *checker) unusedError(call *syntax.CallExpr, x *operand) {
 		results = []Type{x.typ}
 	}
 	for _, t := range results {
-		if isError(t) {
+		if c.isError(t) {
 			c.errorf(call.Pos(), "stmt.error.unused", "result of type error of %s is discarded implicitly: assign it to _ to discard it", exprString(call))
 			return
 		}
@@ -319,11 +330,11 @@ func (c *checker) unusedError(call *syntax.CallExpr, x *operand) {
 }
 
 // isError reports whether t is error or implements it.
-func isError(t Type) bool {
-	if t == nil || !isValid(t) {
+func (c *checker) isError(t Type) bool {
+	if t == nil || !isValid(t) || isEmptyInterface(t) {
 		return false
 	}
-	return implements(t, universeError.underlying.(*Interface)) && !isEmptyInterface(t)
+	return c.missingMethod(t, universeError.underlying.(*Interface)) == ""
 }
 
 func (c *checker) callStmt(what string, call *syntax.CallExpr) {
@@ -341,9 +352,9 @@ func (c *checker) callStmt(what string, call *syntax.CallExpr) {
 	}
 }
 
-// assignable checks that the operand x of expression e can be assigned
+// lhsAddressable checks that the operand x of expression e can be assigned
 // to (stmt.assign.go).
-func (c *checker) assignable(e syntax.Expr, x *operand) bool {
+func (c *checker) lhsAddressable(e syntax.Expr, x *operand) bool {
 	switch x.mode {
 	case invalid:
 		return false
@@ -403,7 +414,7 @@ func (c *checker) lhsVar(e syntax.Expr) (Type, bool) {
 	}
 	var x operand
 	c.expr(&x, e)
-	if !c.assignable(e, &x) {
+	if !c.lhsAddressable(e, &x) {
 		return Typ[Invalid], false
 	}
 	return x.typ, true
@@ -462,7 +473,7 @@ func (c *checker) opAssign(s *syntax.AssignStmt) {
 	}
 	var lhs operand
 	c.expr(&lhs, s.Lhs[0])
-	if c.assignable(s.Lhs[0], &lhs) {
+	if c.lhsAddressable(s.Lhs[0], &lhs) {
 		x.expr = s.Rhs[0]
 		c.assignment(&x, lhs.typ, "assignment")
 	}
@@ -699,7 +710,7 @@ func (c *checker) caseValue(tag *operand, e syntax.Expr, hasTag bool, seen map[s
 	if x.mode == invalid {
 		return
 	}
-	if !comparableTypes(x.typ, tag.typ) && !(xNil && hasNil(tag.typ)) {
+	if !c.comparableTypes(x.typ, tag.typ) && !(xNil && hasNil(tag.typ)) {
 		c.errorf(e.Pos(), "stmt.go", "invalid case %s in switch on %s (mismatched types %s and %s)", exprString(e), exprString(tag.expr), x.typ, tag.typ)
 		return
 	}
@@ -848,7 +859,7 @@ func (c *checker) rangeStmt(s *syntax.RangeStmt) {
 				continue
 			}
 			t, ok := c.lhsVar(e)
-			if ok && t != nil && x.mode != invalid && types[i] != nil && !assignable(types[i], t) {
+			if ok && t != nil && x.mode != invalid && types[i] != nil && !c.assignableTo(types[i], t) {
 				c.errorf(e.Pos(), "stmt.range.go", "cannot assign %s to %s (type %s) in range", types[i], exprString(e), t)
 			}
 		}
@@ -878,4 +889,110 @@ func (c *checker) rangeFunc(e syntax.Expr, t *Signature) (key, val Type, n int) 
 		}
 	}
 	return nil, nil, 0
+}
+
+func (c *checker) typeSwitchStmt(ctxt stmtContext, s *syntax.TypeSwitchStmt) {
+	c.openScope()
+	defer c.closeScope()
+	if s.Init != nil {
+		c.stmt(0, s.Init)
+	}
+	var lhs *syntax.Name
+	var guard *syntax.TypeAssertExpr
+	switch a := s.Assign.(type) {
+	case *syntax.ExprStmt:
+		guard, _ = a.X.(*syntax.TypeAssertExpr)
+	case *syntax.AssignStmt:
+		if len(a.Lhs) == 1 && len(a.Rhs) == 1 && a.Tok == syntax.Define {
+			lhs, _ = a.Lhs[0].(*syntax.Name)
+			guard, _ = a.Rhs[0].(*syntax.TypeAssertExpr)
+		}
+	}
+	if guard == nil || guard.Type != nil {
+		c.errorf(s.Assign.Pos(), "stmt.go", "invalid type switch guard")
+		return
+	}
+	if lhs != nil && lhs.Name == "_" {
+		c.errorf(lhs.Pos(), "stmt.go", "no new variable on left side of :=")
+		lhs = nil
+	}
+
+	var x operand
+	c.expr(&x, guard.X)
+	var xi *Interface
+	if x.mode != invalid {
+		var ok bool
+		if xi, ok = x.typ.Underlying().(*Interface); !ok {
+			c.errorf(guard.X.Pos(), "expr.go", "%s is not an interface", &x)
+			x.invalidate()
+		} else {
+			c.recordType(guard, value, x.typ, nil)
+		}
+	}
+
+	var seen []Type
+	var seenNil, dflt syntax.Node
+	used := false
+	for _, cs := range s.Body.List {
+		cl, ok := cs.(*syntax.CaseClause)
+		if !ok {
+			continue
+		}
+		if cl.List == nil {
+			if dflt != nil {
+				c.errorf(cl.Pos(), "stmt.go", "multiple defaults in switch (first at %s)", dflt.Pos())
+			}
+			dflt = cl
+		}
+		var single Type // the case type, if the clause has exactly one non-nil type
+		for _, e := range cl.List {
+			if id, ok := unparen(e).(*syntax.Name); ok {
+				if n, ok := c.lookup(id.Name).(*Nil); ok {
+					c.info.Uses[id] = n
+					if seenNil != nil {
+						c.errorf(e.Pos(), "stmt.go", "multiple nil cases in type switch (first at %s)", seenNil.Pos())
+					}
+					seenNil = e
+					continue
+				}
+			}
+			t := c.typExpr(e)
+			if !isValid(t) || x.mode == invalid {
+				continue
+			}
+			if slices.ContainsFunc(seen, func(s Type) bool { return Identical(s, t) }) {
+				c.errorf(e.Pos(), "stmt.go", "duplicate case %s in type switch", t)
+				continue
+			}
+			seen = append(seen, t)
+			if c.possibleType(e, &x, xi, t, "type switch case") && len(cl.List) == 1 {
+				single = t
+			}
+		}
+		c.openScope()
+		if lhs != nil {
+			// The variable has the case type in a clause with one type,
+			// and the type of the guard otherwise.
+			typ := x.typ
+			if single != nil {
+				typ = single
+			}
+			if x.mode == invalid {
+				typ = Typ[Invalid]
+			}
+			v := &Var{object: object{pos: lhs.Pos(), name: lhs.Name, typ: typ}}
+			c.scope.Insert(v)
+			c.stmtList((ctxt|breakOK)&^fallthroughOK, cl.Body)
+			used = used || v.used
+		} else {
+			c.stmtList((ctxt|breakOK)&^fallthroughOK, cl.Body)
+		}
+		c.closeScope()
+	}
+	if lhs != nil {
+		c.info.Defs[lhs] = nil
+		if !used {
+			c.errorf(lhs.Pos(), "decl.var.unused", "declared and not used: %s", lhs.Name)
+		}
+	}
 }

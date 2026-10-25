@@ -20,6 +20,14 @@ func (c *checker) objDecl(obj Object) {
 		return
 	}
 	if i := slices.Index(c.objPath, obj); i >= 0 {
+		if tn, ok := obj.(*TypeName); ok && di.tspec.Assign.IsValid() && throughDefined(c.objPath[i:]) {
+			// An alias used in a cycle through a defined type is valid;
+			// until its declaration is complete, it has a lazy type.
+			if c.lazy[tn] == nil {
+				c.lazy[tn] = &lazyAlias{obj: tn}
+			}
+			return
+		}
 		c.cycleError(c.objPath[i:])
 		obj.base().setType(Typ[Invalid])
 		return
@@ -50,7 +58,11 @@ func (c *checker) objDecl(obj Object) {
 	case *TypeName:
 		c.typeDecl(obj, di.tspec)
 	case *Func:
-		obj.typ = c.funcType(di.fdecl.Type, false)
+		sig := c.funcType(di.fdecl.Type, false)
+		if di.fdecl.Recv != nil {
+			sig.Recv = c.receiver(di.fdecl.Recv)
+		}
+		obj.typ = sig
 	}
 }
 
@@ -243,10 +255,18 @@ func (c *checker) typeDecl(obj *TypeName, spec *syntax.TypeSpec) {
 		return
 	}
 	if spec.Assign.IsValid() {
-		obj.typ = c.typExpr(spec.Type)
+		t := c.typExpr(spec.Type)
+		obj.typ = t
+		if l := c.lazy[obj]; l != nil {
+			l.actual = t
+			for _, n := range l.waiting {
+				n.underlying = t.Underlying()
+				c.validType(n, n, nil)
+			}
+		}
 		return
 	}
-	named := &Named{Obj: obj}
+	named := &Named{Obj: obj, methods: c.methods[obj]}
 	obj.typ = named
 	if _, ok := spec.Type.(*syntax.EnumType); ok {
 		named.underlying = Typ[Invalid]
@@ -254,6 +274,11 @@ func (c *checker) typeDecl(obj *TypeName, spec *syntax.TypeSpec) {
 		return
 	}
 	rhs := c.typExpr(spec.Type)
+	if l, ok := rhs.(*lazyAlias); ok && l.actual == nil {
+		// The underlying type is known when the alias is.
+		l.waiting = append(l.waiting, named)
+		return
+	}
 	if n, ok := rhs.(*Named); ok && n.underlying == nil {
 		c.errorf(spec.Name.Pos(), "type.go", "invalid recursive type %s", obj.name)
 		named.underlying = Typ[Invalid]
@@ -285,6 +310,10 @@ func (c *checker) validType(root *Named, t Type, path []*Named) {
 		for _, f := range t.Fields {
 			c.validType(root, f.typ, path)
 		}
+	case *Interface:
+		for _, e := range t.Embeddeds {
+			c.validType(root, e, path)
+		}
 	}
 }
 
@@ -297,6 +326,17 @@ func (c *checker) funcType(ft *syntax.FuncType, literal bool) *Signature {
 	sig := &Signature{}
 	sig.Params, sig.Variadic = c.params(ft.Params, true)
 	sig.Results, _ = c.params(ft.Results, false)
+	// Parameter and result names share one block (decl.visibility.go).
+	seen := map[string]bool{}
+	for _, v := range append(append([]*Var(nil), sig.Params.Vars...), sig.Results.Vars...) {
+		if v.name == "" || v.name == "_" {
+			continue
+		}
+		if seen[v.name] {
+			c.errorf(v.pos, "decl.visibility.go", "%s redeclared in this block", v.name)
+		}
+		seen[v.name] = true
+	}
 	return sig
 }
 
@@ -430,4 +470,17 @@ func (c *checker) declStmt(d *syntax.GenDecl) {
 			c.typeDecl(obj, s)
 		}
 	}
+}
+
+// throughDefined reports whether a cycle of declarations contains a
+// defined type, which makes a cycle through aliases valid.
+func throughDefined(cycle []Object) bool {
+	for _, obj := range cycle {
+		if tn, ok := obj.(*TypeName); ok {
+			if _, ok := tn.typ.(*Named); ok {
+				return true
+			}
+		}
+	}
+	return false
 }
