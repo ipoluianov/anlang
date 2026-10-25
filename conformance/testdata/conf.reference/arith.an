@@ -1,0 +1,45 @@
+// want: ok
+
+package main
+
+import "an/fmt"
+
+func fib(n int) int {
+	if n < 2 {
+		return n
+	}
+	return fib(n-1) + fib(n-2)
+}
+
+func gcd(a, b int) int {
+	for b != 0 {
+		a, b = b, a%b
+	}
+	return a
+}
+
+func main() {
+	fmt.Println(fib(20), gcd(84, 36))
+	x := 7
+	y := -3
+	fmt.Println(x/y, x%y, x<<2, x>>1, x&y, x|y, x^y, x&^y)
+	var u u8 = 250
+	u += 3
+	fmt.Println(u, ^u, u>>1)
+	f := 1.5
+	fmt.Println(f*2, f/4, 1e21, 1e20, 0.0001, 0.00001)
+	var g f32 = 0.1
+	fmt.Println(g, f64(g) == 0.1)
+	fmt.Println(min(3, 1, 2), max(2.5, 1.0))
+	s := 0
+	for i := range 10 {
+		if i%3 == 0 {
+			continue
+		}
+		s += i
+	}
+	fmt.Println(s)
+	fmt.Println("a"+"b", "x" < "y", len("héllo"))
+	fmt.Print("p", 1, 2, "q", "\n")
+	fmt.Print(1, 2, "\n")
+}

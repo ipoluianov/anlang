@@ -1,0 +1,24 @@
+// want: mem.nil.call
+// checks: mem.nil.invalidate
+
+package main
+
+type Writer interface {
+	Write(b []u8) int
+}
+
+type File struct{}
+
+func (f File) Write(b []u8) int {
+	return len(b)
+}
+
+func open() Writer {
+	return File{}
+}
+
+func main() {
+	var w Writer = File{}
+	w = open()
+	w.Write(nil)
+}

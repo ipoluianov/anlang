@@ -22,5 +22,7 @@ func get() Counter {
 func main() {
 	var k Counter = C{}
 	k.Inc()
-	get().Inc()
+	if t := get(); t != nil {
+		t.Inc() // modifies the copy held by t
+	}
 }

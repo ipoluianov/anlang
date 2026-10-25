@@ -17,6 +17,8 @@ func (r Rect) Area() f64 {
 func main() {
 	shapes := []Shape{Rect{1, 2}, Rect{3, 4}}
 	for _, s := range shapes {
-		_ = s.Area()
+		if s != nil {
+			_ = s.Area()
+		}
 	}
 }

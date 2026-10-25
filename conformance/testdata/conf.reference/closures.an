@@ -1,0 +1,40 @@
+// want: ok
+// checks: expr.closure.capture-copy
+
+package main
+
+import "an/fmt"
+
+func apply(xs []int, f func(int) int) []int {
+	var r []int
+	for _, x := range xs {
+		r = append(r, f(x))
+	}
+	return r
+}
+
+func adder(n int) func(int) int {
+	return func(x int) int { return x + n }
+}
+
+func main() {
+	k := 3
+	mul := func(x int) int { return x * k }
+	k = 100
+	fmt.Println(apply([]int{1, 2, 3}, mul))
+	if add := adder(10); add != nil {
+		fmt.Println(apply([]int{1, 2, 3}, add))
+	}
+	var fs []func() int
+	for i := range 3 {
+		fs = append(fs, func() int { return i * 10 })
+	}
+	for _, f := range fs {
+		if f != nil {
+			fmt.Print(f(), " ")
+		}
+	}
+	fmt.Println()
+	fact := func(n int) int { return n }
+	fmt.Println(fact(5))
+}

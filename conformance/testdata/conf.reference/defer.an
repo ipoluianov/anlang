@@ -1,0 +1,26 @@
+// want: ok
+// checks: stmt.defer.go
+
+package main
+
+import "an/fmt"
+
+func trace(name string) {
+	fmt.Println("leave", name)
+}
+
+func work(n int) int {
+	defer trace("work")
+	for i := range n {
+		defer fmt.Println("deferred", i)
+	}
+	return n * 2
+}
+
+func main() {
+	fmt.Println(work(3))
+	xs := []int{1, 2, 3}
+	i := 5
+	defer fmt.Println("main done")
+	fmt.Println(xs[i%4])
+}

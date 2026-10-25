@@ -1,0 +1,11 @@
+// want: expr.addr.map
+// checks: mem.inout.builtin
+
+package main
+
+func main() {
+	groups := map[string]map[string]int{"a": {"x": 1}}
+	delete(groups["a"], "x")
+	lists := map[string][]int{"a": {1, 2}}
+	clear(lists["a"])
+}

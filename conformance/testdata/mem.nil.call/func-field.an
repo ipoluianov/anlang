@@ -1,0 +1,12 @@
+// want: mem.nil.call
+
+package main
+
+type Handler struct {
+	on func()
+}
+
+func main() {
+	var h Handler
+	h.on()
+}

@@ -1,0 +1,77 @@
+// want: ok
+// checks: type.enum.patterns
+
+package main
+
+import "an/fmt"
+
+type Shape enum {
+	Empty
+	Circle{r f64}
+	Rect{w, h f64}
+}
+
+func area(s Shape) f64 {
+	switch s {
+	case Empty:
+		return 0
+	case Circle{r}:
+		return 3 * r * r
+	case Rect{w, h}:
+		return w * h
+	}
+}
+
+type Token enum {
+	Num{v int}
+	Plus
+	Times
+}
+
+func eval(toks []Token) int {
+	var stack []int
+	for _, t := range toks {
+		switch t {
+		case Num{v}:
+			stack = append(stack, v)
+		case Plus, Times:
+			a, b := stack[len(stack)-2], stack[len(stack)-1]
+			stack = stack[:len(stack)-2]
+			if t == Plus {
+				stack = append(stack, a+b)
+			} else {
+				stack = append(stack, a*b)
+			}
+		}
+	}
+	return stack[0]
+}
+
+func find(xs []string, x string) Option[int] {
+	for i, s := range xs {
+		if s == x {
+			return Some(i)
+		}
+	}
+	return None
+}
+
+func main() {
+	shapes := []Shape{Circle(1), Rect(2, 3), Empty}
+	for _, s := range shapes {
+		fmt.Println(s, area(s))
+	}
+	var z Shape
+	fmt.Println(z, z == Empty, Circle(1) == Circle(1), Circle(1) == Circle(2))
+	fmt.Println(eval([]Token{Num(2), Num(3), Plus, Num(4), Times}))
+	names := []string{"a", "b"}
+	if i, ok := find(names, "b").Get(); ok {
+		fmt.Println("found", i)
+	}
+	switch find(names, "c") {
+	case Some{i}:
+		fmt.Println("found", i)
+	case None:
+		fmt.Println("not found")
+	}
+}

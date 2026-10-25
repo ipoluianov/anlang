@@ -10,6 +10,7 @@ Terms used in the specification and their Russian equivalents. Use these terms i
 | architecture description | описание архитектуры | Anlang package with the machine model, instruction selection rules and formal instruction semantics |
 | arena | арена | Container that owns graph nodes; nodes are referenced by `arena.Ref[T]` handles with generation checks |
 | attribution (of effects) | атрибуция (эффектов) | Rule that an effect of a function passed as an argument is charged to the caller who passed it |
+| basic block | базовый блок | Sequence of IR instructions entered only at its start and ending in a control instruction |
 | binary format | формат бинарника | Layout of the output file: flat, MZ, ELF, PE, Mach-O, wasm, Intel HEX, UF2, BIN |
 | borrow | заимствование | Exclusive `inout` access held for a longer region, as for `inout` arguments of `go` |
 | boundary (of a type invariant) | граница (инварианта типа) | Point where a type invariant must hold: construction, end of an `inout` function, passing, returning, storing |
@@ -53,8 +54,10 @@ Terms used in the specification and their Russian equivalents. Use these terms i
 | `inout` access | `inout`-доступ | Temporary exclusive mutable access to a caller's value |
 | instantiation | инстанцирование | Substitution of type arguments for the type parameters of a generic function or type |
 | instruction selection rules | правила выбора команд | Declarative mapping from IR operations to machine instructions |
+| intermediate representation (IR) | промежуточное представление (IR) | The shared SSA form of a program, the same for all targets, between type checking and lowering |
 | interrupt handler | обработчик прерывания | Function declared with `interrupt` |
 | invariant (loop / type) | инвариант (цикла / типа) | Condition that holds at the loop head / at value boundaries |
+| IR interpreter | интерпретатор IR | Program that executes the IR directly; the reference for backends (`anlang run -emu ir`) |
 | layout engine | движок раскладки | Component that positions UI nodes in pixels or character cells |
 | leading clause region | начальная область объявлений | Clauses (`invariant`, `layout`) at the start of a struct field list |
 | leading contract region | начальная контрактная область | Contract clauses at the start of a function or loop body |
@@ -62,6 +65,7 @@ Terms used in the specification and their Russian equivalents. Use these terms i
 | lowering | понижение | Translation of IR to architecture-specific form |
 | manifest | манифест | Application description constant (`app.Desc`) |
 | module | модуль | Project root, named in `anlang.mod` |
+| monomorphization | мономорфизация | Translation of a generic function or type into a separate copy for each list of type arguments |
 | negative test | отрицательный тест | Conformance test that is expected to be rejected with a given set of rule identifiers |
 | novelty inventory | перечень новизны | Closed list of all differences from Go |
 | open reference | открытая ссылка | Part of an effect summary that stands for the effects of all implementations stored in data structures |
@@ -94,6 +98,7 @@ Terms used in the specification and their Russian equivalents. Use these terms i
 | solver | решатель | Built-in prover for contracts |
 | standard library | стандартная библиотека | Packages under `an/`, shipped with the toolchain |
 | static type switch | статический switch по типу | Type switch on a type-parameter value or `...any` element, resolved at compile time |
+| storage cell | ячейка | IR location of a variable: created by `alloc`, read by `load`, written by `store` |
 | structured concurrency | структурированная конкурентность | Rule that a function returns only after all tasks it started have finished |
 | synchronization type | тип синхронизации | `chan T`, `sync.Mutex[T]`, `sync.RWMutex[T]`, `atomic.*` |
 | target | цель | Combination of architecture, platform and binary format |

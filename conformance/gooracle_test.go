@@ -65,6 +65,10 @@ var deviations = map[string]bool{
 	"decl.func.body":                 true,
 	"expr.addr.def":                  true,
 	"expr.closure.captured-readonly": true,
+	"mem.nil.call":                   true,
+	"mem.nil.func-param":             true,
+	"mem.inout.builtin":              true,
+	"expr.addr.map":                  true,
 }
 
 // knownMismatches are the files on which the checker disagrees with Go,
@@ -81,9 +85,14 @@ type goImporter struct{ fmt *gotypes.Package }
 func newGoImporter() *goImporter {
 	pkg := gotypes.NewPackage("fmt", "fmt")
 	any := gotypes.NewSlice(gotypes.Universe.Lookup("any").Type())
-	for _, name := range []string{"Print", "Println"} {
+	str := gotypes.NewTuple(gotypes.NewParam(token.NoPos, pkg, "", gotypes.Typ[gotypes.String]))
+	for _, name := range []string{"Print", "Println", "Sprint", "Sprintln"} {
 		params := gotypes.NewTuple(gotypes.NewParam(token.NoPos, pkg, "a", any))
-		sig := gotypes.NewSignatureType(nil, nil, nil, params, nil, true)
+		var results *gotypes.Tuple
+		if name[0] == 'S' {
+			results = str
+		}
+		sig := gotypes.NewSignatureType(nil, nil, nil, params, results, true)
 		pkg.Scope().Insert(gotypes.NewFunc(token.NoPos, pkg, name, sig))
 	}
 	pkg.MarkComplete()

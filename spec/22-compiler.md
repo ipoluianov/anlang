@@ -97,9 +97,116 @@ Proven conditions are cached locally by the hash of the condition and its contex
 
 Stage 1 requires host targets (x86-64 and arm64) and the `app` allocator; see [24-roadmap](24-roadmap.md).
 
-## 22.10 Open issues
+## 22.10 Intermediate representation
 
+The intermediate representation (IR) is the shared SSA form of step 5 of the pipeline (22.3). It is built by package `lower` from the typed tree of the whole program and executed by the IR interpreter of package `interp`, which is the reference for every backend (see [23-conformance](23-conformance.md), **conf.backend.ir**).
 
-1. **Textual IR format.** Deferred to implementation — step 6. Until then the IR interpreter and tests use an implementation-defined text form.
-2. **Format of architecture descriptions.** Deferred to implementation — step 11; owned by [13-targets](13-targets.md).
-3. **General-purpose allocator for `app`.** Deferred to implementation — step 25. Own or ported; any allocator that satisfies [06-memory](06-memory.md) and passes the fuzzing of [23-conformance](23-conformance.md).
+### 22.10.1 Structure
+
+- A *program* is a set of functions with a designated function `main`, the size of `int` for the target, and the method sets of the concrete types converted to interfaces, used by dynamic calls and type assertions.
+- A *function* has parameters, free variables (for function literals) and a graph of basic blocks; the first block is the entry. Every block ends in exactly one control instruction: `jump`, `if`, `return` or `panic`.
+- Every value is defined once (SSA). Values are instruction results, parameters, free variables, constants, functions and built-in functions.
+- Local variables are storage cells: `alloc` yields the address of a new cell, `load` reads it and `store` writes it. Variables captured by function literals and variables whose parts are modified are therefore handled without φ-functions; a later pass may promote cells to SSA values.
+- An `inout` parameter is an address. `fieldaddr`, `indexaddr` and `subsliceaddr` yield addresses of parts of values; an `inout` argument passes such an address (**mem.inout.param**, **mem.inout.subslice**).
+- Types are the types of the checker with all type parameters substituted: generic functions and types are translated by monomorphization, one function per list of type arguments.
+- Value semantics is explicit: `copy` marks every point where a value is logically copied (assignment, argument passing, return, storing into a part, capture by a closure). A backend implements it by copy-on-write (22.6); the interpreter shares the value and copies it on the first write through an address.
+- Constructs whose translation belongs to later roadmap steps (channels, `go`, `select`, compile-time evaluation, the standard library) are reported by the IR builder as not supported yet, with the step number.
+
+### 22.10.2 Textual format
+
+`anlang build -ir` prints the IR of the program in the following textual format (see [20-toolchain](20-toolchain.md)). The format is for reading and for tests; it is not an input of the toolchain. For example, the function
+
+```go
+func Sum(xs []int) int {
+    t := 0
+    for _, x := range xs {
+        t += x
+    }
+    return t
+}
+```
+
+of package `main` of module `conf` is printed as:
+
+```
+func conf.Sum(xs []int) int
+b0: // entry
+	t0: *[]int = alloc // xs
+	store t0, xs
+	t1: *int = alloc // t
+	store t1, 0:int
+	t2: []int = load t0
+	t3: []int = copy t2
+	t4: int = call len(t3)
+	t5: *int = alloc // index
+	store t5, 0:int
+	jump b1
+b1: // range.head; preds: b0, b3
+	t6: int = load t5
+	t7: bool = t6 < t4
+	if t7 b2 b4
+b2: // range.body; preds: b1
+	t8: int = index t3, t6
+	t9: *int = alloc // x
+	store t9, t8
+	t10: int = load t9
+	t11: int = load t1
+	t12: int = t11 + t10
+	store t1, t12
+	jump b3
+b3: // range.post; preds: b2
+	t13: int = load t5
+	t14: int = t13 + 1:int
+	store t5, t14
+	jump b1
+b4: // range.done; preds: b1
+	t15: int = load t1
+	return t15
+```
+
+1. A function starts with a header `func NAME(PARAMS) RESULTS`, followed by `free(...)` for a function with free variables. `NAME` is the package path and the name: `conf.main`, `conf.Point.Add` for a method, `conf.Map[int,string]` for an instance of a generic function, `conf.Stack.Push[string]` for a method of an instance of a generic type, `conf.main$lit1` for a function literal, `conf.main$yield2` for the body of a range-over-func loop, `Option[int].Some` for the constructor of a variant. An `inout` parameter is written `NAME inout TYPE`.
+2. Each block starts with a line `bN:`, optionally followed by a comment with the origin of the block and its predecessors.
+3. Each instruction is on its own line, indented by a tab. An instruction with a result is written `tK: TYPE = OPERATION`; an instruction without a result is written `OPERATION`. Result numbers are unique within a function.
+4. An operand is written as a result name `tK`, the name of a parameter or free variable, the name of a function or built-in function, or a constant `VALUE:TYPE`; the zero value of a type is written `zero:TYPE`.
+5. Types are written as in Anlang source; an address of a value of type `T` is written `*T`. This is the only place where `*T` appears: it is an IR type, not an Anlang type.
+
+The operations are:
+
+| Operation | Meaning |
+| --- | --- |
+| `alloc` | address of a new storage cell holding the zero value; the comment names the variable |
+| `load a`, `store a, v` | read and write the value at address `a` |
+| `copy v` | logical copy of `v` (**mem.value.copy**) |
+| `fieldaddr a, i`, `indexaddr a, i` | address of field `i` / element `i` of the value at address `a`; `indexaddr` checks the bounds |
+| `subsliceaddr a[lo:hi]` | address of the elements `lo` to `hi-1` of the slice or array at `a`, for an `inout` argument (**mem.inout.subslice**) |
+| `field v, i`, `index v, i` | field / element of a value; `index` checks the bounds |
+| `lookup m, k [, ok]` | map element, or the zero value; with `ok`, the comma-ok pair |
+| `mapupdate a, k, v` | sets an element of the map at address `a` |
+| `slice v[lo:hi:max]` | slice expression; omitted bounds are empty |
+| `x OP y`, `OP x` | arithmetic, comparison and logical operations; integer operations of checked types panic on overflow (**expr.int.checked**) |
+| `convert v`, `makeinterface v` | conversion to the result type; conversion of a concrete value to an interface type |
+| `typeassert v.(T) [, ok]` | type assertion |
+| `makeslice n, c`, `makemap`, `makestruct {...}`, `makearray [...]` | construction of values; `makearray` constructs an array or the elements of a slice literal |
+| `makevariant #i {...}`, `variantindex v`, `variantfield v, #i.j` | construction of variant `i` of an `enum` value, its variant number, field `j` of variant `i` |
+| `closure F [bindings]` | function value of `F` with values for its free variables |
+| `call f(args)`, `invoke v.M(args)` | call of a function, function value or built-in function; dynamic call of method `M` of an interface value |
+| `extract t, i` | result `i` of a call with several results |
+| `jump bN`, `if v bT bF`, `return [vs]`, `panic v` | control instructions |
+| `defer CALL` | deferred call; the arguments are evaluated when `defer` executes (**stmt.defer.go**) |
+
+Built-in functions keep their Anlang names (`len`, `append`, `copy`, `delete`, `print`); the functions of `an/fmt` that are built into the compiler until roadmap steps 9–10 are named `fmt.Print`, `fmt.Println`, `fmt.Sprint` and `fmt.Sprintln`; helpers introduced by the IR builder have names that are not Anlang identifiers of the program (`appendslice`, `appendstring`, `mapkeys`, `decoderune`, `Option.Get`).
+
+### 22.10.3 IR interpreter
+
+`anlang run -emu ir` builds the IR of the program and executes it in the IR interpreter (**tool.emu.ir**). The interpreter:
+
+- implements value semantics by copy-on-write of shared values, so its observable behavior is the behavior defined by [06-memory](06-memory.md);
+- performs the run-time checks of the language: integer overflow (**expr.int.checked**), division by zero, bounds, float-to-integer conversions (**type.conv.float-int**), the length of an `inout` subslice (**mem.inout.subslice**);
+- prints `fmt.Print` and `fmt.Println` output to standard output and `print`, `println` and panic messages to standard error, in the formats of Go;
+- has no addresses: in `print` output, every non-nil map, slice, function or interface value prints its pointer as `0x1`;
+- does not execute channels, `go` and `select` (roadmap step 30).
+
+## 22.11 Open issues
+
+1. **Format of architecture descriptions.** Deferred to implementation — step 11; owned by [13-targets](13-targets.md).
+2. **General-purpose allocator for `app`.** Deferred to implementation — step 25. Own or ported; any allocator that satisfies [06-memory](06-memory.md) and passes the fuzzing of [23-conformance](23-conformance.md).

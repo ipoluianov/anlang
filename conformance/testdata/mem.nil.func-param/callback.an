@@ -1,0 +1,16 @@
+// want: ok
+
+package main
+
+func each(xs []int, f func(int)) {
+	for _, x := range xs {
+		f(x)
+	}
+}
+
+func show(x int) {}
+
+func main() {
+	each([]int{1}, func(x int) {})
+	each(nil, show)
+}

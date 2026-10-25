@@ -189,6 +189,10 @@ Provisional technical choices accepted as written on 2026-10-25. The rule text i
 | 11 | 02-types, 03-declarations, 04-expressions, 05-statements | Rule identifiers for errors inherited from Go | General rules for what is "as in Go": expressions (**expr.go**), statements, including labels and missing returns (**stmt.go**), conversions (**type.conv.go**); unused imports (**decl.import.used**) and unused local variables (**decl.var.unused**) are errors, as in the Go compiler; found while implementing the checker |
 | 12 | 02-types | Receive with a discarded value from a channel of a type without a zero value | Permitted: a receive statement `<-ch` and `case <-ch:` in `select` do not use the zero value (**type.zero.chan-receive**); found while implementing the checker |
 | 13 | 02-types, 04-expressions | Calling an `inout` method through a non-addressable interface value | Permitted: whether the dynamic method has an `inout` receiver is not known statically; the call modifies the copy held by the interface value, which is discarded for a temporary (**type.interface.inout-method**, **expr.method.interface-inout**); found while implementing the checker |
+| 14 | 06-memory | Calling parameters of function type, such as `yield` of iterators | The obligation is at the call: a parameter of function type is known non-nil in its function, and the argument for it must be proven non-nil; `range` passes a non-nil `yield`; interface parameters keep **mem.nil.call** (**mem.nil.func-param**); found while implementing the checker |
+| 15 | 22-compiler, 20-toolchain | Form of the IR, its textual format and how to run it | SSA with storage cells for variables, explicit `copy` at logical copies and monomorphization of generics; the textual format of 22.10.2, printed by `anlang build -ir`; `anlang run -emu ir` runs the IR interpreter for any target, and a panicking program exits with status 2 (**tool.cmd.build.ir**, **tool.emu.ir**) |
+| 16 | 23-conformance | Expected behavior of reference programs and the comparison with Go | A file `<name>.out` next to a positive test holds standard output and standard error in order and a final `exit status N` line; the "run" programs of the Go distribution are compared in the IR interpreter, except programs whose behavior depends on a listed deviation of Anlang (**conf.suite.layout**, **conf.reference**, **conf.go.common-subset**) |
+| 17 | 06-memory | A non-addressable first operand of `copy`, `delete` or `clear`, such as `copy(f(), src)` | Rejected: the first operand is passed with an `inout` access and must be addressable; a map element is not (**mem.inout.builtin**, **expr.addr.map**); found while implementing the IR interpreter |
 
 ## 2. Deferred to implementation
 
@@ -212,7 +216,6 @@ Questions that are not design decisions. Each is decided at the roadmap step giv
 | 14 | 17-ui | Native view API | 62 |
 | 15 | 17-ui | Form of the state migration function | 63 |
 | 16 | 17-ui | `Background` on Android | 65 |
-| 17 | 22-compiler | Textual IR format | 6 |
-| 18 | 22-compiler | General-purpose allocator for `app` | 25 |
-| 19 | 23-conformance | Performance thresholds | 26 |
-| 20 | 20-toolchain | Reformatting of doc comments by anlang fmt (gofmt reformats them with go/doc/comment) | 40 |
+| 17 | 22-compiler | General-purpose allocator for `app` | 25 |
+| 18 | 23-conformance | Performance thresholds | 26 |
+| 19 | 20-toolchain | Reformatting of doc comments by anlang fmt (gofmt reformats them with go/doc/comment) | 40 |

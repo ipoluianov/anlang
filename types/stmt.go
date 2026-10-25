@@ -38,6 +38,7 @@ const (
 func (c *checker) funcBody(parent *Scope, sig *Signature, recv *syntax.FieldList, ft *syntax.FuncType, body *syntax.BlockStmt, literal bool) (captures bool) {
 	savedScope, savedFn := c.scope, c.fn
 	defer func() { c.scope, c.fn = savedScope, savedFn }()
+	nerrors := len(c.errors)
 	c.fn = &funcContext{sig: sig, labels: map[string]*Label{}, name: c.funcName}
 	defer func() { captures = c.fn.captures }()
 	savedHeld := c.held
@@ -93,6 +94,10 @@ func (c *checker) funcBody(parent *Scope, sig *Signature, recv *syntax.FieldList
 		// Untyped expressions around a function literal get their types
 		// when the enclosing expression is complete.
 		c.flushUntyped()
+		if len(c.errors) == nerrors {
+			// The literals in the body are checked with it.
+			c.checkNil(body, nil, sig.Params.Vars)
+		}
 	}
 	return false // set by the deferred function
 }

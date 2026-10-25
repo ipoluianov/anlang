@@ -1,0 +1,17 @@
+// want: ok
+// checks: expr.bounds.check
+
+package main
+
+import "an/fmt"
+
+func get(xs []int, i int) int {
+	return xs[i]
+}
+
+func main() {
+	xs := []int{1, 2, 3}
+	fmt.Println(get(xs, 2))
+	defer fmt.Println("deferred calls run while panicking")
+	fmt.Println(get(xs, 3))
+}

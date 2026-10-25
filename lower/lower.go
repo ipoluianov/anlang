@@ -1,17 +1,13 @@
-// Package lower translates a checked program to IR (spec/22-compiler.md).
+// Package lower translates checked packages to IR (spec/22-compiler.md
+// §22.3, step 5).
 //
-// Temporary: until the shared SSA representation of roadmap step 6, it
-// translates only what the first IR can express: functions without
-// parameters or results whose bodies call each other and fmt.Print /
-// fmt.Println with constant arguments. Everything else the checker
-// accepts is reported as not supported yet by the code generator.
+// Generic functions and methods of generic types are instantiated per
+// type argument list. Constructs that the IR does not support yet are
+// reported with the roadmap step that adds them.
 package lower
 
 import (
 	"fmt"
-	"go/constant"
-	"math"
-	"strconv"
 	"strings"
 
 	"an/ir"
@@ -19,175 +15,362 @@ import (
 	"an/types"
 )
 
-const unsupported = "not supported yet by the code generator (spec/24-roadmap.md, step 6)"
-
-type lowerer struct {
-	info   *types.Info
-	prog   *ir.Program
-	funcs  map[*types.Func]*ir.Func
-	errors []*syntax.Error
+// builder translates a program.
+type builder struct {
+	prog    *ir.Program
+	infos   []*types.Info
+	declOf  map[*syntax.FuncDecl]*types.Info // the package of a declaration
+	origins map[*syntax.FuncDecl]*types.Func // declared functions and methods by declaration
+	funcs   map[string]*ir.Func              // instances by key
+	ctors   map[string]*ir.Func              // variant constructors by key
+	queue   []func()
+	errors  []*syntax.Error
+	nlits   int
 }
 
-// Program translates the checked package main to IR.
-func Program(info *types.Info) (*ir.Program, []*syntax.Error) {
-	l := &lowerer{info: info, prog: &ir.Program{}, funcs: map[*types.Func]*ir.Func{}}
-	for _, f := range info.Funcs {
-		if f.Name() == "_" {
-			continue
+// Program translates the checked packages of a program to IR: the
+// packages it imports, in dependency order, and package main last.
+func Program(infos ...*types.Info) (*ir.Program, []*syntax.Error) {
+	b := &builder{
+		prog:    &ir.Program{IntBits: 64},
+		infos:   infos,
+		declOf:  map[*syntax.FuncDecl]*types.Info{},
+		origins: map[*syntax.FuncDecl]*types.Func{},
+		funcs:   map[string]*ir.Func{},
+		ctors:   map[string]*ir.Func{},
+	}
+	for _, info := range infos {
+		for _, f := range append(append([]*types.Func(nil), info.Funcs...), info.Methods...) {
+			b.declOf[f.Decl] = info
+			b.origins[f.Decl] = f
 		}
-		fn := &ir.Func{Name: "main." + f.Name()}
-		l.funcs[f] = fn
-		l.prog.Funcs = append(l.prog.Funcs, fn)
 	}
-	l.prog.Main = l.funcs[info.Main]
-	for _, f := range info.Funcs {
-		if fn := l.funcs[f]; fn != nil {
-			l.function(f, fn)
+	main := infos[len(infos)-1]
+	if main.Main == nil {
+		return nil, []*syntax.Error{{Msg: "package main has no func main"}}
+	}
+	b.prog.Main = b.function(main.Main, nil)
+	for len(b.queue) > 0 {
+		job := b.queue[0]
+		b.queue = b.queue[1:]
+		job()
+	}
+	if len(b.errors) > 0 {
+		return nil, b.errors
+	}
+	return b.prog, nil
+}
+
+func (b *builder) errorf(pos syntax.Pos, step int, format string, args ...any) {
+	b.errors = append(b.errors, &syntax.Error{Pos: pos, Msg: fmt.Sprintf(format, args...) + fmt.Sprintf(": not supported yet by this compiler (spec/24-roadmap.md, step %d)", step)})
+}
+
+// typeKey identifies a list of type arguments in the name of an instance.
+func typeKey(targs []types.Type) string {
+	if len(targs) == 0 {
+		return ""
+	}
+	var s []string
+	for _, t := range targs {
+		s = append(s, t.String())
+	}
+	return "[" + strings.Join(s, ",") + "]"
+}
+
+// function returns the IR function of a declared function or method with
+// the given type arguments (of the function, or of the receiver type of a
+// method), building it if needed.
+func (b *builder) function(f *types.Func, targs []types.Type) *ir.Func {
+	origin := f
+	if o, ok := b.origins[f.Decl]; ok {
+		origin = o
+	}
+	sig := origin.Signature()
+	name := origin.Name()
+	if sig.Recv != nil {
+		name = recvName(sig.Recv.Type()) + "." + name
+	}
+	if p := origin.Pkg(); p != nil {
+		name = p.Path + "." + name
+	}
+	key := name + typeKey(targs)
+	if fn, ok := b.funcs[key]; ok {
+		return fn
+	}
+	info := b.declOf[origin.Decl]
+	tps := sig.TypeParams
+	if sig.Recv != nil {
+		tps = sig.RecvTypeParamList()
+	}
+	fn := ir.NewFunc(key, b.substSig(info, sig, tps, targs), origin.Pos())
+	b.funcs[key] = fn
+	b.prog.Funcs = append(b.prog.Funcs, fn)
+	b.queue = append(b.queue, func() {
+		fb := b.newFuncBuilder(info, fn, tps, targs)
+		fb.declBody(origin.Decl, sig)
+	})
+	return fn
+}
+
+func recvName(t types.Type) string {
+	if n, ok := t.(*types.Named); ok {
+		return n.Obj.Name()
+	}
+	return t.String()
+}
+
+// substSig returns the signature of an instance: with the type arguments
+// substituted and the receiver as the first parameter.
+func (b *builder) substSig(info *types.Info, sig *types.Signature, tps []*types.TypeParam, targs []types.Type) *types.Signature {
+	s := sig
+	if len(tps) > 0 {
+		s = info.Subst(sig, tps, targs).(*types.Signature)
+	}
+	return s
+}
+
+// funcBuilder translates one function body.
+type funcBuilder struct {
+	b        *builder
+	info     *types.Info
+	fn       *ir.Func
+	cur      *ir.Block
+	tps      []*types.TypeParam
+	targs    []types.Type
+	vars     map[*types.Var]ir.Value // the address of the cell of each local variable
+	parent   *funcBuilder
+	free     map[*types.Var]*ir.FreeVar
+	captured []*types.Var // variables of enclosing functions, in the order of the free variables
+	byRef    bool         // captures by address: the body of a range-over-func loop
+
+	fallthroughTo *ir.Block // the next clause of an expression switch
+
+	targets []*target
+	labels  map[string]*ir.Block
+	results []ir.Value // cells of the named results
+
+	// For the body of a range-over-func loop: what break, continue and
+	// return do inside it.
+	yield *yieldContext
+}
+
+// target is the destination of break and continue.
+type target struct {
+	label     string
+	brk, cont *ir.Block
+	yield     bool // the loop is a range-over-func loop translated to a closure
+}
+
+func (b *builder) newFuncBuilder(info *types.Info, fn *ir.Func, tps []*types.TypeParam, targs []types.Type) *funcBuilder {
+	fb := &funcBuilder{b: b, info: info, fn: fn, tps: tps, targs: targs, vars: map[*types.Var]ir.Value{}, labels: map[string]*ir.Block{}}
+	fb.cur = fn.NewBlock("entry")
+	return fb
+}
+
+// typ substitutes the type arguments of the instance in t.
+func (fb *funcBuilder) typ(t types.Type) types.Type {
+	if t == nil || len(fb.tps) == 0 {
+		return t
+	}
+	return fb.info.Subst(t, fb.tps, fb.targs)
+}
+
+// typeOf returns the type of expression e in the instance.
+func (fb *funcBuilder) typeOf(e syntax.Expr) types.Type {
+	tv, ok := fb.info.Types[e]
+	if !ok {
+		return types.Typ[types.Invalid]
+	}
+	t := tv.Type
+	if types.Untyped(t) {
+		t = types.Default(t)
+	}
+	return fb.typ(t)
+}
+
+func (fb *funcBuilder) emit(i ir.Instr, t types.Type) ir.Value {
+	fb.cur.Emit(i, t)
+	if v, ok := i.(ir.Value); ok {
+		return v
+	}
+	return nil
+}
+
+func (fb *funcBuilder) emitStmt(i ir.Instr) { fb.cur.Emit(i, nil) }
+
+func (fb *funcBuilder) newBlock(comment string) *ir.Block { return fb.fn.NewBlock(comment) }
+
+// jump ends the current block with a jump to target.
+func (fb *funcBuilder) jump(target *ir.Block) {
+	if !fb.cur.Terminated() {
+		fb.emitStmt(&ir.Jump{})
+		ir.AddEdge(fb.cur, target)
+	}
+}
+
+// branch ends the current block with a conditional jump.
+func (fb *funcBuilder) branch(cond ir.Value, then, els *ir.Block) {
+	fb.emitStmt(&ir.If{Cond: cond})
+	ir.AddEdge(fb.cur, then)
+	ir.AddEdge(fb.cur, els)
+}
+
+// declBody translates the body of a declared function or method.
+func (fb *funcBuilder) declBody(d *syntax.FuncDecl, sig *types.Signature) {
+	isig := fb.fn.Sig
+	if sig.Recv != nil {
+		fb.param(sig.Recv, fb.typ(sig.Recv.Type()))
+	}
+	for i, v := range sig.Params.Vars {
+		fb.param(v, isig.Params.At(i).Type())
+	}
+	for i, v := range sig.Results.Vars {
+		if v.Name() != "" {
+			cell := fb.alloc(isig.Results.At(i).Type(), v.Name())
+			fb.vars[v] = cell
+			fb.results = append(fb.results, cell)
 		}
 	}
-	if len(l.errors) > 0 {
-		return nil, l.errors
+	fb.stmts(d.Body.List)
+	fb.finish()
+}
+
+// param declares a parameter: an inout parameter is the address of the
+// caller's value; a value parameter is copied into a cell.
+func (fb *funcBuilder) param(v *types.Var, t types.Type) {
+	name := v.Name()
+	if name == "" || name == "_" {
+		name = fmt.Sprintf("p%d", len(fb.fn.Params))
 	}
-	return l.prog, nil
-}
-
-func (l *lowerer) errorf(pos syntax.Pos, format string, args ...any) {
-	l.errors = append(l.errors, &syntax.Error{Pos: pos, Msg: fmt.Sprintf(format, args...) + ": " + unsupported})
-}
-
-func (l *lowerer) function(f *types.Func, fn *ir.Func) {
-	sig := f.Signature()
-	if sig.Params.Len() > 0 || sig.Results.Len() > 0 {
-		l.errorf(f.Pos(), "functions with parameters or results")
+	if v.Inout() {
+		p := &ir.Param{Pname: name, Typ: &ir.Pointer{Elem: t}, Inout: true}
+		fb.fn.Params = append(fb.fn.Params, p)
+		fb.vars[v] = p
 		return
 	}
-	// Only the first construct that cannot be lowered is reported in
-	// each function.
-	nerrors := len(l.errors)
-	for _, s := range f.Decl.Body.List {
-		if len(l.errors) > nerrors {
-			break
-		}
-		switch s := s.(type) {
-		case *syntax.EmptyStmt:
-		case *syntax.ExprStmt:
-			call, ok := unparen(s.X).(*syntax.CallExpr)
-			if !ok {
-				l.errorf(s.Pos(), "this statement")
-				continue
-			}
-			l.call(call, fn)
-		default:
-			l.errorf(s.Pos(), "this statement")
-		}
-	}
-	fn.Body = append(fn.Body, &ir.Return{})
+	p := &ir.Param{Pname: name, Typ: t}
+	fb.fn.Params = append(fb.fn.Params, p)
+	cell := fb.alloc(t, name)
+	fb.emitStmt(&ir.Store{Addr: cell, Val: p})
+	fb.vars[v] = cell
 }
 
-func (l *lowerer) call(call *syntax.CallExpr, fn *ir.Func) {
-	var id *syntax.Name
-	switch f := unparen(call.Fun).(type) {
-	case *syntax.Name:
-		id = f
-	case *syntax.SelectorExpr:
-		id = f.Sel
+// finish ends the function: a body that falls off its end returns.
+func (fb *funcBuilder) finish() {
+	if !fb.cur.Terminated() {
+		fb.ret(nil)
 	}
-	switch obj := l.info.Uses[id].(type) {
-	case *types.Func:
-		if callee := l.funcs[obj]; callee != nil && len(call.Args) == 0 {
-			fn.Body = append(fn.Body, &ir.Call{Func: callee})
+}
+
+func (fb *funcBuilder) alloc(t types.Type, comment string) ir.Value {
+	return fb.emit(&ir.Alloc{Comment: comment}, &ir.Pointer{Elem: t})
+}
+
+// ret returns from the function with results, or the named results.
+func (fb *funcBuilder) ret(results []ir.Value) {
+	if results == nil && len(fb.results) > 0 {
+		for _, cell := range fb.results {
+			results = append(results, fb.copy(fb.load(cell)))
+		}
+	}
+	fb.emitStmt(&ir.Return{Results: results})
+}
+
+func (fb *funcBuilder) load(addr ir.Value) ir.Value {
+	return fb.emit(&ir.Load{Addr: addr}, addr.Type().(*ir.Pointer).Elem)
+}
+
+func (fb *funcBuilder) store(addr, v ir.Value) {
+	fb.emitStmt(&ir.Store{Addr: addr, Val: v})
+}
+
+// copy marks a logical copy of v (mem.value.copy). Values that are not
+// shared through storage need none.
+func (fb *funcBuilder) copy(v ir.Value) ir.Value {
+	switch v.(type) {
+	case *ir.Const, *ir.FuncValue, *ir.MakeStruct, *ir.MakeArray, *ir.MakeVariant, *ir.Call, *ir.BinOp, *ir.MakeClosure:
+		return v
+	}
+	if !needsCopy(v.Type()) {
+		return v
+	}
+	return fb.emit(&ir.Copy{X: v}, v.Type())
+}
+
+// needsCopy reports whether values of t may share mutable storage.
+func needsCopy(t types.Type) bool {
+	switch u := t.Underlying().(type) {
+	case *types.Basic, *types.Signature, *types.Chan:
+		return false
+	case *types.Interface:
+		return true
+	case *types.Struct, *types.Array, *types.Slice, *types.Map, *types.Enum:
+		return true
+	default:
+		_ = u
+	}
+	return false
+}
+
+// local returns the address of the cell of local variable v.
+func (fb *funcBuilder) local(v *types.Var) ir.Value {
+	if a, ok := fb.vars[v]; ok {
+		return a
+	}
+	// A variable of an enclosing function, captured by a function literal.
+	if fb.parent != nil {
+		return fb.capture(v)
+	}
+	return nil
+}
+
+// capture returns the address of a captured variable inside a function
+// literal: a copy of the value in a cell of the literal, or the address
+// of an inout variable (expr.closure.capture-copy,
+// expr.closure.capture-inout).
+func (fb *funcBuilder) capture(v *types.Var) ir.Value {
+	fv := fb.free[v]
+	if fv == nil {
+		t := fb.typ(v.Type())
+		if v.Inout() || fb.byRef {
+			fv = &ir.FreeVar{Vname: v.Name(), Typ: &ir.Pointer{Elem: t}}
+		} else {
+			fv = &ir.FreeVar{Vname: v.Name(), Typ: t}
+		}
+		fb.free[v] = fv
+		fb.fn.FreeVars = append(fb.fn.FreeVars, fv)
+		fb.captured = append(fb.captured, v)
+	}
+	if v.Inout() || fb.byRef {
+		fb.vars[v] = fv
+		return fv
+	}
+	// The cell is created in the entry block, so the captured value is
+	// stored before any use.
+	entry := fb.fn.Blocks[0]
+	saved := fb.cur
+	fb.cur = entry
+	cell := &ir.Alloc{Comment: v.Name()}
+	store := &ir.Store{Val: fv}
+	fb.cur = saved
+	entry.Emit(cell, &ir.Pointer{Elem: fb.typ(v.Type())})
+	store.Addr = cell
+	entry.Emit(store, nil)
+	// Keep the terminator of the entry block last.
+	moveTerminatorLast(entry)
+	fb.vars[v] = cell
+	return cell
+}
+
+func moveTerminatorLast(b *ir.Block) {
+	n := len(b.Instrs)
+	for i := 0; i < n-2; i++ {
+		switch b.Instrs[i].(type) {
+		case *ir.Jump, *ir.If, *ir.Return, *ir.Panic:
+			t := b.Instrs[i]
+			copy(b.Instrs[i:], b.Instrs[i+1:])
+			b.Instrs[n-1] = t
 			return
 		}
-	case *types.Builtin:
-		if obj.Pkg() == "an/fmt" {
-			l.print(call, obj.Name() == "Println", fn)
-			return
-		}
-	}
-	l.errorf(call.Pos(), "this call")
-}
-
-// print lowers fmt.Print and fmt.Println with constant arguments to a
-// single write of the formatted text.
-func (l *lowerer) print(call *syntax.CallExpr, ln bool, fn *ir.Func) {
-	var parts []string
-	var isString []bool
-	for _, arg := range call.Args {
-		tv := l.info.Types[arg]
-		if tv.Value == nil {
-			l.errorf(arg.Pos(), "fmt.Print and fmt.Println with non-constant arguments")
-			return
-		}
-		parts = append(parts, formatConst(tv.Value, tv.Type))
-		isString = append(isString, tv.Value.Kind() == constant.String)
-	}
-	// Go semantics: Println separates operands with spaces and appends a
-	// newline; Print adds spaces between operands when neither is a string.
-	var b strings.Builder
-	for i, p := range parts {
-		if i > 0 && (ln || !isString[i-1] && !isString[i]) {
-			b.WriteString(" ")
-		}
-		b.WriteString(p)
-	}
-	if ln {
-		b.WriteString("\n")
-	}
-	if b.Len() == 0 {
-		return
-	}
-	d := &ir.Data{Name: fmt.Sprintf("str.%d", len(l.prog.Data)), Bytes: []byte(b.String())}
-	l.prog.Data = append(l.prog.Data, d)
-	fn.Body = append(fn.Body, &ir.PrintStdout{Data: d})
-}
-
-// formatConst formats a constant of type t as fmt's %v verb does.
-func formatConst(v constant.Value, t types.Type) string {
-	switch v.Kind() {
-	case constant.String:
-		return constant.StringVal(v)
-	case constant.Bool:
-		return strconv.FormatBool(constant.BoolVal(v))
-	case constant.Int:
-		if b, ok := t.Underlying().(*types.Basic); ok && b.Info()&types.IsFloat != 0 {
-			return formatFloat(v, b)
-		}
-		return v.ExactString()
-	case constant.Float:
-		b, _ := t.Underlying().(*types.Basic)
-		return formatFloat(v, b)
-	}
-	return v.String()
-}
-
-// formatFloat formats like %v: the shortest representation, with an
-// exponent if it is less than -4 or at least 21.
-func formatFloat(v constant.Value, b *types.Basic) string {
-	bits := 64
-	if b != nil && b.Kind() == types.F32 {
-		bits = 32
-	}
-	f, _ := constant.Float64Val(constant.ToFloat(v))
-	if bits == 32 {
-		f = float64(float32(f))
-	}
-	if f == 0 || math.IsInf(f, 0) || math.IsNaN(f) {
-		return strconv.FormatFloat(f, 'g', -1, bits)
-	}
-	e := strconv.FormatFloat(f, 'e', -1, bits)
-	exp, _ := strconv.Atoi(e[strings.LastIndexByte(e, 'e')+1:])
-	if exp < -4 || exp >= 21 {
-		return e
-	}
-	return strconv.FormatFloat(f, 'f', -1, bits)
-}
-
-func unparen(x syntax.Expr) syntax.Expr {
-	for {
-		p, ok := x.(*syntax.ParenExpr)
-		if !ok {
-			return x
-		}
-		x = p.X
 	}
 }

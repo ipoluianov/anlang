@@ -1,0 +1,50 @@
+// want: ok
+// checks: decl.receiver.method-set
+
+package main
+
+import "an/fmt"
+
+type Base struct {
+	ID int
+}
+
+func (b Base) Describe() string { return "base " + fmt.Sprint(b.ID) }
+
+func (b inout Base) SetID(id int) { b.ID = id }
+
+type Named struct {
+	Base
+	Name string
+}
+
+type Describer interface {
+	Describe() string
+}
+
+type Counter struct {
+	n int
+}
+
+func (c inout Counter) Inc() { c.n++ }
+
+func (c Counter) Get() int { return c.n }
+
+func main() {
+	n := Named{Base{1}, "x"}
+	n.SetID(7)
+	fmt.Println(n.Describe(), n.ID, n)
+	var d Describer = n
+	fmt.Println(d.Describe())
+	desc := n.Describe
+	n.SetID(8)
+	fmt.Println(desc(), n.Describe())
+	get := Counter.Get
+	var c Counter
+	c.Inc()
+	c.Inc()
+	fmt.Println(get(c), c.Get())
+	cs := []Counter{{}, {}}
+	cs[1].Inc()
+	fmt.Println(cs)
+}

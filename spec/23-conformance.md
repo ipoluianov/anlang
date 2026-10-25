@@ -23,6 +23,7 @@ Most of the compiler is expected to be written by AI. Checks of `anlang` itself 
 5. A comment `// checks: <rule> {<rule>}` lists further rules the test checks (**conf.suite.naming**). A negative test MUST name the rule of its directory in `want` or `checks`.
 6. A diagnostic without a rule identifier never matches an expectation, so a negative test passes only if every error names a rule.
 7. Test files MUST be in canonical form (**lex.source.canonical**) unless they test that rule.
+8. A file `<name>.out` next to a positive test `<name>.an` or `<name>/` makes the test a reference program (**conf.reference**). The file holds the expected observable behavior: everything the program writes to standard output and standard error, in order, followed by a line `exit status N` if the exit status `N` is not 0.
 
 ```go
 // want: decl.func.no-init
@@ -38,13 +39,15 @@ func main() {}
 
 **conf.reference** — For each supported target, the suite MUST contain reference programs with their expected observable behavior (output, pin changes with timing, UART output, screen contents, exit status). Each MUST produce that behavior in the built-in emulator of the target (see [20-toolchain](20-toolchain.md), 20.10).
 
+Reference programs that do not depend on the target are stored as described in **conf.suite.layout**, item 8; those that test no particular rule are filed under `conf.reference`. They are run in the IR interpreter (**tool.emu.ir**) and, for each target with a backend, in the emulator of the target.
+
 ## 23.3 Backend cross-check
 
 **conf.backend.ir** — For every reference program and target, the output of the backend, executed in the architecture interpreter, MUST produce the same observable behavior as the interpretation of the program's IR.
 
 ## 23.4 Comparison with Go
 
-**conf.go.common-subset** — Programs written in the common subset of Anlang and Go (without `enum`, `inout`, contracts and other constructs of the novelty inventory) MUST produce the same output when compiled by Go and by Anlang.
+**conf.go.common-subset** — Programs written in the common subset of Anlang and Go (without `enum`, `inout`, contracts and other constructs of the novelty inventory) MUST produce the same output when compiled by Go and by Anlang, unless their behavior depends on a semantic deviation of Anlang that Go accepts silently: value semantics of slices and maps (**mem.value.copy**), copy capture by closures (**expr.closure.capture-copy**), an empty slice equal to `nil` (**expr.cmp.nil-empty**), checked integer arithmetic (**expr.int.checked**). The comparison runs the test programs of the Go distribution in the IR interpreter; each program excluded by a deviation is listed with the rule that explains the difference.
 
 ## 23.5 Fuzzing
 
@@ -69,6 +72,7 @@ func main() {}
 - architecture interpreters against QEMU and processor test suites;
 - the WebAssembly interpreter against the official WebAssembly specification test suite;
 - the type checker against go/types of the Go distribution, on its test programs renamed into Anlang, for the common subset (**conf.go.common-subset**);
+- the IR interpreter against the expected output of the "run" test programs of the Go distribution, renamed into Anlang, for the common subset (**conf.go.common-subset**);
 - linker output against standard format inspection tools;
 - text shaping against a reference shaping test suite;
 - GPU output against format validators.

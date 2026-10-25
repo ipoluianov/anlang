@@ -1,0 +1,79 @@
+// want: ok
+
+package main
+
+import "an/fmt"
+
+type Shape interface {
+	Area() f64
+	Name() string
+}
+
+type Square struct{ s f64 }
+type Circle struct{ r f64 }
+
+func (q Square) Area() f64    { return q.s * q.s }
+func (q Square) Name() string { return "square" }
+func (c Circle) Area() f64    { return 3 * c.r * c.r }
+func (c Circle) Name() string { return "circle" }
+
+type Celsius f64
+
+func (c Celsius) String() string { return fmt.Sprint(f64(c), "C") }
+
+type MyErr struct{ code int }
+
+func (e MyErr) Error() string { return "error " + fmt.Sprint(e.code) }
+
+func check(n int) error {
+	if n > 2 {
+		return MyErr{n}
+	}
+	return nil
+}
+
+type Named interface {
+	Name() string
+}
+
+func describe(x Named) string {
+	switch v := x.(type) {
+	case Square:
+		return "square " + fmt.Sprint(v.s+1)
+	case Shape:
+		return "shape " + v.Name()
+	case nil:
+		return "nil"
+	}
+	return "other"
+}
+
+type Label string
+
+func (l Label) Name() string { return string(l) }
+
+func main() {
+	shapes := []Shape{Square{2}, Circle{1}}
+	total := 0.0
+	for _, s := range shapes {
+		if s == nil {
+			continue
+		}
+		fmt.Println(s.Name(), s.Area())
+		total += s.Area()
+	}
+	fmt.Println(total)
+	fmt.Println(Celsius(21.5))
+	for i := range 4 {
+		if err := check(i); err != nil {
+			fmt.Println(err)
+		}
+	}
+	fmt.Println(describe(Square{1}), describe(Circle{2}), describe(Label("x")), describe(nil))
+	var s Shape = Square{3}
+	if q, ok := s.(Square); ok {
+		fmt.Println("square side", q.s)
+	}
+	_, ok := s.(Circle)
+	fmt.Println(ok)
+}

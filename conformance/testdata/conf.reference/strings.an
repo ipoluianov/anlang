@@ -1,0 +1,33 @@
+// want: ok
+// checks: type.string
+
+package main
+
+import "an/fmt"
+
+func reverse(s string) string {
+	rs := []i32(s)
+	for i, j := 0, len(rs)-1; i < j; i, j = i+1, j-1 {
+		rs[i], rs[j] = rs[j], rs[i]
+	}
+	return string(rs)
+}
+
+func main() {
+	s := "héllo, мир"
+	fmt.Println(len(s), len([]i32(s)), s[1], s[0:1])
+	for i, r := range "aé" {
+		fmt.Println(i, r, string(r))
+	}
+	fmt.Println(reverse(s))
+	b := []u8(s[:5])
+	b[0] = 'H'
+	fmt.Println(string(b), s[:5])
+	words := []string{"a", "bb", "ccc"}
+	joined := ""
+	for _, w := range words {
+		joined += w + "-"
+	}
+	fmt.Println(joined, joined[len(joined)-1] == '-', "abc" < "abd")
+	fmt.Println(string(i32(65)), fmt.Sprintln("x", 1), fmt.Sprint("a", 1, 2, "b"))
+}

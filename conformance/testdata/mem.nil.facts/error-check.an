@@ -1,0 +1,13 @@
+// want: ok
+
+package main
+
+func fail() error {
+	return nil
+}
+
+func main() {
+	if err := fail(); err != nil {
+		_ = err.Error()
+	}
+}

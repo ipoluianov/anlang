@@ -1,0 +1,20 @@
+// want: ok
+
+package main
+
+type Writer interface {
+	Write(b []u8) int
+}
+
+type File struct{}
+
+func (f File) Write(b []u8) int {
+	return len(b)
+}
+
+func main() {
+	var w Writer
+	if w != nil {
+		w.Write(nil)
+	}
+}

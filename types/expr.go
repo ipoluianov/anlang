@@ -301,9 +301,10 @@ func (c *checker) selector(x *operand, e *syntax.SelectorExpr) {
 	if x.mode == invalid {
 		return
 	}
-	obj, _, ambiguous := c.lookupFieldOrMethod(x.typ, c.pkg, e.Sel.Name)
+	obj, index, ambiguous := c.lookupFieldOrMethod(x.typ, c.pkg, e.Sel.Name)
 	switch obj := obj.(type) {
 	case *Var:
+		c.info.Selections[e] = &Selection{Kind: FieldVal, Recv: x.typ, Obj: obj, Index: index}
 		c.info.Uses[e.Sel] = obj
 		if x.mode != variable {
 			x.mode = value
@@ -312,6 +313,7 @@ func (c *checker) selector(x *operand, e *syntax.SelectorExpr) {
 		return
 	case *Func:
 		// A method value or the callee of a method call.
+		c.info.Selections[e] = &Selection{Kind: MethodVal, Recv: x.typ, Obj: obj, Index: index}
 		c.info.Uses[e.Sel] = obj
 		if ms, ok := obj.typ.(*Signature); ok && ms.Recv != nil && ms.Recv.inout {
 			if !c.inoutReceiver(x, e) {
@@ -415,7 +417,7 @@ func (c *checker) inoutReceiver(x *operand, e *syntax.SelectorExpr) bool {
 // parameter is the receiver.
 func (c *checker) methodExpr(x *operand, e *syntax.SelectorExpr) {
 	t := x.typ
-	obj, _, ambiguous := c.lookupFieldOrMethod(t, c.pkg, e.Sel.Name)
+	obj, index, ambiguous := c.lookupFieldOrMethod(t, c.pkg, e.Sel.Name)
 	m, ok := obj.(*Func)
 	if !ok {
 		if incomplete(t) {
@@ -431,6 +433,7 @@ func (c *checker) methodExpr(x *operand, e *syntax.SelectorExpr) {
 		return
 	}
 	c.info.Uses[e.Sel] = m
+	c.info.Selections[e] = &Selection{Kind: MethodExpr, Recv: t, Obj: m, Index: index}
 	sig := methodType(m)
 	recv := &Var{object: object{pos: e.Pos(), typ: t}, param: true}
 	if ms, ok := m.typ.(*Signature); ok && ms.Recv != nil && ms.Recv.inout {

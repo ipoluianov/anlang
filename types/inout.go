@@ -145,6 +145,20 @@ func (c *checker) inoutArg(x *operand, param *Var, context string) {
 	c.capturedInout(x.expr)
 }
 
+// builtinInout checks the first operand of copy, delete and clear, which
+// the built-in function modifies (mem.inout.builtin).
+func (c *checker) builtinInout(x *operand, name string) {
+	switch x.mode {
+	case invalid:
+	case mapindex:
+		c.errorf(x.expr.Pos(), "expr.addr.map", "cannot modify %s with %s: a map element is not addressable; read it, modify the copy and store it back", exprString(x.expr), name)
+	case variable:
+		c.capturedInout(x.expr)
+	default:
+		c.errorf(x.expr.Pos(), "mem.inout.builtin", "cannot modify %s with %s: it is not addressable, so the change would be lost", x, name)
+	}
+}
+
 // capturedInout reports an inout access to a variable that a function
 // literal captures by copy (expr.closure.captured-readonly). Captured
 // inout parameters and loop variables are captured by reference and may

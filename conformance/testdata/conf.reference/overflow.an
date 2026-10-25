@@ -1,0 +1,14 @@
+// want: ok
+// checks: expr.int.checked
+
+package main
+
+import "an/fmt"
+
+func main() {
+	var x i8 = 120
+	for range 10 {
+		fmt.Println(x)
+		x += 3
+	}
+}

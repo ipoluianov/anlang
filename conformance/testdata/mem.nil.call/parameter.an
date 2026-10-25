@@ -1,0 +1,21 @@
+// want: mem.nil.call
+
+package main
+
+type Writer interface {
+	Write(b []u8) int
+}
+
+type File struct{}
+
+func (f File) Write(b []u8) int {
+	return len(b)
+}
+
+func use(w Writer) {
+	w.Write(nil)
+}
+
+func main() {
+
+}

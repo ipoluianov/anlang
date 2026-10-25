@@ -431,6 +431,13 @@ func (c *checker) widens(from, to *Basic) bool {
 func (c *checker) builtinCall(x *operand, e *syntax.CallExpr, id builtinID) {
 	name := exprString(e.Fun)
 	x.mode, x.typ, x.val = novalue, Typ[Invalid], nil
+	if e.Ellipsis.IsValid() && id >= _FmtPrint {
+		// Forwarding ...any arguments is compile-time expansion.
+		c.notSupported(e.Ellipsis, 10, "passing ...any arguments on to "+name)
+		c.useArgs(e.Args)
+		x.invalidate()
+		return
+	}
 	if e.Ellipsis.IsValid() && id != _Append {
 		c.errorf(e.Ellipsis, "expr.go", "invalid use of ... with built-in %s", name)
 		c.useArgs(e.Args)
@@ -542,6 +549,7 @@ func (c *checker) builtinCall(x *operand, e *syntax.CallExpr, id builtinID) {
 			x.invalidate()
 			return
 		}
+		c.builtinInout(dst, name)
 		c.defaultUntyped(src)
 		if ss, ok := core(src.typ).(*Slice); ok && Identical(ds.Elem, ss.Elem) ||
 			isString(src.typ) && Identical(ds.Elem.Underlying(), Typ[U8]) {
@@ -566,6 +574,7 @@ func (c *checker) builtinCall(x *operand, e *syntax.CallExpr, id builtinID) {
 			c.errorf(args[0].expr.Pos(), "expr.go", "invalid argument: %s is not a map", args[0])
 			return
 		}
+		c.builtinInout(args[0], name)
 		c.assignment(args[1], mt.Key, "argument to delete")
 
 	case _Max, _Min:
@@ -617,15 +626,23 @@ func (c *checker) builtinCall(x *operand, e *syntax.CallExpr, id builtinID) {
 			c.defaultUntyped(a)
 		}
 
+	case _FmtSprint, _FmtSprintln:
+		for _, a := range args {
+			c.defaultUntyped(a)
+		}
+		x.mode, x.typ = value, Typ[String]
+
 	case _Clear:
 		if !nargs(1, 1) {
 			return
 		}
 		switch u := core(args[0].typ).(type) {
 		case *Map:
+			c.builtinInout(args[0], name)
 		case *Slice:
 			// Clearing a slice sets its elements to zero values (type.zero.uses).
 			c.zeroUse(args[0].expr.Pos(), u.Elem, "type.zero.uses", "clear of a slice")
+			c.builtinInout(args[0], name)
 		default:
 			c.errorf(args[0].expr.Pos(), "expr.go", "invalid argument: %s must be a map or slice", args[0])
 		}

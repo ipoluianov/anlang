@@ -1,0 +1,71 @@
+// want: ok
+// checks: stmt.range.go
+
+package main
+
+import "an/fmt"
+
+func Count(n int) func(func(int) bool) {
+	return func(yield func(int) bool) {
+		for i := range n {
+			if !yield(i) {
+				return
+			}
+		}
+	}
+}
+
+func Pairs(xs []string) func(func(int, string) bool) {
+	return func(yield func(int, string) bool) {
+		for i, x := range xs {
+			if !yield(i, x) {
+				return
+			}
+		}
+	}
+}
+
+func first(xs []string, want string) int {
+	seq := Pairs(xs)
+	if seq == nil {
+		return -1
+	}
+	for i, x := range seq {
+		if x == want {
+			return i
+		}
+	}
+	return -1
+}
+
+func main() {
+	seq := Count(10)
+	if seq == nil {
+		return
+	}
+	sum := 0
+	for i := range seq {
+		if i == 7 {
+			break
+		}
+		if i%2 == 0 {
+			continue
+		}
+		sum += i
+	}
+	fmt.Println(sum)
+	fmt.Println(first([]string{"a", "b", "c"}, "c"), first([]string{"a"}, "z"))
+outer:
+	for i := range seq {
+		for j := range seq {
+			if j > i {
+				continue outer
+			}
+			if i == 3 {
+				break outer
+			}
+			fmt.Print(i, j, " ")
+		}
+	}
+	fmt.Println()
+}

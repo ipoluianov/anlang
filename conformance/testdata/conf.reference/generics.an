@@ -1,0 +1,93 @@
+// want: ok
+// checks: type.param.go
+
+package main
+
+import "an/fmt"
+
+type Number interface {
+	~int | ~i64 | ~f64
+}
+
+func Sum[T Number](xs []T) T {
+	var t T
+	for _, x := range xs {
+		t += x
+	}
+	return t
+}
+
+func Map[T, U any](xs []T, f func(T) U) []U {
+	var r []U
+	for _, x := range xs {
+		r = append(r, f(x))
+	}
+	return r
+}
+
+type Stack[T any] struct {
+	items []T
+}
+
+func (s inout Stack[T]) Push(x T) {
+	s.items = append(s.items, x)
+}
+
+func (s inout Stack[T]) Pop() Option[T] {
+	if len(s.items) == 0 {
+		return None
+	}
+	x := s.items[len(s.items)-1]
+	s.items = s.items[:len(s.items)-1]
+	return Some(x)
+}
+
+type Pair[K comparable, V any] struct {
+	Key K
+	Val V
+}
+
+func Keys[K comparable, V any](ps []Pair[K, V]) []K {
+	var r []K
+	for _, p := range ps {
+		r = append(r, p.Key)
+	}
+	return r
+}
+
+type Stringer interface {
+	String() string
+}
+
+type ID int
+
+func (i ID) String() string { return "#" + fmt.Sprint(int(i)) }
+
+func Join[T Stringer](xs []T) string {
+	s := ""
+	for i, x := range xs {
+		if i > 0 {
+			s += ","
+		}
+		s += x.String()
+	}
+	return s
+}
+
+func main() {
+	fmt.Println(Sum([]int{1, 2, 3}), Sum([]f64{1.5, 2.5}))
+	fmt.Println(Map([]int{1, 2, 3}, func(x int) string { return fmt.Sprint(x * x) }))
+	var s Stack[string]
+	s.Push("a")
+	s.Push("b")
+	for {
+		x, ok := s.Pop().Get()
+		if !ok {
+			break
+		}
+		fmt.Print(x, " ")
+	}
+	fmt.Println()
+	fmt.Println(Keys([]Pair[string, int]{{"x", 1}, {"y", 2}}))
+	fmt.Println(Join([]ID{1, 2, 3}))
+}

@@ -11,7 +11,10 @@ import (
 	"testing"
 
 	"an/build"
+	"an/interp"
+	"an/lower"
 	"an/syntax"
+	"an/types"
 )
 
 // suiteModule and suiteTarget are the module name and the target of
@@ -59,6 +62,12 @@ func loadSuite(t *testing.T) []suiteTest {
 				tests = append(tests, suiteTest{rule: r.Name(), name: e.Name(), path: path, dir: true})
 			case strings.HasSuffix(e.Name(), ".an"):
 				tests = append(tests, suiteTest{rule: r.Name(), name: strings.TrimSuffix(e.Name(), ".an"), path: path})
+			case strings.HasSuffix(e.Name(), ".out"):
+				if !slices.ContainsFunc(entries, func(f os.DirEntry) bool {
+					return f.Name() == strings.TrimSuffix(e.Name(), ".out") || f.Name() == strings.TrimSuffix(e.Name(), ".out")+".an"
+				}) {
+					t.Errorf("%s: no test named %s", path, strings.TrimSuffix(e.Name(), ".out"))
+				}
 			default:
 				t.Errorf("%s: want .an files and project directories only", path)
 			}
@@ -84,14 +93,21 @@ func TestSuite(t *testing.T) {
 			if len(want) > 0 && !slices.Contains(want, tt.rule) && !slices.Contains(checks, tt.rule) {
 				t.Fatalf("a negative test filed under %s must list it in // want: or // checks: (conf.suite.naming)", tt.rule)
 			}
-			diags := tt.run(t)
+			infos, diags := tt.run(t)
 			got := ruleSet(diags)
 			if !slices.Equal(got, want) {
 				var b strings.Builder
 				for _, d := range diags {
 					fmt.Fprintf(&b, "\n\t%v", d)
 				}
-				t.Errorf("rules %s, want %s; diagnostics:%s", show(got), show(want), b.String())
+				t.Fatalf("rules %s, want %s; diagnostics:%s", show(got), show(want), b.String())
+			}
+			out, err := os.ReadFile(filepath.Join("testdata", tt.rule, tt.name+".out"))
+			if err == nil {
+				if len(want) > 0 {
+					t.Fatalf("a negative test has no expected output")
+				}
+				tt.interpret(t, infos, string(out))
 			}
 		})
 	}
@@ -145,9 +161,9 @@ func (tt suiteTest) expectation(t *testing.T) (want, checks []string) {
 	return slices.Compact(want), checks
 }
 
-// run compiles the test up to code generation and returns its
-// diagnostics.
-func (tt suiteTest) run(t *testing.T) []*syntax.Error {
+// run checks the test and returns the type information of its packages,
+// package main last, and its diagnostics.
+func (tt suiteTest) run(t *testing.T) ([]*types.Info, []*syntax.Error) {
 	t.Helper()
 	if !tt.dir {
 		data, err := os.ReadFile(tt.path)
@@ -155,12 +171,13 @@ func (tt suiteTest) run(t *testing.T) []*syntax.Error {
 			t.Fatal(err)
 		}
 		t, _ := build.LookupTarget(suiteTarget)
-		_, diags := build.CheckSources(suiteModule, t, []build.Source{{Name: filepath.Base(tt.path), Data: data}})
-		return diags
+		info, diags := build.CheckSources(suiteModule, t, []build.Source{{Name: filepath.Base(tt.path), Data: data}})
+		return []*types.Info{info}, diags
 	}
+	var infos []*types.Info
 	p, errs := build.Load(tt.path)
 	if p != nil {
-		_, errs = p.Check(p.DefaultTargets()[0])
+		infos, errs = p.Check(p.DefaultTargets()[0])
 	}
 	var diags []*syntax.Error
 	for _, err := range errs {
@@ -170,7 +187,34 @@ func (tt suiteTest) run(t *testing.T) []*syntax.Error {
 		}
 		diags = append(diags, d)
 	}
-	return diags
+	return infos, diags
+}
+
+// interpret runs a reference program in the IR interpreter and compares
+// its observable behavior with the expected output (conf.reference):
+// what the program writes to standard output and standard error, in
+// order, followed by a line "exit status N" unless the status is 0.
+func (tt suiteTest) interpret(t *testing.T, infos []*types.Info, want string) {
+	t.Helper()
+	prog, errs := lower.Program(infos...)
+	if len(errs) > 0 {
+		t.Fatalf("lowering: %v", errs)
+	}
+	if errs := prog.Validate(); len(errs) > 0 {
+		t.Fatalf("invalid IR: %v", errs)
+	}
+	prog.IntBits = 64
+	var out strings.Builder
+	err := interp.Run(prog, interp.Options{Stdout: &out, Stderr: &out, MaxSteps: 1e8})
+	if err != nil {
+		out.WriteString("exit status 2\n")
+	}
+	if got := out.String(); got != want {
+		t.Errorf("output:\n%s\nwant:\n%s", got, want)
+		if testing.Verbose() {
+			t.Logf("IR:\n%s", prog)
+		}
+	}
 }
 
 func ruleSet(diags []*syntax.Error) []string {
@@ -191,6 +235,35 @@ func show(rules []string) string {
 		return "ok"
 	}
 	return strings.Join(rules, " ")
+}
+
+// TestLowerSuite translates every positive test of the suite to IR and
+// validates the result (spec/22-compiler.md §22.10.1). Constructs of
+// later roadmap steps are skipped.
+func TestLowerSuite(t *testing.T) {
+	for _, tt := range loadSuite(t) {
+		t.Run(tt.rule+"/"+tt.name, func(t *testing.T) {
+			if want, _ := tt.expectation(t); len(want) > 0 {
+				t.Skip("negative test")
+			}
+			infos, diags := tt.run(t)
+			if len(diags) > 0 {
+				t.Skip("rejected; TestSuite reports it")
+			}
+			prog, errs := lower.Program(infos...)
+			for _, err := range errs {
+				if !strings.Contains(err.Msg, "not supported yet") {
+					t.Errorf("lowering: %v", err)
+				}
+			}
+			if len(errs) > 0 {
+				return
+			}
+			for _, err := range prog.Validate() {
+				t.Errorf("invalid IR: %v", err)
+			}
+		})
+	}
 }
 
 // TestSuiteCoverage reports, with -v, the rules of the language areas

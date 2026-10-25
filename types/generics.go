@@ -713,7 +713,9 @@ func (c *checker) instanceType(e *syntax.IndexExpr, t Type) Type {
 	if targs == nil {
 		return Typ[Invalid]
 	}
-	return c.instantiate(e.Pos(), n, targs, true)
+	inst := c.instantiate(e.Pos(), n, targs, true)
+	c.recordInstance(e, targs, inst)
+	return inst
 }
 
 // typeArgs checks a list of type arguments; it returns nil if one is
@@ -829,12 +831,12 @@ func (c *checker) funcInst(x *operand, e *syntax.IndexExpr) {
 			}
 		}
 	}
-	x.typ = c.instantiateSig(e.Pos(), exprString(e.X), sig, targs)
+	x.typ = c.instantiateSig(e.Pos(), exprString(e.X), sig, targs, e)
 }
 
 // instantiateSig substitutes type arguments for the type parameters of a
 // generic function; the constraints are checked later.
-func (c *checker) instantiateSig(pos syntax.Pos, name string, sig *Signature, targs []Type) *Signature {
+func (c *checker) instantiateSig(pos syntax.Pos, name string, sig *Signature, targs []Type, use syntax.Expr) *Signature {
 	tps := sig.TypeParams
 	if c.fn != nil && c.fn.generic != nil && len(c.fn.generic.TypeParams) > 0 && &c.fn.generic.TypeParams[0] == &tps[0] {
 		// A generic function instantiating itself with type arguments
@@ -851,6 +853,7 @@ func (c *checker) instantiateSig(pos syntax.Pos, name string, sig *Signature, ta
 	c.recordZeroEdges(pos, name, tps, targs)
 	ns := *c.subst(sig, newSubstMap(tps, targs)).(*Signature)
 	ns.TypeParams = nil
+	c.recordInstance(use, targs, &ns)
 	return &ns
 }
 
@@ -1145,7 +1148,7 @@ func (c *checker) inferCall(e *syntax.CallExpr, sig *Signature, targs []Type, ar
 		}
 		result[i] = t
 	}
-	return c.instantiateSig(e.Pos(), name, sig, result)
+	return c.instantiateSig(e.Pos(), name, sig, result, e.Fun)
 }
 
 // inferFromTarget infers the type arguments of a generic function used
@@ -1165,7 +1168,7 @@ func (c *checker) inferFromTarget(x *operand, t *Signature) {
 			return
 		}
 	}
-	x.typ, x.targs = c.instantiateSig(x.expr.Pos(), exprString(x.expr), sig, targs), nil
+	x.typ, x.targs = c.instantiateSig(x.expr.Pos(), exprString(x.expr), sig, targs, x.expr), nil
 }
 
 func orInvalid(t Type) Type {
@@ -1327,7 +1330,7 @@ func (c *checker) fromOwnConstraints(x *operand) {
 			targs[i] = c.subst(targs[i], m)
 		}
 	}
-	x.typ, x.targs = c.instantiateSig(x.expr.Pos(), exprString(x.expr), sig, targs), nil
+	x.typ, x.targs = c.instantiateSig(x.expr.Pos(), exprString(x.expr), sig, targs, x.expr), nil
 }
 
 // mapKey returns the key type shared by the map types in the type set of

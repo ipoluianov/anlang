@@ -16,6 +16,7 @@ import (
 
 	"an/arch/x86_64"
 	"an/format"
+	"an/ir"
 	"an/link/elf"
 	"an/lower"
 	"an/modfile"
@@ -154,13 +155,9 @@ func (p *Project) Build(target string) (string, []error) {
 		return "", []error{fmt.Errorf("target %s is not supported yet by this compiler (spec/24-roadmap.md, step %d)", target, t.Step)}
 	}
 
-	info, errs := p.Check(target)
+	prog, errs := p.Program(target)
 	if len(errs) > 0 {
 		return "", errs
-	}
-	prog, lerrs := lower.Program(info)
-	if len(lerrs) > 0 {
-		return "", asErrors(lerrs)
 	}
 
 	text, entry, err := x86_64.GenLinux(prog)
@@ -183,7 +180,7 @@ func (p *Project) Build(target string) (string, []error) {
 // main and the project packages it imports, each checked after the
 // packages it imports. Diagnostics are returned as *syntax.Error; other
 // errors (an unknown target, unreadable files) as plain errors.
-func (p *Project) Check(target string) (*types.Info, []error) {
+func (p *Project) Check(target string) ([]*types.Info, []error) {
 	t, ok := LookupTarget(target)
 	if !ok {
 		return nil, []error{fmt.Errorf("unknown target %q (target.select.resolve)", target)}
@@ -216,7 +213,27 @@ func (p *Project) Check(target string) (*types.Info, []error) {
 	if len(errs) > 0 {
 		return nil, asErrors(errs)
 	}
-	return root.info, nil
+	var infos []*types.Info // root, package main, is last
+	for _, lp := range l.order {
+		infos = append(infos, lp.info)
+	}
+	return infos, nil
+}
+
+// Program checks the program in the project root for one target and
+// translates it to IR.
+func (p *Project) Program(target string) (*ir.Program, []error) {
+	infos, errs := p.Check(target)
+	if len(errs) > 0 {
+		return nil, errs
+	}
+	t, _ := LookupTarget(target)
+	prog, lerrs := lower.Program(infos...)
+	if len(lerrs) > 0 {
+		return nil, asErrors(lerrs)
+	}
+	prog.IntBits = wordBits[t.Arch]
+	return prog, nil
 }
 
 // loader loads the packages of a program.

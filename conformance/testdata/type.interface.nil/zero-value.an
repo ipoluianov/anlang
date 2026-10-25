@@ -1,0 +1,9 @@
+// want: mem.nil.call
+// checks: type.interface.nil
+
+package main
+
+func main() {
+	var e error
+	_ = e.Error()
+}

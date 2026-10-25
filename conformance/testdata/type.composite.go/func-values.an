@@ -8,7 +8,9 @@ func main() {
 			return a + b
 		},
 	}
-	_ = ops["add"](1, 2)
+	if add := ops["add"]; add != nil {
+		_ = add(1, 2)
+	}
 	var f func() = nil
 	_ = f == nil
 }

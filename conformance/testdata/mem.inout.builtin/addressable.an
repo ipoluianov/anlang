@@ -1,0 +1,21 @@
+// want: ok
+
+package main
+
+type T struct {
+	s []int
+	m map[string]int
+}
+
+func main() {
+	var t T
+	t.s = make([]int, 2)
+	_ = copy(t.s, []int{1, 2, 3})
+	t.m = map[string]int{"k": 1}
+	delete(t.m, "k")
+	rows := [][]int{{1, 2}}
+	clear(rows[0])
+	group := map[string]int{"x": 1}
+	delete(group, "x")
+	_, _ = t, rows
+}

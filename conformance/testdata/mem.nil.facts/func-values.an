@@ -1,0 +1,12 @@
+// want: ok
+
+package main
+
+func main2() {}
+
+func main() {
+	f := func() {}
+	f()
+	g := main2
+	g()
+}

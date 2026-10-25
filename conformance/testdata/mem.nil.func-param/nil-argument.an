@@ -1,0 +1,9 @@
+// want: mem.nil.func-param
+
+package main
+
+func each(xs []int, f func(int)) {}
+
+func main() {
+	each(nil, nil)
+}

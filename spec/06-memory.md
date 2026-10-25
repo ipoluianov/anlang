@@ -31,6 +31,15 @@ Anlang uses mutable value semantics, after the language Hylo: memory safety with
 
 **mem.inout.addressable** — An `inout` access MAY be taken only to an addressable operand ([04-expressions](04-expressions.md), **expr.addr.def**).
 
+**mem.inout.builtin** — The built-in functions `copy`, `delete` and `clear` modify their first operand: it is passed with an `inout` access for the duration of the call, and the other operands are passed as values. The first operand MUST therefore be addressable (**mem.inout.addressable**; a map element is not, **expr.addr.map**). In Go the operand may be any expression, because slices and maps refer to shared memory; in Anlang a modification of a temporary value would be lost.
+
+```go
+copy(dst, src)        // dst is a variable: permitted
+delete(m, k)          // permitted
+copy(f(), src)        // error: the result of f() is not addressable
+delete(groups[g], k)  // error: a map element is not addressable
+```
+
 ### 2.2 Exclusivity
 
 **mem.inout.exclusive** — While an `inout` access to a value is live, the program MUST NOT access that value, or any part of it, or any value containing it, through any other path. This applies to reads and writes, to the code of the caller, to other `inout` accesses, to closures and to tasks.
@@ -172,6 +181,18 @@ The synchronization types are `chan T`, `sync.Mutex[T]`, `sync.RWMutex[T]` and t
 1. it was assigned or initialized from a value known non-`nil`: a conversion of a non-interface value to an interface type, a function literal, a named function, or another operand known non-`nil`; or
 2. a comparison `x != nil` evaluated to `true`, or `x == nil` evaluated to `false`, as the condition of an `if` statement or a `for` statement whose branch contains the point, or of an `if` statement whose `x == nil` branch ends in a terminating statement; or
 3. a contract proves it ([08-contracts](08-contracts.md)), for example `ensures result != nil` of the function that produced it.
+
+**mem.nil.func-param** — A parameter of function type is known non-`nil` in the body of its function or function literal, until it is assigned. Correspondingly, an argument for a parameter of function type MUST be proven non-`nil` at the call by **mem.nil.facts**: a function literal, a named function, a method value, or an operand known non-`nil`; passing `nil` or a value not known non-`nil` is a compile-time error. A `range` statement over an iterator function passes a non-`nil` `yield`. Parameters of interface type have no such rule.
+
+```go
+func Each(xs []int, f func(int)) {
+    for _, x := range xs {
+        f(x)             // permitted: f is a parameter of function type
+    }
+}
+
+Each(xs, nil)            // error: the argument for f may be nil
+```
 
 **mem.nil.invalidate** — A fact about a path is invalidated by an assignment to the path or to any of its prefixes, and by an `inout` access to the path or to any of its prefixes. No other event invalidates it.
 

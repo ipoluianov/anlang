@@ -25,13 +25,15 @@ const (
 	// Functions of an/fmt implemented by the compiler.
 	_FmtPrint
 	_FmtPrintln
+	_FmtSprint
+	_FmtSprintln
 )
 
 var builtinNames = map[builtinID]string{
 	_Append: "append", _Cap: "cap", _Clear: "clear", _Close: "close", _Copy: "copy",
 	_Delete: "delete", _Len: "len", _Make: "make", _Max: "max", _Min: "min",
 	_Panic: "panic", _Print: "print", _Println: "println",
-	_FmtPrint: "Print", _FmtPrintln: "Println",
+	_FmtPrint: "Print", _FmtPrintln: "Println", _FmtSprint: "Sprint", _FmtSprintln: "Sprintln",
 }
 
 // Universe is the universe block (type.universe).
@@ -120,7 +122,7 @@ func init() {
 // Temporary: an/fmt is built into the compiler until the standard library
 // is compiled from Anlang source (roadmap steps 9–10).
 var stdPackages = map[string]*Package{
-	"an/fmt": newStdPackage("an/fmt", _FmtPrint, _FmtPrintln),
+	"an/fmt": newStdPackage("an/fmt", _FmtPrint, _FmtPrintln, _FmtSprint, _FmtSprintln),
 }
 
 func newStdPackage(path string, funcs ...builtinID) *Package {

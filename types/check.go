@@ -47,6 +47,14 @@ type Info struct {
 	Main *Func
 	// Pkg is the checked package.
 	Pkg *Package
+	// Selections maps selector expressions of fields and methods to
+	// what they select.
+	Selections map[*syntax.SelectorExpr]*Selection
+	// Instances maps the identifiers of generic functions and types to
+	// their instantiations at their uses.
+	Instances map[*syntax.Name]Instance
+
+	ctx *checker // for the type operations of the API
 }
 
 // TypeAndValue is the type and, for a constant, the value of an
@@ -144,6 +152,9 @@ func Check(conf *Config, files []*syntax.File) (*Info, []*syntax.Error) {
 			Types: map[syntax.Expr]TypeAndValue{},
 			Defs:  map[*syntax.Name]Object{},
 			Uses:  map[*syntax.Name]Object{},
+
+			Selections: map[*syntax.SelectorExpr]*Selection{},
+			Instances:  map[*syntax.Name]Instance{},
 		},
 		pkgScope: NewScope(Universe),
 		decls:    map[Object]*declInfo{},

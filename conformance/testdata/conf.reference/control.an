@@ -1,0 +1,62 @@
+// want: ok
+// checks: stmt.go
+
+package main
+
+import "an/fmt"
+
+func classify(n int) string {
+	switch {
+	case n < 0:
+		return "negative"
+	case n == 0:
+		return "zero"
+	case n < 10:
+		return "small"
+	}
+	return "large"
+}
+
+func weekday(d int) string {
+	switch d {
+	case 0, 6:
+		return "weekend"
+	case 1:
+		fallthrough
+	case 2, 3, 4, 5:
+		return "weekday"
+	default:
+		return "?"
+	}
+}
+
+func main() {
+	for _, n := range []int{-5, 0, 3, 42} {
+		fmt.Print(classify(n), " ")
+	}
+	fmt.Println()
+	fmt.Println(weekday(0), weekday(1), weekday(4), weekday(9))
+	i := 0
+loop:
+	if i < 3 {
+		fmt.Print(i)
+		i++
+		goto loop
+	}
+	fmt.Println()
+	n := 0
+	for j := 0; j < 100; j++ {
+		if j%7 != 0 {
+			continue
+		}
+		if j > 50 {
+			break
+		}
+		n++
+	}
+	fmt.Println(n)
+	for x := 10; x > 0; x /= 2 {
+		fmt.Print(x, ",")
+	}
+	fmt.Println()
+}

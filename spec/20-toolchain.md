@@ -176,7 +176,7 @@ AUTH-4  After five failed attempts, login is locked for 15 minutes
 
 | Command | Purpose |
 | --- | --- |
-| `anlang build [-target T[,T…]] [-verify]` | Build the program for one or more targets |
+| `anlang build [-target T[,T…]] [-verify] [-ir]` | Build the program for one or more targets |
 | `anlang check [-target T[,T…]]` | Check types, effects and contracts without generating code |
 | `anlang fmt [-check] [paths]` | Canonical formatting |
 | `anlang test [-target T] [-emu E] [packages]` | Unit, property-based and visual tests; requirement checks |
@@ -194,6 +194,8 @@ AUTH-4  After five failed attempts, login is locked for 15 minutes
 | `anlang lsp` | Language Server Protocol server (see [21-protocol](21-protocol.md)) |
 
 **tool.cmd.build** — `anlang build` MUST check the program (as `anlang check`) and, if there are no errors, write the outputs for each target to `out/<target>/`. If no `-target` is given, the targets of the `targets` directive are used; if there is none, the host target is used.
+
+**tool.cmd.build.ir** — `anlang build -ir` MUST check the program and print its intermediate representation for each target in the textual format of [22-compiler](22-compiler.md), 22.10, instead of writing outputs.
 
 **tool.cmd.build.multi** — When several targets are given, target-independent checks (types, effects without target substitution, contracts) MUST be performed once; target-dependent steps once per target.
 
@@ -260,6 +262,8 @@ AUTH-4  After five failed attempts, login is locked for 15 minutes
 **tool.emu.builtin** — Emulators for tests MUST be built into `anlang` and MUST NOT require external programs.
 
 **tool.emu.generated** — The interpreter of each architecture MUST be generated from the formal instruction semantics in its architecture description, the same description from which the backend, the assembler and the architecture instruction package are built (see [13-targets](13-targets.md)).
+
+**tool.emu.ir** — `anlang run -emu ir` MUST run the program in the IR interpreter (see [22-compiler](22-compiler.md), 22.10.3) for any target, without generating machine code. Its observable behavior is the reference for the backends of all targets (see [23-conformance](23-conformance.md), **conf.backend.ir**). A program that panics MUST exit with status 2.
 
 **tool.emu.coverage** — `anlang` MUST provide at least:
 

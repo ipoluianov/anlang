@@ -1,0 +1,9 @@
+// want: mem.nil.call
+// checks: expr.nil.call
+
+package main
+
+func main() {
+	var f func()
+	f()
+}

@@ -1,0 +1,44 @@
+// want: ok
+// checks: mem.value.copy
+
+package main
+
+import "an/fmt"
+
+type Point struct {
+	X, Y int
+}
+
+type Rect struct {
+	Min, Max Point
+	Name     string
+}
+
+func (p Point) Add(q Point) Point {
+	return Point{p.X + q.X, p.Y + q.Y}
+}
+
+func (r inout Rect) Move(d Point) {
+	r.Min = r.Min.Add(d)
+	r.Max = r.Max.Add(d)
+}
+
+func (r Rect) Area() int {
+	return (r.Max.X - r.Min.X) * (r.Max.Y - r.Min.Y)
+}
+
+func main() {
+	r := Rect{Point{0, 0}, Point{2, 3}, "r"}
+	s := r
+	r.Move(Point{1, 1})
+	fmt.Println(r, s, r.Area())
+	s.Max.X = 10
+	fmt.Println(s.Area(), s == r)
+	a := [3]int{1, 2, 3}
+	b := a
+	b[0] = 9
+	fmt.Println(a, b, a == b, len(a))
+	ps := []Point{{1, 2}, {3, 4}}
+	ps[1].X = 30
+	fmt.Println(ps)
+}

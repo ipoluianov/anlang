@@ -1,0 +1,70 @@
+// want: ok
+// checks: mem.inout.param
+
+package main
+
+import "an/fmt"
+
+type Account struct {
+	Name    string
+	Balance int
+	History []int
+}
+
+func deposit(a inout Account, n int) {
+	a.Balance += n
+	a.History = append(a.History, n)
+}
+
+func swap(a, b inout int) {
+	a, b = b, a
+}
+
+func bump(xs inout []int) {
+	for i := range xs {
+		xs[i]++
+	}
+}
+
+type Bank struct {
+	accs []Account
+}
+
+func (b inout Bank) Each(yield func(inout Account) bool) {
+	for i := range b.accs {
+		if !yield(b.accs[i]) {
+			return
+		}
+	}
+}
+
+func main() {
+	acc := Account{Name: "x"}
+	deposit(acc, 10)
+	deposit(acc, 5)
+	fmt.Println(acc)
+	x, y := 1, 2
+	swap(x, y)
+	fmt.Println(x, y)
+	arr := [3]int{1, 2, 3}
+	swap(arr[0], arr[2])
+	fmt.Println(arr)
+	s := []int{1, 2, 3, 4}
+	bump(s[1:3])
+	fmt.Println(s)
+	accs := []Account{{Name: "a"}, {Name: "b"}}
+	deposit(accs[1], 7)
+	fmt.Println(accs)
+	m := map[string]int{"k": 1}
+	v := m["k"]
+	swap(v, x)
+	fmt.Println(v, x, m)
+	b := Bank{accs}
+	for a := range b.Each {
+		a.Balance *= 3
+		if a.Name == "a" {
+			a.Balance = -1
+		}
+	}
+	fmt.Println(b.accs)
+}

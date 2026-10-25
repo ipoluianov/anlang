@@ -1,0 +1,18 @@
+// want: mem.inout.builtin
+
+package main
+
+func f() []int {
+	return make([]int, 3)
+}
+
+func g() map[string]int {
+	return map[string]int{}
+}
+
+func main() {
+	src := []int{1, 2}
+	_ = copy(f(), src)
+	delete(g(), "k")
+	clear(f())
+}

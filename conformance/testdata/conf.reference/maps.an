@@ -1,0 +1,38 @@
+// want: ok
+// checks: mem.value.copy
+
+package main
+
+import "an/fmt"
+
+func main() {
+	m := map[string]int{"a": 1, "b": 2}
+	m["c"] = 3
+	m["a"] += 10
+	n := m
+	n["z"] = 26
+	delete(m, "b")
+	fmt.Println(m, n, len(m), len(n))
+	if v, ok := m["c"]; ok {
+		fmt.Println("c", v)
+	}
+	if _, ok := m["b"]; !ok {
+		fmt.Println("no b")
+	}
+	total := 0
+	for _, v := range n {
+		total += v
+	}
+	fmt.Println(total)
+	counts := map[i32]int{}
+	for _, r := range "hello" {
+		counts[r]++
+	}
+	fmt.Println(counts['l'], counts['h'], len(counts))
+	type key struct{ a, b int }
+	k := map[key]string{{1, 2}: "x"}
+	k[key{3, 4}] = "y"
+	fmt.Println(k[key{1, 2}], k[key{3, 4}], k[key{5, 6}] == "")
+	clear(m)
+	fmt.Println(m, len(m))
+}

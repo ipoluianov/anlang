@@ -1,0 +1,52 @@
+// want: ok
+// checks: mem.value.copy
+
+package main
+
+import "an/fmt"
+
+func sum(xs []int) int {
+	t := 0
+	for _, x := range xs {
+		t += x
+	}
+	return t
+}
+
+func push(xs inout []int, v int) {
+	xs = append(xs, v)
+}
+
+func main() {
+	var s []int
+	for i := range 5 {
+		s = append(s, i*i)
+	}
+	fmt.Println(s, len(s), sum(s))
+	t := s
+	t[0] = 100
+	fmt.Println(s[0], t[0])
+	u := s[1:3]
+	u = append(u, 7)
+	fmt.Println(s, u, len(u))
+	push(s, 42)
+	fmt.Println(s)
+	m := make([]string, 2, 10)
+	m[1] = "b"
+	fmt.Println(m, len(m), cap(m))
+	c := make([]int, 3)
+	n := copy(c, s)
+	fmt.Println(n, c)
+	b := []u8("hi")
+	b = append(b, "!"...)
+	fmt.Println(string(b), b)
+	var grid [][]int
+	for i := range 3 {
+		row := make([]int, 3)
+		row[i] = 1
+		grid = append(grid, row)
+	}
+	fmt.Println(grid)
+	clear(c)
+	fmt.Println(c, s[len(s)-1], s[:2], s[3:])
+}

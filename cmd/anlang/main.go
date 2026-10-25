@@ -13,6 +13,7 @@ import (
 
 	"an/build"
 	"an/format"
+	"an/interp"
 	"an/modfile"
 	"an/syntax"
 )
@@ -50,9 +51,12 @@ func usage() {
 	fmt.Fprint(os.Stderr, `Usage: anlang <command> [flags]
 
 Commands:
-  build [-target t1,t2]   build the program in the current project
-  run   [-target t] [-- args]
-                          build and run the program on this machine
+  build [-target t1,t2] [-ir]
+                          build the program in the current project,
+                          or print its IR with -ir
+  run   [-target t] [-emu ir] [-- args]
+                          build and run the program on this machine,
+                          or in the IR interpreter with -emu ir
   fmt   [-check] [files]  rewrite Anlang files and anlang.mod in canonical form
 
 Only the target linux-x86_64 is implemented so far.
@@ -62,6 +66,7 @@ Only the target linux-x86_64 is implemented so far.
 func runBuild(args []string) int {
 	fs := flag.NewFlagSet("build", flag.ContinueOnError)
 	target := fs.String("target", "", "comma-separated targets (default: targets in anlang.mod)")
+	printIR := fs.Bool("ir", false, "print the IR of the program instead of building it")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
@@ -79,6 +84,16 @@ func runBuild(args []string) int {
 	}
 	status = exitOK
 	for _, t := range targets {
+		if *printIR {
+			prog, errs := p.Program(strings.TrimSpace(t))
+			if len(errs) > 0 {
+				report(errs)
+				status = exitProblems
+				continue
+			}
+			fmt.Print(prog)
+			continue
+		}
 		if _, errs := p.Build(strings.TrimSpace(t)); len(errs) > 0 {
 			report(errs)
 			status = exitProblems
@@ -90,7 +105,16 @@ func runBuild(args []string) int {
 func runRun(args []string) int {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	target := fs.String("target", build.HostTarget(), "target to build and run")
+	emu := fs.String("emu", "", "emulator to run in: ir (the IR interpreter)")
 	if err := fs.Parse(args); err != nil {
+		return exitUsage
+	}
+	switch *emu {
+	case "":
+	case "ir":
+		return runIR(*target)
+	default:
+		fmt.Fprintf(os.Stderr, "anlang run: unknown emulator %s\n", *emu)
 		return exitUsage
 	}
 	if *target != build.HostTarget() {
@@ -115,6 +139,23 @@ func runRun(args []string) int {
 		}
 		fmt.Fprintln(os.Stderr, "anlang run:", err)
 		return exitUsage
+	}
+	return exitOK
+}
+
+// runIR runs the program in the IR interpreter (tool.emu.ir).
+func runIR(target string) int {
+	p, status := load()
+	if p == nil {
+		return status
+	}
+	prog, errs := p.Program(target)
+	if len(errs) > 0 {
+		report(errs)
+		return exitProblems
+	}
+	if err := interp.Run(prog, interp.Options{Stdout: os.Stdout, Stderr: os.Stderr}); err != nil {
+		return 2 // the status of a panicking program (tool.emu.ir)
 	}
 	return exitOK
 }
