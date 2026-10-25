@@ -1,0 +1,17 @@
+// want: ok
+
+package main
+
+type Point struct {
+	X int
+}
+
+func main() {
+	xs := []int{1}
+	xs[0] = 2
+	var g [2][2]int
+	g[1][0] = 3
+	p := Point{}
+	p.X = 4
+	_, _, _ = xs, g, p
+}

@@ -1,0 +1,9 @@
+// want: expr.cmp.go
+
+package main
+
+func main() {
+	a := []int{}
+	b := []int{}
+	_ = a == b
+}

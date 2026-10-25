@@ -1,4 +1,4 @@
-// want: decl.func.go
+// want: decl.visibility.go
 
 package main
 

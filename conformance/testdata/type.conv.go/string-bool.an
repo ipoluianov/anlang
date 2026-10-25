@@ -1,0 +1,7 @@
+// want: type.conv.go
+
+package main
+
+func main() {
+	_ = bool("x")
+}

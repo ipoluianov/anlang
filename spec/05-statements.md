@@ -4,6 +4,8 @@ This file specifies how Anlang statements differ from Go statements: `switch` ov
 
 Where this file is silent, statements behave as in the Go specification (see [README](README.md)). Contract clauses at the start of function, loop and struct bodies are specified in [08-contracts](08-contracts.md).
 
+**stmt.go** — A statement not changed by this file has the syntax, rules and meaning of the Go specification, including the rules for labels, `break`, `continue`, `goto` and `fallthrough` and the requirement that the body of a function with results end in a terminating statement. A program that violates them MUST be rejected.
+
 ## 1. Switch over `enum` types
 
 ### 1.1 Syntax

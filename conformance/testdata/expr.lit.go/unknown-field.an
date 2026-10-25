@@ -1,0 +1,11 @@
+// want: expr.lit.go
+
+package main
+
+type Point struct {
+	X int
+}
+
+func main() {
+	_ = Point{Z: 1}
+}

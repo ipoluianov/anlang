@@ -1,0 +1,9 @@
+// want: type.conv.int-narrow
+
+package main
+
+func main() {
+	var a i64 = 1
+	b := i8(a)
+	_ = b
+}

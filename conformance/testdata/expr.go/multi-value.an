@@ -1,0 +1,11 @@
+// want: expr.go
+
+package main
+
+func two() (int, int) {
+	return 1, 2
+}
+
+func main() {
+	_ = two() + 1
+}

@@ -1,0 +1,15 @@
+// want: ok
+
+package main
+
+func main() {
+	var a i8 = -128
+	var b i16 = 32767
+	var c i32 = -1
+	var d i64 = 1 << 62
+	var e u8 = 255
+	var f u16 = 65535
+	var g u32 = 1
+	var h u64 = 1 << 63
+	_, _, _, _, _, _, _, _ = a, b, c, d, e, f, g, h
+}

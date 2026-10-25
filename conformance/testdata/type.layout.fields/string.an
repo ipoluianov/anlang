@@ -1,0 +1,13 @@
+// want: type.layout.fields
+
+package main
+
+type Header struct {
+	layout c
+	name string
+}
+
+func main() {
+	var h Header
+	_ = h
+}

@@ -1,0 +1,8 @@
+// want: expr.go
+
+package main
+
+func main() {
+	s := "a"
+	_ = s - s
+}

@@ -1,0 +1,19 @@
+// want: ok
+
+package main
+
+func main() {
+	n := 0
+outer:
+	for i := 0; i < 3; i++ {
+		for j := range 3 {
+			if j > i {
+				continue outer
+			}
+			if n > 4 {
+				break outer
+			}
+			n++
+		}
+	}
+}

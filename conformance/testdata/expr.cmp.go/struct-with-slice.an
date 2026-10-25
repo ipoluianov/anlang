@@ -1,0 +1,12 @@
+// want: expr.cmp.go
+
+package main
+
+type S struct {
+	xs []int
+}
+
+func main() {
+	var a, b S
+	_ = a == b
+}

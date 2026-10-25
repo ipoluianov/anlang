@@ -1,0 +1,13 @@
+// want: ok
+
+package main
+
+func f(n int) (r int) {
+	return 0
+}
+
+func main() {
+	x, _ := 1, 2
+	_ = x
+	f(1)
+}

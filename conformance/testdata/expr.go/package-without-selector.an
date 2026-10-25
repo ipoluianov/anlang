@@ -1,0 +1,9 @@
+// want: expr.go decl.import.used
+
+package main
+
+import "an/fmt"
+
+func main() {
+	_ = fmt
+}

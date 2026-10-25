@@ -1,0 +1,13 @@
+// want: ok
+
+package main
+
+type Node struct {
+	children []Node
+}
+
+func main() {
+	var n Node
+	n.children = append(n.children, Node{})
+	_ = n
+}

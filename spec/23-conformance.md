@@ -17,7 +17,7 @@ Most of the compiler is expected to be written by AI. Checks of `anlang` itself 
 **conf.suite.layout** — The suite is stored in the directory `conformance/testdata/` of the toolchain sources, in the following form, so that both compilers of **conf.suite.shared** read the same files:
 
 1. Each subdirectory of `testdata/` is named by a rule identifier and holds the tests filed under that rule.
-2. A file `<name>.an` in a rule directory is a single-file test: the source file of package `main` of a project whose module name is `conf`.
+2. A file `<name>.an` in a rule directory is a single-file test: the source file of package `main` of a project whose module name is `conf`, built for the target `linux-x86_64`.
 3. A subdirectory `<name>/` of a rule directory is a project test: a project root with its `anlang.mod` and source files, built for the first target listed in `anlang.mod`.
 4. The expectation is written exactly once among the test's files, as a line comment `// want: ok` for a positive test or `// want: <rule> {<rule>}` for a negative test, listing the expected set of rule identifiers of **conf.suite.expectation**.
 5. A comment `// checks: <rule> {<rule>}` lists further rules the test checks (**conf.suite.naming**). A negative test MUST name the rule of its directory in `want` or `checks`.
@@ -68,6 +68,7 @@ func main() {}
 
 - architecture interpreters against QEMU and processor test suites;
 - the WebAssembly interpreter against the official WebAssembly specification test suite;
+- the type checker against go/types of the Go distribution, on its test programs renamed into Anlang, for the common subset (**conf.go.common-subset**);
 - linker output against standard format inspection tools;
 - text shaping against a reference shaping test suite;
 - GPU output against format validators.

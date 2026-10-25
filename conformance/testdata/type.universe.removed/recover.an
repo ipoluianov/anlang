@@ -1,0 +1,7 @@
+// want: type.universe.removed
+
+package main
+
+func main() {
+	_ = recover()
+}

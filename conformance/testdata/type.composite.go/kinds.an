@@ -1,0 +1,12 @@
+// want: ok
+
+package main
+
+func main() {
+	var a [3]int
+	var s []string
+	var m map[string][]int
+	var c chan<- u8
+	var f func(int) (int, bool)
+	_, _, _, _, _ = a, s, m, c, f
+}

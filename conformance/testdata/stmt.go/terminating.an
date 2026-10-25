@@ -1,0 +1,29 @@
+// want: ok
+
+package main
+
+func f(n int) int {
+	if n > 0 {
+		return 1
+	} else {
+		return 2
+	}
+}
+
+func g() int {
+	for {
+	}
+}
+
+func h(n int) int {
+	switch n {
+	case 1:
+		return 1
+	default:
+		panic("n")
+	}
+}
+
+func main() {
+	_ = f(1) + g() + h(2)
+}

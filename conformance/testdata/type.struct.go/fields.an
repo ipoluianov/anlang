@@ -1,0 +1,13 @@
+// want: ok
+
+package main
+
+type Point struct {
+	X, Y int
+}
+
+func main() {
+	p := Point{X: 1, Y: 2}
+	p.X = p.Y
+	_ = p
+}

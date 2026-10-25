@@ -1,0 +1,9 @@
+// want: stmt.range.go
+
+package main
+
+func main() {
+	for i, j := range 10 {
+		_, _ = i, j
+	}
+}

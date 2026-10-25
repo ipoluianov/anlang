@@ -1,0 +1,8 @@
+// want: type.composite.go
+
+package main
+
+func main() {
+	var m map[[]int]int
+	_ = m
+}

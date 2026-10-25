@@ -1,0 +1,10 @@
+// want: ok
+
+package main
+
+func main() {
+	var s uint = 2
+	var x i64 = 1 << s
+	var y = u8(1) << s
+	_, _ = x, y
+}

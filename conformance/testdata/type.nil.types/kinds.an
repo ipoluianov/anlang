@@ -1,0 +1,12 @@
+// want: ok
+
+package main
+
+func main() {
+	var s []int = nil
+	var m map[int]int = nil
+	var c chan int = nil
+	var f func() = nil
+	var e error = nil
+	_, _, _, _, _ = s, m, c, f, e
+}

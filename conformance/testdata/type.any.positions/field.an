@@ -1,0 +1,12 @@
+// want: type.any.positions
+
+package main
+
+type Box struct {
+	v any
+}
+
+func main() {
+	var b Box
+	_ = b
+}

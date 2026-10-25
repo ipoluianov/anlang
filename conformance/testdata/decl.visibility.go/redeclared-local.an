@@ -1,0 +1,9 @@
+// want: decl.visibility.go
+
+package main
+
+func main() {
+	x := 1
+	var x int
+	_ = x
+}

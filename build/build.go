@@ -14,8 +14,8 @@ import (
 
 	"an/arch/x86_64"
 	"an/format"
-	"an/ir"
 	"an/link/elf"
+	"an/lower"
 	"an/modfile"
 	"an/syntax"
 	"an/types"
@@ -57,6 +57,17 @@ var Targets = []Target{
 
 // implemented lists the targets this compiler can generate code for.
 var implemented = map[string]bool{"linux-x86_64": true}
+
+// wordBits is the machine word size of each architecture, the size of
+// int (type.int.word).
+//
+// Temporary: until architecture descriptions exist (roadmap step 11),
+// the size of usize is taken to be the word size too.
+var wordBits = map[string]int{
+	"i8086": 16, "avr": 16, "msp430": 16,
+	"armv6m": 32, "armv7m": 32, "riscv32": 32, "wasm32": 32,
+	"x86_64": 64, "arm64": 64, "riscv64": 64,
+}
 
 var (
 	architectures = []string{"i8086", "x86_64", "armv6m", "armv7m", "avr", "msp430", "riscv32", "riscv64", "arm64", "wasm32"}
@@ -141,9 +152,13 @@ func (p *Project) Build(target string) (string, []error) {
 		return "", []error{fmt.Errorf("target %s is not supported yet by this compiler (spec/24-roadmap.md, step %d)", target, t.Step)}
 	}
 
-	prog, errs := p.Check(target)
+	info, errs := p.Check(target)
 	if len(errs) > 0 {
 		return "", errs
+	}
+	prog, lerrs := lower.Program(info)
+	if len(lerrs) > 0 {
+		return "", asErrors(lerrs)
 	}
 
 	text, entry, err := x86_64.GenLinux(prog)
@@ -163,10 +178,10 @@ func (p *Project) Build(target string) (string, []error) {
 }
 
 // Check selects the source files of the program in the project root for
-// one target, parses and type-checks them, and returns the program's IR.
-// Diagnostics are returned as *syntax.Error; other errors (an unknown
-// target, unreadable files) as plain errors.
-func (p *Project) Check(target string) (*ir.Program, []error) {
+// one target, parses and type-checks them. Diagnostics are returned as
+// *syntax.Error; other errors (an unknown target, unreadable files) as
+// plain errors.
+func (p *Project) Check(target string) (*types.Info, []error) {
 	t, ok := LookupTarget(target)
 	if !ok {
 		return nil, []error{fmt.Errorf("unknown target %q (target.select.resolve)", target)}
@@ -186,11 +201,11 @@ func (p *Project) Check(target string) (*ir.Program, []error) {
 		}
 		srcs = append(srcs, Source{Name: name, Data: data})
 	}
-	prog, errs := CheckSources(p.Mod.Module, srcs)
+	info, errs := CheckSources(p.Mod.Module, t, srcs)
 	if len(errs) > 0 {
 		return nil, asErrors(errs)
 	}
-	return prog, nil
+	return info, nil
 }
 
 // Source is a source file: its name for diagnostics and its contents.
@@ -200,9 +215,8 @@ type Source struct {
 }
 
 // CheckSources parses srcs, checks that they are in canonical form and
-// type-checks them as package main of module. If any error is found,
-// the program is nil.
-func CheckSources(module string, srcs []Source) (*ir.Program, []*syntax.Error) {
+// type-checks them as package main of module for target t.
+func CheckSources(module string, t Target, srcs []Source) (*types.Info, []*syntax.Error) {
 	var parsed []*syntax.File
 	var errs []*syntax.Error
 	for _, src := range srcs {
@@ -218,7 +232,8 @@ func CheckSources(module string, srcs []Source) (*ir.Program, []*syntax.Error) {
 	if len(errs) > 0 {
 		return nil, errs
 	}
-	return types.Check(&types.Package{Module: module, Files: parsed})
+	word := wordBits[t.Arch]
+	return types.Check(&types.Config{Module: module, IntBits: word, AddrBits: word}, parsed)
 }
 
 // SelectFiles returns the names of the source files in dir that belong

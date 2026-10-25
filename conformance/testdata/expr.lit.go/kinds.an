@@ -1,0 +1,16 @@
+// want: ok
+
+package main
+
+type Point struct {
+	X, Y int
+}
+
+func main() {
+	p := Point{X: 1}
+	q := Point{1, 2}
+	ps := []Point{{1, 2}, {X: 3}}
+	m := map[string]Point{"a": {1, 2}}
+	a := [...]int{2: 1, 5}
+	_, _, _, _, _ = p, q, ps, m, a
+}

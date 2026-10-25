@@ -1,0 +1,9 @@
+// want: type.interface.empty-value
+
+package main
+
+func f(x interface{}) {}
+
+func main() {
+
+}

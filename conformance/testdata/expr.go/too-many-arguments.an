@@ -1,0 +1,9 @@
+// want: expr.go
+
+package main
+
+func f(a int) {}
+
+func main() {
+	f(1, 2)
+}

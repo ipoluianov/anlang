@@ -1,0 +1,9 @@
+// want: stmt.assign.go
+
+package main
+
+func main() {
+	a := 1
+	a := 2
+	_ = a
+}

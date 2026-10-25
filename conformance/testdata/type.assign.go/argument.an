@@ -1,0 +1,9 @@
+// want: type.assign.go
+
+package main
+
+func f(n int) {}
+
+func main() {
+	f("x")
+}

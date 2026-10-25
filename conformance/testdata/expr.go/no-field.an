@@ -1,0 +1,12 @@
+// want: expr.go
+
+package main
+
+type Point struct {
+	X int
+}
+
+func main() {
+	var p Point
+	_ = p.Z
+}

@@ -1,0 +1,10 @@
+// want: type.go
+
+package main
+
+type T [2]T
+
+func main() {
+	var t T
+	_ = t
+}

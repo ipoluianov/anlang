@@ -1,0 +1,12 @@
+// want: type.nil.types
+
+package main
+
+type Point struct {
+	X int
+}
+
+func main() {
+	var p Point = nil
+	_ = p
+}

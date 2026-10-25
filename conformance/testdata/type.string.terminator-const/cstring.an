@@ -1,0 +1,8 @@
+// want: ok
+
+package main
+
+func main() {
+	var c cstring = "abc"
+	_ = c
+}

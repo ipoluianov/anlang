@@ -1,0 +1,16 @@
+// want: ok
+
+package main
+
+func fail() error {
+	return nil
+}
+
+func pair() (int, error) {
+	return 0, nil
+}
+
+func main() {
+	_ = fail()
+	_, _ = pair()
+}

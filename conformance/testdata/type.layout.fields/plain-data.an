@@ -1,0 +1,20 @@
+// want: ok
+
+package main
+
+type Inner struct {
+	layout c
+	a u8
+}
+
+type Header struct {
+	layout c
+	b   [4]u8
+	f   f32
+	sub Inner
+}
+
+func main() {
+	var h Header
+	_ = h
+}

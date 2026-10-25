@@ -1,0 +1,7 @@
+// want: expr.go
+
+package main
+
+func main() {
+	_ = 1.5 << 2
+}

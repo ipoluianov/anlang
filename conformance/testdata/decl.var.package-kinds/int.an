@@ -1,0 +1,9 @@
+// want: decl.var.package-kinds
+
+package main
+
+var count int
+
+func main() {
+	_ = count
+}

@@ -1,0 +1,17 @@
+// want: ok
+
+package main
+
+func main() {
+	s := make([]int, 0, 4)
+	s = append(s, 1)
+	m := map[string]int{}
+	delete(m, "a")
+	clear(m)
+	n := copy(s, s)
+	_ = len(s) + cap(s) + n + min(1, 2) + max(3, 4)
+	c := make(chan int)
+	close(c)
+	print("x")
+	println()
+}

@@ -1,0 +1,16 @@
+// want: ok
+
+package main
+
+func main() {
+	a, b := 1, 2
+	a, b = b, a
+	a += 3
+	m := map[string]int{}
+	v, ok := m["x"]
+	v, ok = m["y"]
+	c := make(chan int, 1)
+	c <- 1
+	w, ok := <-c
+	_, _, _, _, _ = a, b, v, ok, w
+}

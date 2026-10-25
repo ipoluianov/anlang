@@ -1,0 +1,8 @@
+// want: stmt.if-for.go
+
+package main
+
+func main() {
+	if 1 {
+	}
+}

@@ -1,0 +1,9 @@
+// want: decl.const.go
+
+package main
+
+func main() {
+	n := 1
+	const k = n
+	_ = k
+}

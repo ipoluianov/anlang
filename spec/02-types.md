@@ -329,6 +329,8 @@ _, _ = Find(shapes, isBig)     // error: Shape has no zero value; Find uses the 
 - an untyped integer constant is assignable to a `wrap` type if it is representable by the corresponding integer type;
 - an untyped numeric constant is assignable to a `fixed` type; the value is rounded to the nearest representable value at compile time, and the program is rejected if it is out of range.
 
+**type.conv.go** — Conversions not covered by this section are as in Go.
+
 **type.conv.int-widen** — A conversion between integer types (including byte-order and `wrap` types' underlying integers) whose target type can represent every value of the source type is always allowed.
 
 **type.conv.int-narrow** — Any other conversion `T(x)` between integer types is allowed only if the compiler proves that the value of `x` is representable in `T` ([08-contracts](08-contracts.md)). Otherwise the program MUST be rejected, and the diagnostic SHOULD suggest `conv.Narrow[T](x)`, which returns `(T, bool)`.

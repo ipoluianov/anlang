@@ -1,0 +1,7 @@
+// want: type.conv.constant
+
+package main
+
+func main() {
+	_ = u8(256)
+}

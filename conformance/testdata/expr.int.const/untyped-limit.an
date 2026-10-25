@@ -1,0 +1,9 @@
+// want: expr.int.const
+
+package main
+
+const huge = 1 << 600
+
+func main() {
+
+}

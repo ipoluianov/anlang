@@ -1,0 +1,8 @@
+// want: stmt.assign.go
+
+package main
+
+func main() {
+	const k = 1
+	k = 2
+}

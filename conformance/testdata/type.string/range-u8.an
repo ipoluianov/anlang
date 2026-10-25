@@ -1,0 +1,11 @@
+// want: type.assign.go
+// checks: type.string
+
+package main
+
+func main() {
+	for _, r := range "héllo" {
+		var c u8 = r
+		_ = c
+	}
+}

@@ -1,0 +1,13 @@
+// want: ok
+
+package main
+
+func later() int {
+	return k
+}
+
+const k = 3
+
+func main() {
+	_ = later()
+}

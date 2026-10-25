@@ -1,0 +1,8 @@
+// want: type.nil.types
+
+package main
+
+func main() {
+	var x int = nil
+	_ = x
+}

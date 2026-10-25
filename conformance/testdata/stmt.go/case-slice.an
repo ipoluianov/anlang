@@ -1,0 +1,11 @@
+// want: stmt.go
+
+package main
+
+func main() {
+	a := []int{}
+	b := []int{}
+	switch a {
+	case b:
+	}
+}

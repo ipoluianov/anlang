@@ -1,0 +1,9 @@
+// want: expr.int.const
+// checks: type.int.fixed
+
+package main
+
+func main() {
+	var a i8 = 128
+	_ = a
+}

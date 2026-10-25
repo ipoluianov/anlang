@@ -1,0 +1,12 @@
+// want: type.go
+
+package main
+
+type Node struct {
+	next Node
+}
+
+func main() {
+	var n Node
+	_ = n
+}

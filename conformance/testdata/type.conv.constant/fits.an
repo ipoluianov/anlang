@@ -1,0 +1,9 @@
+// want: ok
+
+package main
+
+func main() {
+	_ = u8(255)
+	_ = i8(-128)
+	_ = f32(1e30)
+}

@@ -1,0 +1,16 @@
+// want: ok
+
+package main
+
+type Point struct {
+	X, Y int
+}
+
+func main() {
+	p := Point{1, 2}
+	q := p
+	_ = p == q
+	_ = "a" < "b"
+	var a, b [2]int
+	_ = a != b
+}

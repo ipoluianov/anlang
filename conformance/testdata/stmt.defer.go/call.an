@@ -1,0 +1,9 @@
+// want: ok
+
+package main
+
+func f() {}
+
+func main() {
+	defer f()
+}

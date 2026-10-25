@@ -1,0 +1,9 @@
+// want: expr.int.const
+
+package main
+
+const big i16 = 1 << 15
+
+func main() {
+
+}

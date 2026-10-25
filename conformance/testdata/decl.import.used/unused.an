@@ -1,0 +1,7 @@
+// want: decl.import.used
+
+package main
+
+import "an/fmt"
+
+func main() {}

@@ -1,0 +1,30 @@
+// want: ok
+
+package main
+
+func pairs(yield func(int, string) bool) {
+	_ = yield(1, "a")
+}
+
+func main() {
+	for i, x := range []int{1} {
+		_, _ = i, x
+	}
+	for k, v := range map[string]int{} {
+		_, _ = k, v
+	}
+	for i := range 10 {
+		_ = i
+	}
+	c := make(chan int)
+	close(c)
+	for v := range c {
+		_ = v
+	}
+	for i, r := range "ab" {
+		_, _ = i, r
+	}
+	for k, v := range pairs {
+		_, _ = k, v
+	}
+}

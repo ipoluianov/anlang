@@ -1,0 +1,10 @@
+// want: expr.go
+// checks: type.int.distinct
+
+package main
+
+func main() {
+	var a u8 = 1
+	var b u16 = 2
+	_ = a + b
+}

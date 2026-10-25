@@ -1,0 +1,10 @@
+// want: type.go
+
+package main
+
+func f() {}
+
+func main() {
+	var x f
+	_ = x
+}

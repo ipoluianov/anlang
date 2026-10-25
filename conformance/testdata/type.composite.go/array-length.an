@@ -1,0 +1,9 @@
+// want: type.composite.go
+
+package main
+
+func main() {
+	n := 3
+	var a [n]int
+	_ = a
+}

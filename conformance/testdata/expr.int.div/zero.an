@@ -1,0 +1,8 @@
+// want: expr.int.div
+
+package main
+
+func main() {
+	x := 1
+	_ = x / 0
+}

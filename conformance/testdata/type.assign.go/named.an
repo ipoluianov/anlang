@@ -1,0 +1,13 @@
+// want: type.assign.go
+
+package main
+
+type A int
+
+type B int
+
+func main() {
+	var a A = 1
+	var b B = a
+	_ = b
+}

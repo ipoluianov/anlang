@@ -1,0 +1,11 @@
+// want: decl.const.go
+
+package main
+
+const a = b
+
+const b = a
+
+func main() {
+	_ = a
+}

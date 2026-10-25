@@ -1,0 +1,12 @@
+// want: ok
+
+package main
+
+func main() {
+	x := 1
+	{
+		x := "s"
+		_ = x
+	}
+	_ = x
+}

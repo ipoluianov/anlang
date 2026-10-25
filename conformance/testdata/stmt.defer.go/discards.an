@@ -1,0 +1,8 @@
+// want: stmt.go
+// checks: stmt.defer.go
+
+package main
+
+func main() {
+	defer len("a")
+}

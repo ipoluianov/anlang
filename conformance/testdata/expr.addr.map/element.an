@@ -1,0 +1,14 @@
+// want: ok
+
+package main
+
+type Point struct {
+	X int
+}
+
+func main() {
+	m := map[string]Point{}
+	m["a"] = Point{1}
+	v, ok := m["a"]
+	_, _ = v, ok
+}

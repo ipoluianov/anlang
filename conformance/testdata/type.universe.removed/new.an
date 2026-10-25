@@ -1,0 +1,8 @@
+// want: type.universe.removed
+
+package main
+
+func main() {
+	x := new(int)
+	_ = x
+}

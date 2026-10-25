@@ -1,0 +1,11 @@
+// want: ok
+
+package main
+
+func main() {
+	var a int
+	var b = 2
+	var c, d = 3, "x"
+	e, f := 4, 5.0
+	_, _, _, _, _, _ = a, b, c, d, e, f
+}

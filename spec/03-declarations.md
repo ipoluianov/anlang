@@ -39,6 +39,8 @@ import (
 
 **decl.import.no-blank-dot** — Blank imports (`import _ "p"`) and dot imports (`import . "p"`) MUST be rejected.
 
+**decl.import.used** — A source file MUST refer to every package it imports, as in Go.
+
 **decl.import.no-cycle** — The import graph MUST be acyclic, as in Go.
 
 **decl.import.internal** — An import path containing an element `internal` is importable only by packages rooted at the parent of that element, as in Go. This applies to both `an/...` and project paths.
@@ -107,6 +109,8 @@ const Description = target.Desc{
 ## 3.6 Variable declarations
 
 **decl.var.local** — Variable declarations inside functions are as in Go, subject to the zero-value rules of [02-types](02-types.md) §2.12.
+
+**decl.var.unused** — A variable declared in a function body MUST be used, as the Go compiler requires: a variable that is only assigned to is not used. Parameters, results and the blank identifier are exempt.
 
 **decl.var.package-kinds** — A package-level variable MUST have one of these types:
 

@@ -1,0 +1,11 @@
+// want: stmt.go
+
+package main
+
+func main() {
+	goto L
+	{
+	L:
+		return
+	}
+}

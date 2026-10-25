@@ -1,0 +1,12 @@
+// want: expr.addr.map
+
+package main
+
+type Point struct {
+	X int
+}
+
+func main() {
+	m := map[string]Point{}
+	m["a"].X = 1
+}

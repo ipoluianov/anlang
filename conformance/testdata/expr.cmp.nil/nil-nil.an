@@ -1,0 +1,7 @@
+// want: expr.cmp.nil
+
+package main
+
+func main() {
+	_ = nil == nil
+}

@@ -1,0 +1,10 @@
+// want: ok
+
+package main
+
+func main() {
+	const big = 1 << 100
+	const small = big >> 98
+	var x int = small
+	_ = x
+}

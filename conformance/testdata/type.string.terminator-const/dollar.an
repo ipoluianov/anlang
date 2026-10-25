@@ -1,0 +1,7 @@
+// want: type.string.terminator-const
+
+package main
+
+func main() {
+	_ = dstring("a$b")
+}

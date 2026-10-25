@@ -1,0 +1,8 @@
+// want: expr.bounds.check
+
+package main
+
+func main() {
+	var a [3]int
+	_ = a[3]
+}

@@ -14,8 +14,12 @@ import (
 	"an/syntax"
 )
 
-// suiteModule is the module name of single-file tests.
-const suiteModule = "conf"
+// suiteModule and suiteTarget are the module name and the target of
+// single-file tests.
+const (
+	suiteModule = "conf"
+	suiteTarget = "linux-x86_64"
+)
 
 // noRule stands for a diagnostic without a rule identifier in the sets
 // of rules that tests compare. No expectation can name it, so such a
@@ -150,7 +154,8 @@ func (tt suiteTest) run(t *testing.T) []*syntax.Error {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, diags := build.CheckSources(suiteModule, []build.Source{{Name: filepath.Base(tt.path), Data: data}})
+		t, _ := build.LookupTarget(suiteTarget)
+		_, diags := build.CheckSources(suiteModule, t, []build.Source{{Name: filepath.Base(tt.path), Data: data}})
 		return diags
 	}
 	p, errs := build.Load(tt.path)

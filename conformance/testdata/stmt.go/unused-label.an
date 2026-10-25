@@ -1,0 +1,9 @@
+// want: stmt.go
+
+package main
+
+func main() {
+L:
+	for {
+	}
+}

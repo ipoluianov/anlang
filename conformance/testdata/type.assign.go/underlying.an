@@ -1,0 +1,11 @@
+// want: ok
+
+package main
+
+type Names []string
+
+func main() {
+	var n Names = []string{"a"}
+	var s []string = n
+	_ = s
+}

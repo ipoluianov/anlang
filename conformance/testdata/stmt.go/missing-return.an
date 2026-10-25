@@ -1,0 +1,13 @@
+// want: stmt.go
+
+package main
+
+func f() int {
+	if true {
+		return 1
+	}
+}
+
+func main() {
+	_ = f()
+}

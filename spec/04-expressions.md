@@ -4,6 +4,8 @@ This file specifies how Anlang expressions differ from Go expressions: removed o
 
 Where this file is silent, expressions behave as in the Go specification (see [README](README.md)).
 
+**expr.go** — An expression not changed by this file has the syntax, typing rules and meaning of the Go specification. A program that violates a typing rule of the Go specification for an expression MUST be rejected.
+
 ## 1. Removed operators
 
 **expr.removed.address** — The unary address operator `&` does not exist. A program MUST NOT contain a unary `&` expression.

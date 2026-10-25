@@ -1,0 +1,9 @@
+// want: ok
+
+package main
+
+func main() {
+	var a f32 = 1.5
+	var b f64 = 2.5
+	_ = f64(a) + b
+}

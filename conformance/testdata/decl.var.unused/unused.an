@@ -1,0 +1,7 @@
+// want: decl.var.unused
+
+package main
+
+func main() {
+	x := 1
+}

@@ -1,0 +1,9 @@
+// want: decl.func.go
+
+package main
+
+func f(xs ...int, y int) {}
+
+func main() {
+
+}

@@ -1,0 +1,10 @@
+// want: ok
+
+package main
+
+func main() {
+	var err error
+	if err != nil {
+		return
+	}
+}

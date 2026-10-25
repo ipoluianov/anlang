@@ -1,0 +1,11 @@
+// want: decl.param.inout-result
+
+package main
+
+func f() (x inout int) {
+	return 0
+}
+
+func main() {
+
+}

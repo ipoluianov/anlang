@@ -1,0 +1,12 @@
+// want: ok
+
+package main
+
+func main() {
+	var a i8 = -1
+	var b i64 = i64(a)
+	var u u8 = 1
+	var c u32 = u32(u)
+	var d i16 = i16(u)
+	_, _, _ = b, c, d
+}

@@ -1,0 +1,10 @@
+// want: type.assign.go
+// checks: type.int.distinct
+
+package main
+
+func main() {
+	var a int = 1
+	var b i64 = a
+	_ = b
+}

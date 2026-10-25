@@ -1,0 +1,14 @@
+// want: type.struct.layout-once
+
+package main
+
+type Header struct {
+	layout packed
+	layout c
+	magic u32
+}
+
+func main() {
+	var h Header
+	_ = h
+}

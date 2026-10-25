@@ -1,0 +1,15 @@
+// want: ok
+
+package main
+
+func main() {
+	a := 1
+	b := 1.5
+	c := 'x'
+	d := "s"
+	var ai int = a
+	var bf f64 = b
+	var ci i32 = c
+	var ds string = d
+	_, _, _, _ = ai, bf, ci, ds
+}

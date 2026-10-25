@@ -186,6 +186,7 @@ Provisional technical choices accepted as written on 2026-10-25. The rule text i
 | 8 | 02-types | Separator of variant fields | Commas, as in a parameter list: `TooLong{word string, max int}` (**type.enum.fields**) |
 | 9 | 20-toolchain | Canonical formatting | gofmt style with tabs for the part shared with Go, imports sorted, layout of Anlang constructs; the canonical form is a fixed point of formatting; heuristics decide by the output layout where gofmt is not idempotent (**tool.fmt.style**, **tool.fmt.fixed-point**, **tool.fmt.differences**); anlang.mod values aligned at column 9 (**tool.mod.format**) |
 | 10 | 23-conformance | Layout of the conformance suite on disk | `conformance/testdata/<rule>/`: single-file tests `<name>.an` of module `conf` and project tests `<name>/`; the expected rule set in one `// want:` comment, further rules in `// checks:`; diagnostics without a rule never match (**conf.suite.layout**) |
+| 11 | 02-types, 03-declarations, 04-expressions, 05-statements | Rule identifiers for errors inherited from Go | General rules for what is "as in Go": expressions (**expr.go**), statements, including labels and missing returns (**stmt.go**), conversions (**type.conv.go**); unused imports (**decl.import.used**) and unused local variables (**decl.var.unused**) are errors, as in the Go compiler; found while implementing the checker |
 
 ## 2. Deferred to implementation
 

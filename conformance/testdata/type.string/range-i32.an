@@ -1,0 +1,10 @@
+// want: ok
+
+package main
+
+func main() {
+	for _, r := range "héllo" {
+		var c i32 = r
+		_ = c
+	}
+}

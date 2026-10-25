@@ -1,0 +1,13 @@
+// want: type.struct.go
+
+package main
+
+type Point struct {
+	X int
+	X int
+}
+
+func main() {
+	var p Point
+	_ = p
+}

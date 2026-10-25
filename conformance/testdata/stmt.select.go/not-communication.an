@@ -1,0 +1,13 @@
+// want: stmt.select.go
+
+package main
+
+func f() bool {
+	return true
+}
+
+func main() {
+	select {
+	case f():
+	}
+}

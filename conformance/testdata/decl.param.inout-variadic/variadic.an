@@ -1,0 +1,9 @@
+// want: decl.param.inout-variadic
+
+package main
+
+func f(xs inout ...int) {}
+
+func main() {
+
+}

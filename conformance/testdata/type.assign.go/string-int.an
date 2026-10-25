@@ -1,0 +1,8 @@
+// want: type.assign.go
+
+package main
+
+func main() {
+	var x int = "one"
+	_ = x
+}

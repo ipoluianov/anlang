@@ -1,0 +1,8 @@
+// want: expr.nil.context
+
+package main
+
+func main() {
+	x := nil
+	_ = x
+}

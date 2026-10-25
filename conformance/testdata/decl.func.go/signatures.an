@@ -1,0 +1,23 @@
+// want: ok
+
+package main
+
+func divmod(a, b int) (q, r int) {
+	q = a / b
+	r = a % b
+	return
+}
+
+func sum(xs ...int) int {
+	t := 0
+	for _, x := range xs {
+		t += x
+	}
+	return t
+}
+
+func main() {
+	q, r := divmod(7, 2)
+	_ = sum(q, r) + sum()
+	_ = sum([]int{1}...)
+}

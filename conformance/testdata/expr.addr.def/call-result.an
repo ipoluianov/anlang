@@ -1,0 +1,11 @@
+// want: expr.addr.def
+
+package main
+
+func get() []int {
+	return []int{1}
+}
+
+func main() {
+	get()[0] = 1
+}

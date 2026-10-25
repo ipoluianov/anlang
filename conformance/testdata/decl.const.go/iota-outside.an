@@ -1,0 +1,7 @@
+// want: decl.const.go
+
+package main
+
+func main() {
+	_ = iota
+}

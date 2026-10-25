@@ -1,0 +1,11 @@
+// want: stmt.error.unused
+
+package main
+
+func fail() error {
+	return nil
+}
+
+func main() {
+	fail()
+}

@@ -1,0 +1,14 @@
+// want: ok
+
+package main
+
+func main() {
+	s := "abc"
+	b := []u8(s)
+	r := []i32(s)
+	_ = string(b) + string(r)
+	var a [2]u8 = [2]u8(b)
+	_ = a
+	f := f64(3)
+	_ = int(f)
+}

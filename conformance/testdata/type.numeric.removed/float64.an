@@ -1,0 +1,8 @@
+// want: type.numeric.removed
+
+package main
+
+func main() {
+	var x float64
+	_ = x
+}

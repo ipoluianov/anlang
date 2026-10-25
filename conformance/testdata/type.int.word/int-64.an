@@ -1,0 +1,8 @@
+// want: ok
+
+package main
+
+func main() {
+	var x int = 1 << 62
+	_ = x
+}

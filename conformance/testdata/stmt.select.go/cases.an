@@ -1,0 +1,15 @@
+// want: ok
+
+package main
+
+func main() {
+	c := make(chan int, 1)
+	select {
+	case c <- 1:
+	case v := <-c:
+		_ = v
+	case v, ok := <-c:
+		_, _ = v, ok
+	default:
+	}
+}
