@@ -1,0 +1,8 @@
+// want: type.conv.go
+// checks: type.conv.string
+
+package main
+
+func main() {
+	_ = string([]int{1})
+}

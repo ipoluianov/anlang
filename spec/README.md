@@ -62,7 +62,7 @@ Repetition  = "{" Expression "}" .
 | File | Area | Content |
 | --- | --- | --- |
 | [01-lexical](01-lexical.md) | `lex` | Source text, tokens, keywords, contextual words, literals, canonical formatting |
-| [02-types](02-types.md) | `type` | Types, `enum`, `Option`, numeric and string types, synchronization types, zero values, `nil`, conversions, `layout` |
+| [02-types](02-types.md) | `type` | Types, `enum`, `Option`, numeric and string types, synchronization types, zero values, `nil`, conversions, `layout`, type parameters |
 | [03-declarations](03-declarations.md) | `decl` | Packages, import paths, `profile`, file selection, declarations, package-level variables, methods, external functions, `interrupt`, `trap`, `gpu` declarations |
 | [04-expressions](04-expressions.md) | `expr` | Expressions, arithmetic and overflow, calls, `...any`, closures, composite literals |
 | [05-statements](05-statements.md) | `stmt` | Statements, exhaustive `switch` and patterns, `range` including range-over-func with `inout`, `for const`, `go`, `select`, error discarding, `asm` |

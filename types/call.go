@@ -30,14 +30,25 @@ func (c *checker) callExpr(x *operand, e *syntax.CallExpr) {
 		x.invalidate()
 		return
 	}
-	sig, ok := fun.typ.Underlying().(*Signature)
+	sig, ok := core(fun.typ).(*Signature)
 	if !ok {
 		c.errorf(e.Pos(), "expr.go", "invalid operation: cannot call non-function %s", &fun)
 		c.useArgs(e.Args)
 		x.invalidate()
 		return
 	}
-	args := c.args(e.Args)
+	var args []*operand
+	if len(sig.TypeParams) > 0 {
+		args = c.args(e.Args, nil)
+	} else {
+		args = c.args(e.Args, sig)
+	}
+	if len(sig.TypeParams) > 0 {
+		if sig = c.inferCall(e, sig, fun.targs, args); sig == nil {
+			x.invalidate()
+			return
+		}
+	}
 	c.arguments(e, sig, args)
 	switch sig.Results.Len() {
 	case 0:
@@ -58,8 +69,9 @@ func (c *checker) useArgs(args []syntax.Expr) {
 }
 
 // args checks call arguments. A single call argument with several
-// results is expanded into one operand per result.
-func (c *checker) args(args []syntax.Expr) []*operand {
+// results is expanded into one operand per result. The parameter types
+// of sig, if given, are hints for generic functions passed as arguments.
+func (c *checker) args(args []syntax.Expr, sig *Signature) []*operand {
 	if len(args) == 1 {
 		x := &operand{}
 		c.rawExpr(x, args[0], nil)
@@ -70,16 +82,42 @@ func (c *checker) args(args []syntax.Expr) []*operand {
 			}
 			return xs
 		}
+		if x.mode == value && isGeneric(x.typ) {
+			if ts, ok := core(orInvalid(paramHint(sig, 0))).(*Signature); ok {
+				c.inferFromTarget(x, ts)
+			}
+			if isGeneric(x.typ) {
+				c.fromOwnConstraints(x)
+			}
+		}
 		c.valueOnly(x)
 		return []*operand{x}
 	}
 	var xs []*operand
-	for _, a := range args {
+	saved := c.inArgs
+	c.inArgs = true
+	defer func() { c.inArgs = saved }()
+	for i, a := range args {
 		x := &operand{}
-		c.expr(x, a)
+		c.exprHint(x, a, paramHint(sig, i))
 		xs = append(xs, x)
 	}
 	return xs
+}
+
+// paramHint returns the type of the i'th parameter of sig, or nil.
+func paramHint(sig *Signature, i int) Type {
+	if sig == nil {
+		return nil
+	}
+	n := sig.Params.Len()
+	switch {
+	case sig.Variadic && i >= n-1:
+		return sig.Params.Vars[n-1].typ.(*Slice).Elem
+	case i < n:
+		return sig.Params.Vars[i].typ
+	}
+	return nil
 }
 
 // arguments checks the arguments of a call of a function with signature
@@ -155,6 +193,11 @@ func (c *checker) conversionCall(x *operand, e *syntax.CallExpr, t Type) {
 	}
 	c.expr(x, e.Args[0])
 	if x.mode == invalid || !isValid(t) {
+		x.invalidate()
+		return
+	}
+	if ti, ok := t.Underlying().(*Interface); ok && !isTypeParam(t) && ti.isConstraint() {
+		c.errorf(e.Fun.Pos(), "type.param.go", "cannot use interface %s in conversion: it contains type constraints or is comparable", t)
 		x.invalidate()
 		return
 	}
@@ -260,6 +303,22 @@ func (c *checker) convertible(v, t Type) (string, bool) {
 	if c.assignableTo(v, t) {
 		return "", true
 	}
+	if isTypeParam(v) || isTypeParam(t) {
+		// Every type in one type set must convert to every type in the
+		// other (type.param.go).
+		vs, ts := typesOf(v), typesOf(t)
+		if vs == nil || ts == nil {
+			return "type.param.go", false
+		}
+		for _, a := range vs {
+			for _, b := range ts {
+				if rule, ok := c.convertible(a, b); !ok {
+					return rule, false
+				}
+			}
+		}
+		return "", true
+	}
 	vu, tu := v.Underlying(), t.Underlying()
 	if identicalIgnoreTags(vu, tu) {
 		return "", true
@@ -340,7 +399,7 @@ func (c *checker) builtinCall(x *operand, e *syntax.CallExpr, id builtinID) {
 		c.makeCall(x, e)
 		return
 	}
-	args := c.args(e.Args)
+	args := c.args(e.Args, nil)
 	for _, a := range args {
 		if a.mode == invalid {
 			x.invalidate()
@@ -369,7 +428,7 @@ func (c *checker) builtinCall(x *operand, e *syntax.CallExpr, id builtinID) {
 		a := args[0]
 		var val constant.Value
 		ok := false
-		switch t := a.typ.Underlying().(type) {
+		switch t := core(a.typ).(type) {
 		case *Basic:
 			if t.info&IsString != 0 && id == _Len {
 				ok = true
@@ -404,7 +463,7 @@ func (c *checker) builtinCall(x *operand, e *syntax.CallExpr, id builtinID) {
 			return
 		}
 		s := args[0]
-		st, ok := s.typ.Underlying().(*Slice)
+		st, ok := core(s.typ).(*Slice)
 		if !ok {
 			c.errorf(s.expr.Pos(), "expr.go", "invalid argument: %s is not a slice", s)
 			x.invalidate()
@@ -417,7 +476,7 @@ func (c *checker) builtinCall(x *operand, e *syntax.CallExpr, id builtinID) {
 				return
 			}
 			a := args[1]
-			if Identical(st.Elem.Underlying(), Typ[U8]) && isString(a.typ) {
+			if Identical(st.Elem.Underlying(), Typ[U8]) && (isString(a.typ) || isTypeParam(a.typ) && c.allTerms(a.typ.(*TypeParam), isBytesOrString)) {
 				c.defaultUntyped(a)
 				return
 			}
@@ -434,14 +493,14 @@ func (c *checker) builtinCall(x *operand, e *syntax.CallExpr, id builtinID) {
 			return
 		}
 		dst, src := args[0], args[1]
-		ds, ok := dst.typ.Underlying().(*Slice)
+		ds, ok := core(dst.typ).(*Slice)
 		if !ok {
 			c.errorf(dst.expr.Pos(), "expr.go", "invalid argument: copy expects slice arguments; found %s", dst)
 			x.invalidate()
 			return
 		}
 		c.defaultUntyped(src)
-		if ss, ok := src.typ.Underlying().(*Slice); ok && Identical(ds.Elem, ss.Elem) ||
+		if ss, ok := core(src.typ).(*Slice); ok && Identical(ds.Elem, ss.Elem) ||
 			isString(src.typ) && Identical(ds.Elem.Underlying(), Typ[U8]) {
 			x.mode, x.typ = value, Typ[Int]
 			return
@@ -453,7 +512,13 @@ func (c *checker) builtinCall(x *operand, e *syntax.CallExpr, id builtinID) {
 		if !nargs(2, 2) {
 			return
 		}
-		mt, ok := args[0].typ.Underlying().(*Map)
+		mt, ok := core(args[0].typ).(*Map)
+		if tp, isTP := args[0].typ.(*TypeParam); isTP && !ok {
+			// Maps with the same key type (type.param.go).
+			if k := mapKey(tp); k != nil {
+				mt, ok = &Map{Key: k}, true
+			}
+		}
 		if !ok {
 			c.errorf(args[0].expr.Pos(), "expr.go", "invalid argument: %s is not a map", args[0])
 			return
@@ -500,7 +565,9 @@ func (c *checker) builtinCall(x *operand, e *syntax.CallExpr, id builtinID) {
 		if !nargs(1, 1) {
 			return
 		}
-		c.defaultUntyped(args[0])
+		if !args[0].isNil() { // panic(nil) is allowed, as in Go
+			c.defaultUntyped(args[0])
+		}
 
 	case _Print, _Println, _FmtPrint, _FmtPrintln:
 		for _, a := range args {
@@ -511,7 +578,7 @@ func (c *checker) builtinCall(x *operand, e *syntax.CallExpr, id builtinID) {
 		if !nargs(1, 1) {
 			return
 		}
-		switch args[0].typ.Underlying().(type) {
+		switch core(args[0].typ).(type) {
 		case *Map, *Slice:
 		default:
 			c.errorf(args[0].expr.Pos(), "expr.go", "invalid argument: %s must be a map or slice", args[0])
@@ -521,7 +588,13 @@ func (c *checker) builtinCall(x *operand, e *syntax.CallExpr, id builtinID) {
 		if !nargs(1, 1) {
 			return
 		}
-		ch, ok := args[0].typ.Underlying().(*Chan)
+		if tp, ok := args[0].typ.(*TypeParam); ok && c.allTerms(tp, func(t Type) bool {
+			ch, ok := t.Underlying().(*Chan)
+			return ok && ch.Dir != RecvOnly
+		}) {
+			return
+		}
+		ch, ok := core(args[0].typ).(*Chan)
 		if !ok {
 			c.errorf(args[0].expr.Pos(), "expr.go", "invalid operation: non-channel %s", args[0])
 		} else if ch.Dir == RecvOnly {
@@ -543,7 +616,7 @@ func (c *checker) makeCall(x *operand, e *syntax.CallExpr) {
 		return
 	}
 	min, max := 1, 1
-	switch t.Underlying().(type) {
+	switch core(t).(type) {
 	case *Slice:
 		min, max = 2, 3
 	case *Map, *Chan:

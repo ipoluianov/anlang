@@ -1,0 +1,12 @@
+// want: expr.closure.captured-readonly
+
+package main
+
+func main() {
+	xs := []int{1}
+	f := func() {
+		xs[0] = 2
+	}
+	f()
+	_ = xs
+}

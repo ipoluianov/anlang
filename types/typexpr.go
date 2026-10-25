@@ -30,11 +30,48 @@ func (c *checker) undefined(id *syntax.Name) {
 // typExpr checks a type expression and returns the type. It returns
 // Typ[Invalid] after reporting an error.
 func (c *checker) typExpr(e syntax.Expr) Type {
+	return c.valueType(e, c.typExprAny(e))
+}
+
+// typExprAny checks a type expression in a position where any type is
+// permitted, including interfaces that are constraints only: a type
+// constraint, an element of an interface, the right side of a type
+// declaration.
+func (c *checker) typExprAny(e syntax.Expr) Type {
 	t := c.typInternal(e)
 	if !isValid(t) {
 		t = Typ[Invalid]
 	}
 	c.recordType(e, typexpr, t, nil)
+	return t
+}
+
+// valueType checks that t, written as e, can be the type of values: it
+// must not be an interface with an empty method set (type.any.positions,
+// type.interface.empty-value) or a constraint interface (type.param.go).
+func (c *checker) valueType(e syntax.Expr, t Type) Type {
+	if isTypeParam(t) {
+		return t
+	}
+	if n, ok := t.(*Named); ok && n.underlying == nil && n.orig == nil {
+		return t // being declared
+	}
+	it, ok := t.Underlying().(*Interface)
+	if !ok {
+		return t
+	}
+	switch {
+	case it.isConstraint():
+		c.errorf(e.Pos(), "type.param.go", "cannot use type %s outside a type constraint: the interface contains type constraints", t)
+		return Typ[Invalid]
+	case it.Empty() && (len(it.Embeddeds) == 0 || it.complete):
+		if id, ok := unparen(e).(*syntax.Name); ok && c.info.Uses[id] == universeAny {
+			c.errorf(e.Pos(), "type.any.positions", "any may be used only as a type constraint or as the element type of a final ...any parameter")
+		} else {
+			c.errorf(e.Pos(), "type.interface.empty-value", "%s has an empty method set: it may be used only as a type constraint or as the element type of a final ...any parameter", t)
+		}
+		return Typ[Invalid]
+	}
 	return t
 }
 
@@ -47,13 +84,7 @@ func (c *checker) typInternal(e syntax.Expr) Type {
 		case invalid:
 			return Typ[Invalid]
 		case typexpr:
-			// A declared type with an empty interface is rejected at its
-			// declaration, whose type literal is interface{}.
-			if c.info.Uses[e] == universeAny {
-				c.errorf(e.Pos(), "type.any.positions", "%s may be used only as a type constraint or as the element type of a final ...any parameter", e.Name)
-				return Typ[Invalid]
-			}
-			return x.typ
+			return c.genericCheck(e, x.typ)
 		}
 		c.errorf(e.Pos(), "type.go", "%s is not a type", e.Name)
 		return Typ[Invalid]
@@ -65,13 +96,13 @@ func (c *checker) typInternal(e syntax.Expr) Type {
 		case invalid:
 			return Typ[Invalid]
 		case typexpr:
-			return x.typ
+			return c.genericCheck(e, x.typ)
 		}
 		c.errorf(e.Pos(), "type.go", "%s is not a type", exprString(e))
 		return Typ[Invalid]
 
 	case *syntax.ParenExpr:
-		return c.typExpr(e.X)
+		return c.typExprAny(e.X)
 
 	case *syntax.ArrayType:
 		if e.Len == nil {
@@ -96,7 +127,14 @@ func (c *checker) typInternal(e syntax.Expr) Type {
 	case *syntax.MapType:
 		key := c.typExpr(e.Key)
 		elem := c.typExpr(e.Value)
-		if isValid(key) && !comparable(key) {
+		if isTypeParam(key) {
+			// The constraint of the type parameter may not be known yet.
+			c.later(func() {
+				if !comparable(key) {
+					c.errorf(e.Key.Pos(), "type.composite.go", "invalid map key type %s", key)
+				}
+			})
+		} else if isValid(key) && !comparable(key) {
 			if n, ok := key.(*Named); !ok || n.underlying != nil {
 				rule := "type.composite.go"
 				if _, ok := key.Underlying().(*Chan); ok {
@@ -124,10 +162,6 @@ func (c *checker) typInternal(e syntax.Expr) Type {
 		return c.structType(e)
 
 	case *syntax.InterfaceType:
-		if len(e.Elems) == 0 {
-			c.errorf(e.Pos(), "type.interface.empty-value", "interface{} may be used only as a type constraint or as the element type of a final ...any parameter")
-			return Typ[Invalid]
-		}
 		return c.interfaceType(e)
 
 	case *syntax.EnumType:
@@ -141,9 +175,14 @@ func (c *checker) typInternal(e syntax.Expr) Type {
 	case *syntax.IndexExpr:
 		var x operand
 		c.rawExpr(&x, e.X, nil)
-		if x.mode != invalid {
-			c.notSupported(e.Pos(), 2, "generic types")
+		switch x.mode {
+		case invalid:
+			c.useTypes(e.Indices)
+			return Typ[Invalid]
+		case typexpr:
+			return c.instanceType(e, x.typ)
 		}
+		c.errorf(e.Pos(), "type.go", "%s is not a type", exprString(e))
 		return Typ[Invalid]
 
 	case *syntax.BadExpr:
@@ -151,6 +190,36 @@ func (c *checker) typInternal(e syntax.Expr) Type {
 	}
 	c.errorf(e.Pos(), "type.go", "%s is not a type", exprString(e))
 	return Typ[Invalid]
+}
+
+// embeddedName returns the name of an embedded field: the name of its
+// type, without a pointer, a package qualifier or type arguments.
+func embeddedName(e syntax.Expr) *syntax.Name {
+	switch e := unparen(e).(type) {
+	case *syntax.Name:
+		return e
+	case *syntax.SelectorExpr:
+		return e.Sel
+	case *syntax.IndexExpr:
+		return embeddedName(e.X)
+	case *syntax.StarExpr:
+		return embeddedName(e.X)
+	}
+	return nil
+}
+
+// genericCheck reports a generic type used without type arguments
+// (type.param.go).
+func (c *checker) genericCheck(e syntax.Expr, t Type) Type {
+	if ga, ok := t.(*genericAlias); ok {
+		c.errorf(e.Pos(), "type.param.go", "cannot use generic type alias %s without instantiation", ga.obj.name)
+		return Typ[Invalid]
+	}
+	if n, ok := t.(*Named); ok && len(n.TypeParams) > 0 && n.orig == nil {
+		c.errorf(e.Pos(), "type.param.go", "cannot use generic type %s without instantiation", n.Obj.name)
+		return Typ[Invalid]
+	}
+	return t
 }
 
 // arrayLength checks an array length and returns it, or -1 after an error.
@@ -208,18 +277,12 @@ func (c *checker) structType(e *syntax.StructType) Type {
 		}
 		if len(f.Names) == 0 {
 			// An embedded field is named by its type name (type.struct.go).
-			var name *syntax.Name
-			switch ft := unparen(f.Type).(type) {
-			case *syntax.Name:
-				name = ft
-			case *syntax.SelectorExpr:
-				name = ft.Sel
-			case *syntax.StarExpr:
+			if _, ok := unparen(f.Type).(*syntax.StarExpr); ok {
 				// Reported as a pointer type; the field is kept, so that
 				// literals and selectors report no further errors.
-				name, _ = unparen(ft.X).(*syntax.Name)
 				typ = Typ[Invalid]
 			}
+			name := embeddedName(f.Type)
 			if name == nil {
 				if isValid(typ) {
 					c.errorf(f.Type.Pos(), "type.struct.go", "embedded field type %s must be a type name", exprString(f.Type))

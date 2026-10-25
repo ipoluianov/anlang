@@ -1,0 +1,10 @@
+// want: expr.go
+// checks: type.endian
+
+package main
+
+func main() {
+	var a u32be = 1
+	var b u32 = 2
+	_ = a + b
+}

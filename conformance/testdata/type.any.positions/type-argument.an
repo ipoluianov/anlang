@@ -1,0 +1,12 @@
+// want: type.any.positions
+
+package main
+
+type List[T any] struct {
+	items []T
+}
+
+func main() {
+	var l List[any]
+	_ = l
+}

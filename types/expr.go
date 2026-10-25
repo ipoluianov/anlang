@@ -17,12 +17,27 @@ func (c *checker) expr(x *operand, e syntax.Expr) {
 // elided type.
 func (c *checker) exprHint(x *operand, e syntax.Expr, hint Type) {
 	c.rawExpr(x, e, hint)
+	if x.mode == value && isGeneric(x.typ) && hint != nil {
+		if ts, ok := core(hint).(*Signature); ok {
+			c.inferFromTarget(x, ts)
+		}
+	}
+	if x.mode == value && isGeneric(x.typ) && c.inArgs {
+		c.fromOwnConstraints(x)
+	}
 	c.singleValue(x)
 	c.valueOnly(x)
 }
 
 // valueOnly reports an error if x is not a value.
 func (c *checker) valueOnly(x *operand) {
+	if x.mode == value && isGeneric(x.typ) {
+		if !invalidParams(x.typ.(*Signature).TypeParams) {
+			c.errorf(x.expr.Pos(), "type.param.go", "cannot use generic function %s without instantiation", exprString(x.expr))
+		}
+		x.invalidate()
+		return
+	}
 	switch x.mode {
 	case novalue:
 		c.errorf(x.expr.Pos(), "expr.go", "%s (no value) used as value", exprString(x.expr))
@@ -39,7 +54,7 @@ func (c *checker) valueOnly(x *operand) {
 // rawExpr checks e and records its type. The result may be a type, a
 // built-in, no value or multiple values.
 func (c *checker) rawExpr(x *operand, e syntax.Expr, hint Type) {
-	x.mode, x.typ, x.val, x.expr = invalid, Typ[Invalid], nil, e
+	x.mode, x.typ, x.val, x.expr, x.targs = invalid, Typ[Invalid], nil, e, nil
 	c.exprInternal(x, e, hint)
 	x.expr = e
 	if x.mode != typexpr {
@@ -80,7 +95,9 @@ func (c *checker) exprInternal(x *operand, e syntax.Expr, hint Type) {
 		c.rawExpr(x, e.X, hint)
 
 	case *syntax.FuncLit:
-		c.notSupported(e.Pos(), 2, "function literals")
+		sig := c.funcType(e.Type, true)
+		c.funcBody(c.scope, sig, nil, e.Type, e.Body, true)
+		x.mode, x.typ = value, sig
 
 	case *syntax.CompositeLit:
 		c.compositeLit(x, e, hint)
@@ -280,6 +297,7 @@ func (c *checker) selector(x *operand, e *syntax.SelectorExpr) {
 	switch {
 	case ambiguous:
 		c.errorf(e.Sel.Pos(), "type.struct.go", "ambiguous selector %s", exprString(e))
+	case incomplete(x.typ):
 	case c.hidden(x.typ, e.Sel.Name):
 		c.errorf(e.Sel.Pos(), "decl.visibility.go", "%s undefined (cannot refer to unexported field or method %s)", exprString(e), e.Sel.Name)
 	default:
@@ -345,6 +363,10 @@ func (c *checker) methodExpr(x *operand, e *syntax.SelectorExpr) {
 	obj, _, ambiguous := c.lookupFieldOrMethod(t, c.pkg, e.Sel.Name)
 	m, ok := obj.(*Func)
 	if !ok {
+		if incomplete(t) {
+			x.invalidate()
+			return
+		}
 		if ambiguous {
 			c.errorf(e.Sel.Pos(), "type.struct.go", "ambiguous selector %s", exprString(e))
 		} else {
@@ -374,7 +396,7 @@ func (c *checker) unary(x *operand, e *syntax.UnaryExpr) {
 	}
 	switch e.Op {
 	case syntax.Arrow:
-		ch, ok := x.typ.Underlying().(*Chan)
+		ch, ok := core(x.typ).(*Chan)
 		if !ok {
 			c.errorf(e.Pos(), "expr.go", "invalid operation: cannot receive from non-channel %s", x)
 			x.invalidate()
@@ -403,7 +425,7 @@ func (c *checker) unary(x *operand, e *syntax.UnaryExpr) {
 		ok = isBoolean(x.typ)
 	}
 	if !ok {
-		c.errorf(e.Pos(), "expr.go", "invalid operation: operator %s not defined on %s", e.Op, x)
+		c.errorf(e.Pos(), opRule(x.typ), "invalid operation: operator %s not defined on %s", e.Op, x)
 		x.invalidate()
 		return
 	}
@@ -492,7 +514,7 @@ func (c *checker) binary(x *operand, e *syntax.BinaryExpr) {
 		ok = isBoolean(x.typ)
 	}
 	if !ok {
-		c.errorf(e.OpPos, "expr.go", "invalid operation: operator %s not defined on %s", e.Op, x)
+		c.errorf(e.OpPos, opRule(x.typ), "invalid operation: operator %s not defined on %s", e.Op, x)
 		x.invalidate()
 		return
 	}
@@ -602,6 +624,9 @@ func (c *checker) comparison(x, y *operand, xNil, yNil bool, e *syntax.BinaryExp
 		}
 	}
 	if bad != "" {
+		if rule == "expr.cmp.go" && (isTypeParam(x.typ) || isTypeParam(y.typ)) {
+			rule = "type.param.go"
+		}
 		c.errorf(e.OpPos, rule, "invalid operation: %s (%s)", exprString(e), bad)
 		x.invalidate()
 		return
@@ -615,6 +640,16 @@ func (c *checker) comparison(x, y *operand, xNil, yNil bool, e *syntax.BinaryExp
 	c.defaultUntyped(x)
 	c.defaultUntyped(y)
 	x.mode, x.typ, x.val = value, Typ[UntypedBool], nil
+}
+
+// opRule returns the rule violated by an operator not defined on type t:
+// for a type parameter, one of its types does not support it
+// (type.param.go).
+func opRule(t Type) string {
+	if isTypeParam(t) {
+		return "type.param.go"
+	}
+	return "expr.go"
 }
 
 // comparableTypes reports whether operands of types x and y may be
@@ -738,9 +773,16 @@ func (c *checker) index(e syntax.Expr, length int64) int64 {
 
 func (c *checker) indexExpr(x *operand, e *syntax.IndexExpr) {
 	c.rawExpr(x, e.X, nil)
-	if x.mode == typexpr {
-		c.notSupported(e.Pos(), 2, "generic types")
-		x.invalidate()
+	switch {
+	case x.mode == typexpr:
+		x.typ = c.instanceType(e, x.typ)
+		if !isValid(x.typ) {
+			x.invalidate()
+		}
+		x.expr = e
+		return
+	case x.mode == value && isGeneric(x.typ):
+		c.funcInst(x, e)
 		return
 	}
 	c.singleValue(x)
@@ -756,7 +798,7 @@ func (c *checker) indexExpr(x *operand, e *syntax.IndexExpr) {
 		return
 	}
 	idx := e.Indices[0]
-	switch t := x.typ.Underlying().(type) {
+	switch t := core(x.typ).(type) {
 	case *Basic:
 		if t.info&IsString != 0 {
 			length := int64(-1)
@@ -788,6 +830,18 @@ func (c *checker) indexExpr(x *operand, e *syntax.IndexExpr) {
 		x.mode, x.typ = mapindex, t.Elem
 		return
 	}
+	if tp, ok := x.typ.(*TypeParam); ok {
+		// Without a core type, indexing is permitted if every type in the
+		// type set can be indexed with the same element type.
+		if elem := indexElem(tp); elem != nil {
+			c.index(idx, -1)
+			if x.mode != variable {
+				x.mode = value
+			}
+			x.typ, x.val = elem, nil
+			return
+		}
+	}
 	c.errorf(e.Pos(), "expr.go", "invalid operation: cannot index %s", x)
 	x.invalidate()
 }
@@ -803,7 +857,7 @@ func (c *checker) sliceExpr(x *operand, e *syntax.SliceExpr) {
 		return
 	}
 	length := int64(-1)
-	switch t := x.typ.Underlying().(type) {
+	switch t := core(x.typ).(type) {
 	case *Basic:
 		if t.info&IsString == 0 {
 			goto bad
@@ -858,6 +912,16 @@ func (c *checker) sliceExpr(x *operand, e *syntax.SliceExpr) {
 	x.expr = e
 	return
 bad:
+	if tp, ok := x.typ.(*TypeParam); ok && c.allTerms(tp, isBytesOrString) && !e.Slice3 {
+		// string and []u8 types: the result has the type parameter's type.
+		for _, i := range []syntax.Expr{e.Low, e.High} {
+			if i != nil {
+				c.index(i, -1)
+			}
+		}
+		x.mode, x.expr = value, e
+		return
+	}
 	c.errorf(e.Pos(), "expr.go", "cannot slice %s", x)
 	x.invalidate()
 }

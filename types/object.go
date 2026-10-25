@@ -50,8 +50,9 @@ type Var struct {
 	object
 	inout    bool // an inout parameter (decl.param.inout)
 	field    bool
-	embedded bool // an embedded struct field
-	param    bool // a parameter or a result
+	embedded bool         // an embedded struct field
+	owner    *funcContext // function or function literal that declares a local variable
+	param    bool         // a parameter or a result
 	used     bool
 }
 

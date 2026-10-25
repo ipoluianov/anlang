@@ -9,9 +9,10 @@ import (
 
 // funcContext is the state of the function body being checked.
 type funcContext struct {
-	sig    *Signature
-	vars   []*Var // local variables (decl.var.unused)
-	labels map[string]*Label
+	sig     *Signature
+	generic *Signature // the enclosing generic function, if any
+	vars    []*Var     // local variables (decl.var.unused)
+	labels  map[string]*Label
 	// enclosing lists the labeled statements around the current
 	// statement, innermost last.
 	enclosing []*syntax.LabeledStmt
@@ -27,16 +28,23 @@ const (
 )
 
 // funcBody checks the body of a function declared in file scope file.
-func (c *checker) funcBody(file *Scope, name string, sig *Signature, d *syntax.FuncDecl, body *syntax.BlockStmt) {
-	ft := d.Type
+// funcBody checks the body of a function, a method or a function
+// literal. parent is the enclosing scope: the file scope, or for a
+// function literal the scope in which it appears (expr.closure.capture-copy).
+func (c *checker) funcBody(parent *Scope, sig *Signature, recv *syntax.FieldList, ft *syntax.FuncType, body *syntax.BlockStmt, literal bool) {
 	savedScope, savedFn := c.scope, c.fn
 	defer func() { c.scope, c.fn = savedScope, savedFn }()
 	c.fn = &funcContext{sig: sig, labels: map[string]*Label{}}
-	c.scope = NewScope(file)
+	if len(sig.TypeParams) > 0 {
+		c.fn.generic = sig
+	} else if literal && savedFn != nil {
+		c.fn.generic = savedFn.generic
+	}
+	c.scope = NewScope(parent)
 	c.scope.isFunc = true
 
 	if sig.Recv != nil {
-		c.declareParams(d.Recv, &Tuple{Vars: []*Var{sig.Recv}})
+		c.declareParams(recv, &Tuple{Vars: []*Var{sig.Recv}})
 	}
 	c.declareParams(ft.Params, sig.Params)
 	c.declareParams(ft.Results, sig.Results)
@@ -61,7 +69,11 @@ func (c *checker) funcBody(file *Scope, name string, sig *Signature, d *syntax.F
 			c.errorf(l.pos, "stmt.go", "label %s defined and not used", name)
 		}
 	}
-	c.flushUntyped()
+	if !literal {
+		// Untyped expressions around a function literal get their types
+		// when the enclosing expression is complete.
+		c.flushUntyped()
+	}
 }
 
 func sortedLabels(m map[string]*Label) []string {
@@ -88,6 +100,7 @@ func (c *checker) declareParams(list *syntax.FieldList, t *Tuple) {
 		for _, name := range f.Names {
 			// Duplicate names are reported by funcType.
 			v := t.Vars[i]
+			v.owner = c.fn
 			if name.Name == "_" {
 				c.info.Defs[name] = nil
 			} else if c.scope.Insert(v) == nil {
@@ -144,7 +157,7 @@ func (c *checker) stmt(ctxt stmtContext, s syntax.Stmt) {
 		if ch.mode == invalid || v.mode == invalid {
 			return
 		}
-		t, ok := ch.typ.Underlying().(*Chan)
+		t, ok := core(ch.typ).(*Chan)
 		if !ok {
 			c.errorf(s.Arrow, "stmt.go", "invalid operation: cannot send to non-channel %s", &ch)
 			return
@@ -359,7 +372,7 @@ func (c *checker) lhsAddressable(e syntax.Expr, x *operand) bool {
 	case invalid:
 		return false
 	case variable, mapindex:
-		return true
+		return !c.capturedWrite(e)
 	}
 	if root := mapIndexRoot(c, e); root != nil {
 		c.errorf(e.Pos(), "expr.addr.map", "cannot assign to %s: the map element %s is not addressable", exprString(e), exprString(root))
@@ -374,6 +387,36 @@ func (c *checker) lhsAddressable(e syntax.Expr, x *operand) bool {
 		c.errorf(e.Pos(), "stmt.assign.go", "cannot assign to %s (neither addressable nor a map index expression)", exprString(e))
 	}
 	return false
+}
+
+// capturedWrite reports a modification of a variable captured by a
+// function literal, or of a part of it (expr.closure.captured-readonly).
+func (c *checker) capturedWrite(e syntax.Expr) bool {
+	root := e
+	for {
+		switch x := unparen(root).(type) {
+		case *syntax.SelectorExpr:
+			root = x.X
+			continue
+		case *syntax.IndexExpr:
+			root = x.X
+			continue
+		case *syntax.SliceExpr:
+			root = x.X
+			continue
+		}
+		break
+	}
+	id, ok := unparen(root).(*syntax.Name)
+	if !ok {
+		return false
+	}
+	v, ok := c.info.Uses[id].(*Var)
+	if !ok || v.owner == nil || v.owner == c.fn {
+		return false
+	}
+	c.errorf(e.Pos(), "expr.closure.captured-readonly", "cannot modify %s: %s is captured by the function literal, which holds a read-only copy", exprString(e), id.Name)
+	return true
 }
 
 // mapIndexRoot returns the map index expression that e selects a part
@@ -409,6 +452,9 @@ func (c *checker) lhsVar(e syntax.Expr) (Type, bool) {
 			c.info.Uses[id] = v
 			c.objDecl(v)
 			c.recordType(e, variable, v.typ, nil)
+			if c.capturedWrite(e) {
+				return Typ[Invalid], false
+			}
 			return v.typ, isValid(v.typ)
 		}
 	}
@@ -802,7 +848,7 @@ func (c *checker) rangeStmt(s *syntax.RangeStmt) {
 	var key, val Type
 	maxVars := 2
 	if x.mode != invalid {
-		switch t := x.typ.Underlying().(type) {
+		switch t := core(x.typ).(type) {
 		case *Basic:
 			switch {
 			case t.info&IsString != 0:
@@ -885,7 +931,7 @@ func (c *checker) rangeStmt(s *syntax.RangeStmt) {
 // (stmt.range.go): func(yield func(K, V) bool) with 0 to 2 values.
 func (c *checker) rangeFunc(e syntax.Expr, t *Signature) (key, val Type, n int) {
 	if t.Params.Len() == 1 && t.Results.Len() == 0 {
-		if y, ok := t.Params.Vars[0].typ.Underlying().(*Signature); ok && y.Results.Len() == 1 && isBoolean(y.Results.Vars[0].typ) && y.Params.Len() <= 2 {
+		if y, ok := t.Params.Vars[0].typ.Underlying().(*Signature); ok && y.Results.Len() == 1 && Identical(y.Results.Vars[0].typ, Typ[Bool]) && y.Params.Len() <= 2 {
 			for _, p := range y.Params.Vars {
 				if p.inout {
 					c.notSupported(e.Pos(), 4, "iterators that yield inout access")
@@ -994,7 +1040,7 @@ func (c *checker) typeSwitchStmt(ctxt stmtContext, s *syntax.TypeSwitchStmt) {
 			if x.mode == invalid {
 				typ = Typ[Invalid]
 			}
-			v := &Var{object: object{pos: lhs.Pos(), name: lhs.Name, typ: typ}}
+			v := &Var{object: object{pos: lhs.Pos(), name: lhs.Name, typ: typ}, owner: c.fn}
 			c.scope.Insert(v)
 			c.stmtList((ctxt|breakOK)&^fallthroughOK, cl.Body)
 			used = used || v.used

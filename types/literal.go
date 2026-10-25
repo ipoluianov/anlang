@@ -32,12 +32,12 @@ func (c *checker) compositeLit(x *operand, e *syntax.CompositeLit, hint Type) {
 	default:
 		typ = c.typExpr(e.Type)
 	}
-	if !isValid(typ) {
+	if !isValid(typ) || isTypeParam(typ) && hasInvalid(typ) {
 		c.skipElems(e)
 		return
 	}
 
-	switch u := typ.Underlying().(type) {
+	switch u := core(typ).(type) {
 	case *Struct:
 		c.structLit(e, u)
 	case *Array:

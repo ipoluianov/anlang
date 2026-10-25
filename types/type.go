@@ -207,6 +207,9 @@ type Signature struct {
 	Params   *Tuple
 	Results  *Tuple
 	Variadic bool
+
+	TypeParams     []*TypeParam // type parameters of a generic function
+	RecvTypeParams []*TypeParam // type parameters of the receiver of a method of a generic type
 }
 
 // Interface is an interface type.
@@ -217,6 +220,11 @@ type Interface struct {
 	all       []*Func // method set, sorted by name; valid if complete
 	complete  bool
 	computing bool
+
+	isComparable bool // the predeclared comparable
+	ts           *typeSet
+	tsComplete   bool
+	tsComputing  bool
 }
 
 // MethodSet returns the methods of t, including those of embedded
@@ -265,7 +273,7 @@ func lookupFunc(funcs []*Func, name string) *Func {
 
 // Empty reports whether the interface has an empty method set
 // (type.interface.empty-value).
-func (t *Interface) Empty() bool { return len(t.MethodSet()) == 0 }
+func (t *Interface) Empty() bool { return len(t.MethodSet()) == 0 && !t.isConstraint() }
 
 // lazyAlias is the type of an alias that is used in a cycle through a
 // defined type before its declaration is complete. It stands for the
@@ -301,7 +309,24 @@ type Named struct {
 	Obj        *TypeName
 	underlying Type    // nil while the declaration is being checked
 	methods    []*Func // methods declared with receiver type Named (decl.receiver.base)
+
+	TypeParams  []*TypeParam // type parameters of a generic type
+	orig        *Named       // the generic type of an instance
+	targs       []Type       // the type arguments of an instance
+	expand      func()       // computes the underlying type of an instance
+	instMethods []*Func      // methods of an instance, computed on demand
 }
+
+// Origin returns the generic type of an instance, or t itself.
+func (t *Named) Origin() *Named {
+	if t.orig != nil {
+		return t.orig
+	}
+	return t
+}
+
+// TypeArgs returns the type arguments of an instance.
+func (t *Named) TypeArgs() []Type { return t.targs }
 
 // Methods returns the methods declared for t, in source order.
 func (t *Named) Methods() []*Func { return t.methods }
@@ -316,6 +341,9 @@ func (t *Signature) Underlying() Type { return t }
 func (t *Interface) Underlying() Type { return t }
 
 func (t *Named) Underlying() Type {
+	if t.expand != nil {
+		t.expand()
+	}
 	if t.underlying == nil {
 		return Typ[Invalid]
 	}
@@ -404,6 +432,20 @@ func writeType(b *strings.Builder, t Type) {
 			b.WriteString(p.Name + ".")
 		}
 		b.WriteString(t.Obj.name)
+		if len(t.targs) > 0 {
+			b.WriteString("[")
+			for i, a := range t.targs {
+				if i > 0 {
+					b.WriteString(", ")
+				}
+				writeType(b, a)
+			}
+			b.WriteString("]")
+		}
+	case *TypeParam:
+		b.WriteString(t.Obj.name)
+	case *Union:
+		b.WriteString(t.String())
 	case *lazyAlias:
 		b.WriteString(t.obj.name)
 	default:

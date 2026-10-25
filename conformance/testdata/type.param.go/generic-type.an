@@ -1,0 +1,28 @@
+// want: ok
+
+package main
+
+type List[T any] struct {
+	items []T
+}
+
+func (l List[T]) Len() int {
+	return len(l.items)
+}
+
+func (l List[T]) With(x T) List[T] {
+	return List[T]{items: append(l.items, x)}
+}
+
+type Pair[K comparable, V any] struct {
+	Key K
+	Val V
+}
+
+func main() {
+	var l List[int]
+	l = l.With(1)
+	_ = l.Len()
+	p := Pair[string, int]{Key: "a", Val: 1}
+	_ = p.Key
+}

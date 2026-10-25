@@ -1,0 +1,9 @@
+// want: expr.go
+// checks: type.numeric.methods
+
+package main
+
+func main() {
+	x := 1
+	_ = x.String()
+}

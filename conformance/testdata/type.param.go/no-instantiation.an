@@ -1,0 +1,13 @@
+// want: type.param.go
+
+package main
+
+func Zero[T any]() T {
+	var z T
+	return z
+}
+
+func main() {
+	f := Zero
+	_ = f
+}

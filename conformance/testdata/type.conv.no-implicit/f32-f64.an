@@ -1,0 +1,10 @@
+// want: type.assign.go
+// checks: type.conv.no-implicit
+
+package main
+
+func main() {
+	var a f32 = 1
+	var b f64 = a
+	_ = b
+}

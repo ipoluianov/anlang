@@ -400,3 +400,32 @@ Functions:
 **type.universe.removed** — The Go built-ins `new`, `complex`, `real`, `imag` and `recover` are not predeclared.
 
 **Note** — Recovery from panics is not part of the language: a panic is handled as the target's `OnPanic` specifies, and a panic in a task propagates to its parent ([09-concurrency](09-concurrency.md), [19-runtime](19-runtime.md)).
+
+## 2.18 Type parameters
+
+**type.param.go** — Type parameters, type constraints, type sets, instantiation and type inference are as in Go, with these changes:
+
+- `any` and other interfaces with an empty method set are permitted as constraints, but not as the types of values (**type.any.positions**);
+- an interface whose type set is restricted by type terms or by `comparable` is a constraint only, as in Go: it MUST NOT be the type of a value;
+- the zero value of a type parameter is governed by **type.zero.param-use**, **type.zero.param-constraint** and **type.zero.param-instantiation**;
+- a type switch on a value whose type is a type parameter is resolved at compile time (**ct.typeswitch.static**, [10-compile-time](10-compile-time.md));
+- generic type aliases (`type Set[T comparable] = map[T]bool`) are permitted, as in Go 1.24.
+
+A type argument that does not satisfy its constraint, a type argument that cannot be inferred, and an operation that is not permitted for every type in the type set of a type parameter are violations of this rule.
+
+```go
+type Number interface {
+    ~i32 | ~i64 | ~f64
+}
+
+func Sum[T Number](xs []T) T {
+    var s T
+    for _, x := range xs {
+        s += x
+    }
+    return s
+}
+
+total := Sum([]f64{1, 2.5})        // T inferred as f64
+_ = Sum[string]                     // error: string does not satisfy Number
+```

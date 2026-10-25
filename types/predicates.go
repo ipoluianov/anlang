@@ -6,9 +6,13 @@ import (
 	"slices"
 )
 
+// isBasic reports whether t is a basic type with a property in info; for
+// a type parameter, whether every type in its type set is.
 func isBasic(t Type, info BasicInfo) bool {
-	b, ok := t.Underlying().(*Basic)
-	return ok && b.info&info != 0
+	return underIs(t, func(u Type) bool {
+		b, ok := u.(*Basic)
+		return ok && b.info&info != 0
+	})
 }
 
 func isBoolean(t Type) bool  { return isBasic(t, IsBoolean) }
@@ -48,6 +52,9 @@ func hasInvalidDepth(t Type, depth int) bool {
 	if t == nil || depth > 8 {
 		return t == nil
 	}
+	if tp, ok := t.(*TypeParam); ok {
+		return !isValid(tp.bound) // its constraint was invalid
+	}
 	if _, ok := t.(*Named); ok && depth > 0 {
 		return !isValid(t) // the components of defined types are checked at their declaration
 	}
@@ -83,6 +90,9 @@ func isEmptyInterface(t Type) bool {
 
 // hasNil reports whether nil is a value of t (type.nil.types, expr.cmp.nil).
 func hasNil(t Type) bool {
+	if isTypeParam(t) {
+		return underIs(t, hasNil)
+	}
 	switch t.Underlying().(type) {
 	case *Slice, *Map, *Chan, *Signature, *Interface:
 		return true
@@ -158,6 +168,19 @@ func identicalIn(x, y Type, noTags bool, pairs *ifacePair) bool {
 			}
 		}
 		return true
+	case *Named:
+		// Instances of the same generic type are identical if their type
+		// arguments are.
+		y, ok := y.(*Named)
+		if !ok || x.orig == nil || y.orig == nil || x.orig != y.orig || len(x.targs) != len(y.targs) {
+			return false
+		}
+		for i := range x.targs {
+			if !identicalIn(x.targs[i], y.targs[i], noTags, pairs) {
+				return false
+			}
+		}
+		return true
 	case *Interface:
 		y, ok := y.(*Interface)
 		if !ok || len(x.MethodSet()) != len(y.MethodSet()) {
@@ -187,6 +210,9 @@ func comparable(t Type) bool { return comparableIn(t, nil) }
 // comparableIn is comparable; seen holds the defined types being checked,
 // so that invalid recursive types do not recurse forever.
 func comparableIn(t Type, seen []*Named) bool {
+	if tp, ok := t.(*TypeParam); ok {
+		return tp.iface().typeSet().comparable || underIs(tp, func(u Type) bool { return comparableIn(u, seen) })
+	}
 	if n, ok := t.(*Named); ok {
 		if slices.Contains(seen, n) {
 			return true
@@ -218,6 +244,17 @@ func (c *checker) assignableTo(v, t Type) bool {
 	v, t = unalias(v), unalias(t)
 	if Identical(v, t) {
 		return true
+	}
+	// With type parameters, assignability holds for every type in the
+	// type set, as in Go (type.param.go).
+	if tp, ok := t.(*TypeParam); ok {
+		return !isNamedType(v) && c.allTerms(tp, func(term Type) bool { return c.assignableTo(v, term) })
+	}
+	if tp, ok := v.(*TypeParam); ok {
+		if ti, ok := t.Underlying().(*Interface); ok {
+			return c.missingMethod(v, ti) == ""
+		}
+		return !isNamedType(t) && c.allTerms(tp, func(term Type) bool { return c.assignableTo(term, t) })
 	}
 	vu, tu := v.Underlying(), t.Underlying()
 	_, vNamed := v.(*Named)

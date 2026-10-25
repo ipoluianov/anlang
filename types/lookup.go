@@ -43,7 +43,7 @@ func (c *checker) lookupFieldOrMethod(t Type, pkg *Package, name string) (obj Ob
 					continue
 				}
 				seen[named] = true
-				if m := lookupFunc(named.methods, name); m != nil && visible(m, pkg) {
+				if m := lookupFunc(c.methodsOf(named), name); m != nil && visible(m, pkg) {
 					add(m, e.index, e.multiples)
 					continue
 				}
@@ -88,6 +88,32 @@ func (c *checker) lookupFieldOrMethod(t Type, pkg *Package, name string) (obj Ob
 	return nil, nil, false
 }
 
+// incomplete reports whether t has an embedded field of invalid type,
+// directly or through other embedded fields. A missing field or method
+// may then be promoted through it, so no error is reported.
+func incomplete(t Type) bool {
+	return incompleteIn(t, nil)
+}
+
+func incompleteIn(t Type, seen []*Named) bool {
+	if n, ok := t.(*Named); ok {
+		if slices.Contains(seen, n) {
+			return false
+		}
+		seen = append(seen, n)
+	}
+	s, ok := t.Underlying().(*Struct)
+	if !ok {
+		return false
+	}
+	for _, f := range s.Fields {
+		if f.embedded && (!isValid(f.typ) || incompleteIn(f.typ, seen)) {
+			return true
+		}
+	}
+	return false
+}
+
 // visible reports whether field or method obj is visible in package pkg.
 func visible(obj Object, pkg *Package) bool {
 	o := obj.base()
@@ -129,6 +155,9 @@ func (c *checker) missingMethod(v Type, t *Interface) string {
 			}
 		}
 		if have == nil {
+			if incomplete(v) {
+				continue
+			}
 			return fmt.Sprintf("missing method %s", m.name)
 		}
 		if !Identical(methodType(have), methodType(m)) {

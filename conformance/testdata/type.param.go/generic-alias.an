@@ -1,0 +1,10 @@
+// want: ok
+
+package main
+
+type Set[T comparable] = map[T]bool
+
+func main() {
+	var s Set[string] = map[string]bool{}
+	_ = s
+}

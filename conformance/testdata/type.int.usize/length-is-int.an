@@ -1,0 +1,9 @@
+// want: type.assign.go
+// checks: type.int.usize
+
+package main
+
+func main() {
+	var n usize = len("abc")
+	_ = n
+}

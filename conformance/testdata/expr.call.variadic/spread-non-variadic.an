@@ -1,0 +1,10 @@
+// want: expr.go
+// checks: expr.call.variadic
+
+package main
+
+func f(xs []int) {}
+
+func main() {
+	f([]int{1}...)
+}

@@ -1,0 +1,13 @@
+// want: expr.closure.captured-readonly
+
+package main
+
+func main() {
+	i := 0
+	f := func() {
+		for i = range 3 {
+		}
+	}
+	f()
+	_ = i
+}

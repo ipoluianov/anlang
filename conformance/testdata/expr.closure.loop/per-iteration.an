@@ -1,0 +1,13 @@
+// want: ok
+
+package main
+
+func main() {
+	var fs []func() int
+	for i := range 3 {
+		fs = append(fs, func() int {
+			return i
+		})
+	}
+	_ = fs
+}

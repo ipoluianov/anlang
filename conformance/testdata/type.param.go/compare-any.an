@@ -1,0 +1,11 @@
+// want: type.param.go
+
+package main
+
+func Eq[T any](a, b T) bool {
+	return a == b
+}
+
+func main() {
+
+}

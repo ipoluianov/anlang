@@ -1,0 +1,11 @@
+// want: ok
+
+package main
+
+func main() {
+	n := 2
+	add := func(x int) int {
+		return x + n
+	}
+	_ = add(1)
+}

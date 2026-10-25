@@ -1,0 +1,16 @@
+// want: ok
+
+package main
+
+type Point struct {
+	X int
+}
+
+type Line struct {
+	a, b Point
+}
+
+func main() {
+	l := Line{Point{1}, Point{2}}
+	_ = l.a.X + l.b.X
+}

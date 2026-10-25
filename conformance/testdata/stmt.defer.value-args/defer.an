@@ -1,0 +1,12 @@
+// want: ok
+
+package main
+
+func show(n int) {}
+
+func main() {
+	x := 1
+	defer show(x)
+	x = 2
+	_ = x
+}

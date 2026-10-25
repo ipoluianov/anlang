@@ -1,0 +1,11 @@
+// want: ok
+
+package main
+
+func First[T any](xs []T) T {
+	return xs[0]
+}
+
+func main() {
+	_ = First([]int{1})
+}

@@ -1,0 +1,19 @@
+// want: type.param.go
+
+package main
+
+type Number interface {
+	~int | ~i64 | ~f64
+}
+
+func Sum[T Number](xs []T) T {
+	var s T
+	for _, x := range xs {
+		s += x
+	}
+	return s
+}
+
+func main() {
+	_ = Sum[string]
+}

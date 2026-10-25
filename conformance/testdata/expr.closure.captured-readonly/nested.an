@@ -1,0 +1,15 @@
+// want: expr.closure.captured-readonly
+
+package main
+
+func main() {
+	n := 0
+	f := func() {
+		g := func() {
+			n = 1
+		}
+		g()
+	}
+	f()
+	_ = n
+}

@@ -1,0 +1,20 @@
+// want: ok
+
+package main
+
+type Point struct {
+	X, Y int
+}
+
+func main() {
+	var a int
+	var b string
+	var c [2]bool
+	var d []f64
+	var e map[string]int
+	var f Point
+	var g error
+	var h func()
+	var i chan int
+	_, _, _, _, _, _, _, _, _ = a, b, c, d, e, f, g, h, i
+}

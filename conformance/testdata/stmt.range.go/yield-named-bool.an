@@ -1,0 +1,11 @@
+// want: stmt.range.go
+
+package main
+
+type B bool
+
+func main() {
+	for x := range func(yield func(int) B) {} {
+		_ = x
+	}
+}

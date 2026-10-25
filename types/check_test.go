@@ -29,9 +29,7 @@ func TestCheckErrors(t *testing.T) {
 		src string
 		msg string
 	}{
-		{"package main\nfunc main() { _ = func() {} }", "function literals: not supported yet by this compiler (spec/24-roadmap.md, step 2)"},
 		{"package main\ntype T struct{}\nfunc (t inout T) M() {}\nfunc main() {}", "inout receivers: not supported yet"},
-		{"package main\nfunc F[T any]() {}\nfunc main() {}", "generic functions: not supported yet"},
 		{"package main\ntype E enum { A }\nfunc main() {}", "enum types: not supported yet by this compiler (spec/24-roadmap.md, step 3)"},
 		{"package main\nfunc f(x inout int) {}\nfunc main() {}", "inout parameters: not supported yet by this compiler (spec/24-roadmap.md, step 4)"},
 		{"package main\nfunc main() { var o Option[int]; _ = o }", "Option: not supported yet"},

@@ -1,0 +1,16 @@
+// want: expr.closure.captured-readonly
+
+package main
+
+type Point struct {
+	X int
+}
+
+func main() {
+	p := Point{}
+	f := func() {
+		p.X = 1
+	}
+	f()
+	_ = p
+}

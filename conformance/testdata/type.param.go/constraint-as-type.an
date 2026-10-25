@@ -1,0 +1,12 @@
+// want: type.param.go
+
+package main
+
+type Number interface {
+	~int | ~f64
+}
+
+func main() {
+	var n Number
+	_ = n
+}

@@ -1,0 +1,8 @@
+// want: ok
+// checks: decl.file.ignored decl.file.ext
+
+package main
+
+func main() {
+	_ = name()
+}

@@ -1,0 +1,17 @@
+// want: ok
+
+package main
+
+type Point struct {
+	X int
+}
+
+func move(p Point) {
+	p.X++
+}
+
+func main() {
+	p := Point{1}
+	move(p)
+	_ = p.X
+}

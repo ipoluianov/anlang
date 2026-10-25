@@ -1,0 +1,10 @@
+// want: ok
+
+package main
+
+func main() {
+	c := make(chan int, 1)
+	d := c
+	d <- 1
+	_ = <-c
+}

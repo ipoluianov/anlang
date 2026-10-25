@@ -46,24 +46,25 @@ var anlangOnlyNames = map[string]bool{
 // deviations are the rules by which Anlang deliberately rejects Go code.
 // Diagnostics with these rules are ignored when comparing with Go.
 var deviations = map[string]bool{
-	"type.pointer.removed":       true,
-	"expr.removed.address":       true,
-	"expr.removed.deref":         true,
-	"type.numeric.removed":       true,
-	"type.universe.removed":      true,
-	"decl.var.package-kinds":     true,
-	"decl.func.no-init":          true,
-	"type.any.positions":         true,
-	"type.interface.empty-value": true,
-	"type.conv.int-narrow":       true,
-	"stmt.error.unused":          true,
-	"expr.cmp.sync":              true,
-	"decl.package.main":          true,
-	"lex.literal.no-imaginary":   true,
-	"decl.import.paths":          true,
-	"decl.import.no-blank-dot":   true,
-	"decl.func.body":             true,
-	"expr.addr.def":              true,
+	"type.pointer.removed":           true,
+	"expr.removed.address":           true,
+	"expr.removed.deref":             true,
+	"type.numeric.removed":           true,
+	"type.universe.removed":          true,
+	"decl.var.package-kinds":         true,
+	"decl.func.no-init":              true,
+	"type.any.positions":             true,
+	"type.interface.empty-value":     true,
+	"type.conv.int-narrow":           true,
+	"stmt.error.unused":              true,
+	"expr.cmp.sync":                  true,
+	"decl.package.main":              true,
+	"lex.literal.no-imaginary":       true,
+	"decl.import.paths":              true,
+	"decl.import.no-blank-dot":       true,
+	"decl.func.body":                 true,
+	"expr.addr.def":                  true,
+	"expr.closure.captured-readonly": true,
 }
 
 // knownMismatches are the files on which the checker disagrees with Go,
@@ -229,6 +230,9 @@ func oracleCheck(path string, im *goImporter) oracleResult {
 	deviated := false
 	for _, e := range errs {
 		if e.Rule == "" && strings.Contains(e.Msg, "not supported yet") {
+			if os.Getenv("ANLANG_ORACLE") == "unsupported" {
+				fmt.Fprintln(os.Stderr, "UNSUPPORTED", e.Msg)
+			}
 			r.skip = "not supported yet"
 			return r
 		}
@@ -250,8 +254,9 @@ func oracleCheck(path string, im *goImporter) oracleResult {
 // TestGoOracle compares the Anlang checker with go/types on the Go
 // distribution's test programs. Set ANLANG_ORACLE=v to print every
 // mismatch, ANLANG_ORACLE=lines to print Go errors that the Anlang
-// checker does not report on the same line, and ANLANG_ORACLE_FILE to
-// check one file.
+// checker does not report on the same line, ANLANG_ORACLE=unsupported to
+// print the unsupported constructs that make files skipped, and
+// ANLANG_ORACLE_FILE to check one file.
 func TestGoOracle(t *testing.T) {
 	if testing.Short() {
 		t.Skip("-short")

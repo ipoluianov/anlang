@@ -91,6 +91,9 @@ type checker struct {
 	lazy         map[*TypeName]*lazyAlias
 
 	invalidSwitch map[*syntax.SwitchStmt]bool // switches with an invalid tag
+	instances     map[string]*Named           // instances of generic types
+	inArgs        bool                        // checking call arguments
+	delayed       []func()                    // checks run when declarations and bodies are complete
 	interfaces    []interfaceInfo             // interface types, checked for method conflicts at the end
 	objList       []Object                    // package-level objects in source order, including blank ones
 	objPath       []Object                    // objects whose declarations are being checked
@@ -114,6 +117,7 @@ type declInfo struct {
 	vars  []*Var            // all variables of a spec with a multi-value initializer
 	tspec *syntax.TypeSpec  // type declaration
 	fdecl *syntax.FuncDecl  // function declaration
+	scope *Scope            // scope of the type parameters of a function, the parent of its body
 	spec  *syntax.ValueSpec // const or var spec
 }
 
@@ -136,6 +140,7 @@ func Check(conf *Config, files []*syntax.File) (*Info, []*syntax.Error) {
 		lazy:     map[*TypeName]*lazyAlias{},
 
 		invalidSwitch: map[*syntax.SwitchStmt]bool{},
+		instances:     map[string]*Named{},
 		untyped:       map[syntax.Expr]untypedInfo{},
 	}
 	if c.intBits == 0 {
@@ -190,11 +195,18 @@ func (c *checker) check() {
 
 	for _, f := range append(c.info.Funcs, c.info.Methods...) {
 		if d := c.decls[f].fdecl; d.Body != nil {
-			c.funcBody(c.decls[f].file, f.name, f.Signature(), d, d.Body)
+			scope := c.decls[f].scope
+			if scope == nil {
+				scope = c.decls[f].file
+			}
+			c.funcBody(scope, f.Signature(), d.Recv, d.Type, d.Body, false)
 		}
 	}
 
 	c.checkInterfaces()
+	for i := 0; i < len(c.delayed); i++ {
+		c.delayed[i]()
+	}
 
 	for _, s := range fileScopes {
 		for _, name := range s.Names() {
@@ -392,9 +404,6 @@ func (c *checker) collectFunc(fs *Scope, d *syntax.FuncDecl) {
 	case d.Recv != nil:
 		c.methodDecls = append(c.methodDecls, methodDecl{fs, d})
 		return
-	case d.Type.TypeParams != nil:
-		c.notSupported(d.Pos(), 2, "generic functions")
-		return
 	case d.Handler != "":
 		c.notSupported(d.Pos(), 17, d.Handler+" handlers")
 		return
@@ -455,7 +464,7 @@ func (c *checker) checkMain() {
 		return
 	}
 	c.info.Main = m
-	if sig := m.Signature(); sig.Params.Len() > 0 || sig.Results.Len() > 0 {
+	if sig := m.Signature(); sig.Params.Len() > 0 || sig.Results.Len() > 0 || len(sig.TypeParams) > 0 {
 		c.errorf(m.pos, "decl.package.main", "func main must have no parameters and no results")
 	}
 }

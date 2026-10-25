@@ -1,0 +1,21 @@
+// want: ok
+
+package main
+
+type Number interface {
+	~int | ~i64 | ~f64
+}
+
+func Sum[T Number](xs []T) T {
+	var s T
+	for _, x := range xs {
+		s += x
+	}
+	return s
+}
+
+func main() {
+	_ = Sum([]int{1, 2})
+	_ = Sum([]f64{1.5})
+	_ = Sum[i64](nil)
+}

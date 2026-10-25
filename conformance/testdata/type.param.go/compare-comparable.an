@@ -1,0 +1,16 @@
+// want: ok
+
+package main
+
+func Index[E comparable](s []E, v E) int {
+	for i, x := range s {
+		if x == v {
+			return i
+		}
+	}
+	return -1
+}
+
+func main() {
+	_ = Index([]string{"a"}, "a")
+}

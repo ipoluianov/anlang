@@ -51,6 +51,7 @@ Terms used in the specification and their Russian equivalents. Use these terms i
 | initialization phase | фаза инициализации | Part of `main` before interrupts and tasks are enabled |
 | inout loop variable | `inout`-переменная цикла | Range-over-func loop variable that receives `inout` access from the iterator |
 | `inout` access | `inout`-доступ | Temporary exclusive mutable access to a caller's value |
+| instantiation | инстанцирование | Substitution of type arguments for the type parameters of a generic function or type |
 | instruction selection rules | правила выбора команд | Declarative mapping from IR operations to machine instructions |
 | interrupt handler | обработчик прерывания | Function declared with `interrupt` |
 | invariant (loop / type) | инвариант (цикла / типа) | Condition that holds at the loop head / at value boundaries |
@@ -99,6 +100,8 @@ Terms used in the specification and their Russian equivalents. Use these terms i
 | target package | пакет цели | Package that declares a target description constant `Description` |
 | task | задача | Unit of concurrent execution started with `go` |
 | trap handler | обработчик ловушки | Function declared with `trap` |
+| type parameter | параметр-тип | Type name declared in the type parameter list of a generic function or type |
+| type set | множество типов | The set of types that satisfy a type constraint |
 | type without a zero value | тип без нулевого значения | Type for which `var x T` is rejected, because its zero value is invalid |
 | validator | проверка (функция) | Function converting `Untrusted[T]` into a meaningful type |
 | value semantics | семантика значений | Assignment and passing logically copy values |

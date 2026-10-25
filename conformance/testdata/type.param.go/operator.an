@@ -1,0 +1,11 @@
+// want: type.param.go
+
+package main
+
+func Add[T any](a, b T) T {
+	return a + b
+}
+
+func main() {
+
+}

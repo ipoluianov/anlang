@@ -1,0 +1,9 @@
+// want: ok
+
+package main
+
+func main() {
+	f := 2.7
+	_ = int(f)
+	_ = u8(f)
+}

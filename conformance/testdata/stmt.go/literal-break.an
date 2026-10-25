@@ -1,0 +1,12 @@
+// want: stmt.go
+
+package main
+
+func main() {
+	for {
+		f := func() {
+			break
+		}
+		f()
+	}
+}

@@ -1,0 +1,12 @@
+// want: ok
+
+package main
+
+func Zero[T any]() T {
+	var z T
+	return z
+}
+
+func main() {
+	_ = Zero[int]() + 1
+}

@@ -92,9 +92,10 @@ func (c *checker) receiverBase(recv *syntax.FieldList, d *syntax.FuncDecl) *Type
 		c.errorf(star.Pos(), "type.pointer.removed", "there are no pointer receivers in Anlang: use an inout receiver")
 		rt = unparen(star.X)
 	}
+	if ix, ok := rt.(*syntax.IndexExpr); ok {
+		rt = unparen(ix.X) // a method of a generic type
+	}
 	switch t := rt.(type) {
-	case *syntax.IndexExpr:
-		c.notSupported(t.Pos(), 2, "methods of generic types")
 	case *syntax.Name:
 		obj := c.pkgScope.Lookup(t.Name)
 		tn, ok := obj.(*TypeName)
@@ -133,9 +134,17 @@ func receiverType(recv *syntax.FieldList) syntax.Expr {
 }
 
 // receiver returns the receiver variable of a method.
-func (c *checker) receiver(recv *syntax.FieldList) *Var {
+func (c *checker) receiver(recv *syntax.FieldList) (*Var, []*TypeParam) {
 	f := recv.List[0]
-	v := &Var{object: object{pos: f.Type.Pos(), typ: c.typExpr(receiverType(recv))}, param: true}
+	rt := receiverType(recv)
+	var typ Type
+	var rtps []*TypeParam
+	if ix, ok := unparen(rt).(*syntax.IndexExpr); ok {
+		typ, rtps = c.genericReceiver(ix)
+	} else {
+		typ = c.typExpr(rt)
+	}
+	v := &Var{object: object{pos: f.Type.Pos(), typ: typ}, param: true}
 	if len(f.Names) == 1 {
 		v.pos, v.name = f.Names[0].Pos(), f.Names[0].Name
 	}
@@ -143,7 +152,48 @@ func (c *checker) receiver(recv *syntax.FieldList) *Var {
 		v.inout = true
 		c.notSupported(f.Inout, 4, "inout receivers")
 	}
-	return v
+	return v, rtps
+}
+
+// genericReceiver checks the receiver type T[P, Q] of a method of a
+// generic type: P and Q are new type parameters, bound to the type
+// parameters of T by position.
+func (c *checker) genericReceiver(ix *syntax.IndexExpr) (Type, []*TypeParam) {
+	var x operand
+	c.rawExpr(&x, ix.X, nil)
+	n, ok := x.typ.(*Named)
+	if x.mode != typexpr || !ok || len(n.TypeParams) == 0 || n.orig != nil {
+		if x.mode != invalid {
+			c.errorf(ix.Pos(), "decl.receiver.base", "%s is not a generic type", exprString(ix.X))
+		}
+		return Typ[Invalid], nil
+	}
+	if len(ix.Indices) != len(n.TypeParams) {
+		c.errorf(ix.Pos(), "type.param.go", "got %d type parameters in the receiver, want %d", len(ix.Indices), len(n.TypeParams))
+		return Typ[Invalid], nil
+	}
+	var rtps []*TypeParam
+	var targs []Type
+	for i, idx := range ix.Indices {
+		name, ok := idx.(*syntax.Name)
+		if !ok {
+			c.errorf(idx.Pos(), "type.param.go", "receiver type parameter %s must be an identifier", exprString(idx))
+			return Typ[Invalid], nil
+		}
+		obj := &TypeName{object{pos: name.Pos(), name: name.Name, pkg: c.pkg}}
+		tp := &TypeParam{Obj: obj, index: i}
+		obj.typ = tp
+		c.declare(name, obj)
+		rtps = append(rtps, tp)
+		targs = append(targs, tp)
+	}
+	m := newSubstMap(n.TypeParams, targs)
+	for i, tp := range rtps {
+		tp.bound = c.subst(n.TypeParams[i].bound, m)
+	}
+	t := c.instantiate(ix.Pos(), n, targs, false)
+	c.recordType(ix, typexpr, t, nil)
+	return t, rtps
 }
 
 // checkMethods checks the methods once all package-level types are
@@ -176,6 +226,7 @@ func (c *checker) checkMethods() {
 // interfaceType checks an interface type literal.
 func (c *checker) interfaceType(e *syntax.InterfaceType) Type {
 	t := &Interface{}
+	invalid := false // an element was invalid; an error has been reported
 	for _, f := range e.Elems {
 		if len(f.Names) > 0 {
 			ft, ok := f.Type.(*syntax.FuncType)
@@ -199,13 +250,19 @@ func (c *checker) interfaceType(e *syntax.InterfaceType) Type {
 			}
 			continue
 		}
-		switch unparen(f.Type).(type) {
-		case *syntax.BinaryExpr, *syntax.UnaryExpr:
-			c.notSupported(f.Type.Pos(), 2, "type constraints with type sets")
+		if isUnion(f.Type) {
+			u := c.union(f.Type)
+			invalid = invalid || u.invalid
+			t.Embeddeds = append(t.Embeddeds, u)
 			continue
 		}
-		et := c.typExpr(f.Type)
+		et := c.typExprAny(f.Type)
 		if !isValid(et) {
+			invalid = true
+			continue
+		}
+		if isTypeParam(et) {
+			c.errorf(f.Type.Pos(), "type.param.go", "cannot embed a type parameter")
 			continue
 		}
 		if n, ok := et.(*Named); ok && n.underlying == nil {
@@ -214,12 +271,16 @@ func (c *checker) interfaceType(e *syntax.InterfaceType) Type {
 			continue
 		}
 		if _, ok := et.Underlying().(*Interface); !ok {
-			c.notSupported(f.Type.Pos(), 2, "type constraints with type sets")
+			// A single type term of a constraint.
+			t.Embeddeds = append(t.Embeddeds, &Union{Terms: []*Term{{Type: et}}})
 			continue
 		}
 		t.Embeddeds = append(t.Embeddeds, et)
 	}
 	c.interfaces = append(c.interfaces, interfaceInfo{t, e})
+	if invalid {
+		return Typ[Invalid]
+	}
 	return t
 }
 

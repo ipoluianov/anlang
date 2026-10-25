@@ -1,0 +1,16 @@
+// want: type.assign.go
+// checks: expr.call.variadic
+
+package main
+
+func sum(xs ...int) int {
+	t := 0
+	for _, x := range xs {
+		t += x
+	}
+	return t
+}
+
+func main() {
+	_ = sum(1, "x")
+}

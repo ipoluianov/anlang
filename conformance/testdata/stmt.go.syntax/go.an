@@ -1,0 +1,13 @@
+// want: ok
+
+package main
+
+func send(c chan int) {
+	c <- 1
+}
+
+func main() {
+	c := make(chan int, 1)
+	go send(c)
+	_ = <-c
+}

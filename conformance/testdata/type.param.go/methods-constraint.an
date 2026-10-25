@@ -1,0 +1,25 @@
+// want: ok
+
+package main
+
+type Stringer interface {
+	String() string
+}
+
+type Celsius f64
+
+func (c Celsius) String() string {
+	return "C"
+}
+
+func Join[T Stringer](xs []T) string {
+	s := ""
+	for _, x := range xs {
+		s += x.String()
+	}
+	return s
+}
+
+func main() {
+	_ = Join([]Celsius{1, 2})
+}

@@ -23,11 +23,12 @@ const (
 
 // operand is the result of checking an expression.
 type operand struct {
-	mode operandMode
-	expr syntax.Expr
-	typ  Type
-	val  constant.Value
-	id   builtinID // for builtin
+	mode  operandMode
+	expr  syntax.Expr
+	typ   Type
+	val   constant.Value
+	id    builtinID // for builtin
+	targs []Type    // type arguments of a partially instantiated generic function
 }
 
 func (x *operand) invalidate() { x.mode = invalid }
@@ -184,6 +185,10 @@ func (c *checker) convertUntyped(x *operand, target Type, rule, context string) 
 		}
 		return
 	}
+	if tp, ok := target.(*TypeParam); ok {
+		c.convertUntypedParam(x, tp, rule, context)
+		return
+	}
 	switch t := target.Underlying().(type) {
 	case *Basic:
 		if x.isNil() {
@@ -230,6 +235,38 @@ func (c *checker) convertUntyped(x *operand, target Type, rule, context string) 
 	}
 	c.updateExprType(x.expr, target, true)
 	x.typ = target
+}
+
+// convertUntypedParam converts an untyped operand to a type parameter:
+// it must be convertible to every type in the type set, and a constant
+// becomes a value of the type parameter (type.param.go).
+func (c *checker) convertUntypedParam(x *operand, tp *TypeParam, rule, context string) {
+	terms, restricted := termsOf(tp)
+	ok := restricted && len(terms) > 0
+	for _, term := range terms {
+		u := term.Type.Underlying()
+		switch {
+		case x.isNil():
+			ok = ok && hasNil(term.Type)
+		case x.mode == constant_:
+			b, isBasic := u.(*Basic)
+			if isBasic {
+				_, fits := c.representable(x.val, b)
+				ok = ok && fits
+			} else {
+				ok = false
+			}
+		default:
+			ok = ok && (isBoolean(x.typ) && isBoolean(u) || isNumeric(x.typ) && isNumeric(u))
+		}
+	}
+	if !ok {
+		c.errorf(x.expr.Pos(), "type.param.go", "cannot use %s as %s value in %s: it is not valid for every type in the type set of %s", x, tp, context, tp)
+		x.invalidate()
+		return
+	}
+	c.updateExprType(x.expr, tp, true)
+	x.mode, x.typ, x.val = value, tp, nil
 }
 
 func (c *checker) notRepresentable(x *operand, target Type, rule string) {

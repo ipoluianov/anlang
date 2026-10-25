@@ -1,0 +1,16 @@
+// want: ok
+
+package main
+
+func main() {
+	seq := func(yield func(int) bool) {
+		for i := range 3 {
+			if !yield(i) {
+				return
+			}
+		}
+	}
+	for x := range seq {
+		_ = x
+	}
+}

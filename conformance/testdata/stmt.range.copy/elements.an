@@ -1,0 +1,18 @@
+// want: ok
+
+package main
+
+type Point struct {
+	X int
+}
+
+func main() {
+	ps := []Point{{1}}
+	for _, p := range ps {
+		p.X = 2
+		_ = p
+	}
+	for i := range ps {
+		ps[i].X = 3
+	}
+}

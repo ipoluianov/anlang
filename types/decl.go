@@ -58,10 +58,20 @@ func (c *checker) objDecl(obj Object) {
 	case *TypeName:
 		c.typeDecl(obj, di.tspec)
 	case *Func:
-		sig := c.funcType(di.fdecl.Type, false)
-		if di.fdecl.Recv != nil {
-			sig.Recv = c.receiver(di.fdecl.Recv)
+		// The type parameters of the function and of the receiver are
+		// declared in a scope between the file scope and the body.
+		d := di.fdecl
+		c.scope = NewScope(di.file)
+		di.scope = c.scope
+		var recv *Var
+		var rtps, tps []*TypeParam
+		if d.Recv != nil {
+			recv, rtps = c.receiver(d.Recv)
+		} else if d.Type.TypeParams != nil {
+			tps = c.declareTypeParams(d.Type.TypeParams)
 		}
+		sig := c.funcType(d.Type, false)
+		sig.Recv, sig.RecvTypeParams, sig.TypeParams = recv, rtps, tps
 		obj.typ = sig
 	}
 }
@@ -194,7 +204,7 @@ func (c *checker) initVars(vars []*Var, t Type, inits []syntax.Expr) {
 	var xs []*operand
 	for i, e := range inits {
 		x := &operand{}
-		c.expr(x, e)
+		c.exprHint(x, e, t)
 		if i < len(vars) {
 			c.assignment(x, t, "variable declaration")
 		}
@@ -249,13 +259,18 @@ func (c *checker) recordCommaOK(x *operand) {
 
 // typeDecl checks a type declaration.
 func (c *checker) typeDecl(obj *TypeName, spec *syntax.TypeSpec) {
-	if spec.TypeParams != nil {
-		obj.typ = Typ[Invalid]
-		c.notSupported(spec.Name.Pos(), 2, "generic types")
+	if spec.TypeParams != nil && spec.Assign.IsValid() {
+		// A generic alias, as in Go 1.24 (type.param.go).
+		c.scope = NewScope(c.scope)
+		defer c.closeScope()
+		ga := &genericAlias{obj: obj}
+		obj.typ = ga
+		ga.tps = c.declareTypeParams(spec.TypeParams)
+		ga.rhs = c.typExprAny(spec.Type)
 		return
 	}
 	if spec.Assign.IsValid() {
-		t := c.typExpr(spec.Type)
+		t := c.typExprAny(spec.Type)
 		obj.typ = t
 		if l := c.lazy[obj]; l != nil {
 			l.actual = t
@@ -273,11 +288,25 @@ func (c *checker) typeDecl(obj *TypeName, spec *syntax.TypeSpec) {
 		c.notSupported(spec.Type.Pos(), 3, "enum types")
 		return
 	}
-	rhs := c.typExpr(spec.Type)
+	if spec.TypeParams != nil {
+		// The type parameters are in scope in the type declaration.
+		c.scope = NewScope(c.scope)
+		defer c.closeScope()
+		named.TypeParams = c.declareTypeParams(spec.TypeParams)
+	}
+	rhs := c.typExprAny(spec.Type)
+	if isTypeParam(rhs) {
+		c.errorf(spec.Type.Pos(), "type.param.go", "cannot use a type parameter as the type in a type declaration")
+		named.underlying = Typ[Invalid]
+		return
+	}
 	if l, ok := rhs.(*lazyAlias); ok && l.actual == nil {
 		// The underlying type is known when the alias is.
 		l.waiting = append(l.waiting, named)
 		return
+	}
+	if n, ok := rhs.(*Named); ok && n.orig != nil {
+		n.Underlying() // expands the instance
 	}
 	if n, ok := rhs.(*Named); ok && n.underlying == nil {
 		c.errorf(spec.Name.Pos(), "type.go", "invalid recursive type %s", obj.name)
@@ -295,6 +324,20 @@ func (c *checker) typeDecl(obj *TypeName, spec *syntax.TypeSpec) {
 func (c *checker) validType(root *Named, t Type, path []*Named) {
 	switch t := t.(type) {
 	case *Named:
+		if t.orig != nil {
+			// An instance contains the generic type: T[P] in T is a cycle.
+			if t.orig == root || slices.Contains(path, t.orig) {
+				if t.orig == root {
+					c.errorf(root.Obj.pos, "type.go", "invalid recursive type %s", root.Obj.name)
+				}
+				return
+			}
+			if len(path) > maxInstanceDepth {
+				return
+			}
+			c.validType(root, t.Underlying(), append(path, t))
+			return
+		}
 		if slices.Contains(path, t) {
 			if t == root {
 				c.errorf(root.Obj.pos, "type.go", "invalid recursive type %s", root.Obj.name)
@@ -320,9 +363,6 @@ func (c *checker) validType(root *Named, t Type, path []*Named) {
 // funcType returns the signature of a function type. Parameter and
 // result names are declared later, when the body is checked.
 func (c *checker) funcType(ft *syntax.FuncType, literal bool) *Signature {
-	if ft.TypeParams != nil {
-		c.notSupported(ft.TypeParams.Pos(), 2, "generic functions")
-	}
 	sig := &Signature{}
 	sig.Params, sig.Variadic = c.params(ft.Params, true)
 	sig.Results, _ = c.params(ft.Results, false)
@@ -394,6 +434,9 @@ func (c *checker) params(list *syntax.FieldList, isParams bool) (*Tuple, bool) {
 // not declared.
 func (c *checker) declare(name *syntax.Name, obj Object) {
 	c.info.Defs[name] = obj
+	if v, ok := obj.(*Var); ok && c.fn != nil {
+		v.owner = c.fn
+	}
 	if name.Name == "_" {
 		c.info.Defs[name] = nil
 		obj.base().parent = c.scope

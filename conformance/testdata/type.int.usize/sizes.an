@@ -1,0 +1,11 @@
+// want: ok
+
+package main
+
+func main() {
+	var s usize = 4096
+	s = s * 2
+	n := len("abc")
+	var i int = n
+	_, _ = s, i
+}

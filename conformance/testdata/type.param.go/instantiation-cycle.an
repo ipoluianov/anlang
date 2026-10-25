@@ -1,0 +1,11 @@
+// want: type.param.go
+
+package main
+
+func f[T any](x T) {
+	f[[]T](nil)
+}
+
+func main() {
+
+}

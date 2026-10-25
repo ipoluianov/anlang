@@ -1,0 +1,13 @@
+// want: type.param.go
+
+package main
+
+type MyInt int
+
+type N interface {
+	~MyInt
+}
+
+func main() {
+
+}

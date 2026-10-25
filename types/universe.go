@@ -47,10 +47,9 @@ var (
 // notYet lists predeclared identifiers that this compiler does not
 // support yet, with the roadmap step that adds them.
 var notYet = map[string]int{
-	"Option":     3,
-	"None":       3,
-	"Some":       3,
-	"comparable": 2,
+	"Option": 3,
+	"None":   3,
+	"Some":   3,
 }
 
 // removed lists Go predeclared identifiers that do not exist in Anlang,
@@ -98,6 +97,10 @@ func init() {
 	}}}
 	universeError.underlying = &Interface{Methods: []*Func{errorMethod}}
 	Universe.Insert(errObj)
+
+	cmpObj := &TypeName{object{name: "comparable"}}
+	cmpObj.typ = &Named{Obj: cmpObj, underlying: &Interface{isComparable: true}}
+	Universe.Insert(cmpObj)
 
 	Universe.Insert(&Const{object{name: "true", typ: Typ[UntypedBool]}, constant.MakeBool(true)})
 	Universe.Insert(&Const{object{name: "false", typ: Typ[UntypedBool]}, constant.MakeBool(false)})
