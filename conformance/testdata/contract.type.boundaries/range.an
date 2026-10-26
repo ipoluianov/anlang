@@ -1,0 +1,31 @@
+// want: ok
+// checks: contract.type.clause contract.type.assume
+
+// The example of spec/08-contracts.md §8.5: Shift violates the invariant
+// between its two statements and restores it at the end.
+package main
+
+profile core
+
+import "an/fmt"
+
+type Range struct {
+	invariant lo <= hi
+	lo, hi int
+}
+
+func (r inout Range) Shift(d int) {
+	r.lo += d
+	r.hi += d
+}
+
+func width(r Range) int {
+	ensures result >= 0
+	return r.hi - r.lo
+}
+
+func main() {
+	r := Range{lo: 2, hi: 5}
+	r.Shift(10)
+	fmt.Println(r.lo, r.hi, width(r))
+}

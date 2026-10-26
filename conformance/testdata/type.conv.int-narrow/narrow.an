@@ -2,8 +2,10 @@
 
 package main
 
+func narrow(a i64) i8 {
+	return i8(a)
+}
+
 func main() {
-	var a i64 = 1
-	b := i8(a)
-	_ = b
+	_ = narrow(1)
 }

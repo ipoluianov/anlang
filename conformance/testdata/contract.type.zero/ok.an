@@ -1,0 +1,19 @@
+// want: ok
+
+// The zero value of Range satisfies its invariant: Range has a zero
+// value.
+package main
+
+profile core
+
+import "an/fmt"
+
+type Range struct {
+	invariant lo <= hi
+	lo, hi int
+}
+
+func main() {
+	var r Range
+	fmt.Println(r.lo, r.hi)
+}

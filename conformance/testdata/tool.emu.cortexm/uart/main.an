@@ -1,0 +1,33 @@
+// want: ok
+
+// Serial output through USART1 of the STM32F103C8: the emulator writes
+// what the port transmits, with the semihosting console
+// (tool.emu.cortexm).
+package main
+
+profile core
+
+import (
+	"an/device"
+	"an/fmt"
+)
+
+// send transmits s, waiting for the transmit register to be empty.
+func send(s string) {
+	for i := range len(s) {
+		for !device.USART1.SR.TXE() {
+		}
+		device.USART1.DR = device.USART1.DR.WithDR(device.USART_DR_DR(s[i]))
+	}
+}
+
+func main() {
+	device.RCC.APB2ENR = device.RCC.APB2ENR.WithUSART1EN(true).WithIOPAEN(true)
+	// 115200 baud from the 8 MHz clock: 8e6 / (16 * 115200) is 4 + 5/16.
+	device.USART1.BRR = device.USART1.BRR.WithDIV_Mantissa(4).WithDIV_Fraction(5)
+	device.USART1.CR1 = device.USART1.CR1.WithUE(true).WithTE(true)
+	send("hello, UART\n")
+	for !device.USART1.SR.TC() {
+	}
+	fmt.Println("sent")
+}

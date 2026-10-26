@@ -1,0 +1,20 @@
+// want: contract.obligation.unproven
+// checks: contract.type.boundaries
+
+// Passing a value as an argument is a boundary.
+package main
+
+profile core
+
+type Range struct {
+	invariant lo <= hi
+	lo, hi int
+}
+
+func first(r Range) int { return r.lo }
+
+func main() {
+	r := Range{1, 2}
+	r.lo = 5
+	_ = first(r)
+}

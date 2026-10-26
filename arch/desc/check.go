@@ -15,6 +15,7 @@ func (a *Arch) Check() []error {
 	c.registers()
 	c.operands()
 	c.funcs()
+	c.syntaxes()
 	c.fragments()
 	if e, err := parseExpr(a.Address); err != nil {
 		c.errorf("Address: %v", err)
@@ -78,6 +79,9 @@ func (c *checker) registers() {
 		}
 		if r.Width <= 0 || r.Width > 64 {
 			c.errorf("register %s: invalid width %d", r.Name, r.Width)
+		}
+		if r.Fixed&r.Zero != 0 {
+			c.errorf("register %s: bits %#x are both Fixed and Zero", r.Name, r.Fixed&r.Zero)
 		}
 		a.regs[r.Name] = r
 		if r.Class != "" {
@@ -165,6 +169,12 @@ func (c *checker) operands() {
 		if kinds != 1 {
 			c.errorf("operand kind %s: want exactly one of Register, Class or Memory, Imm and Constant", o.Name)
 		}
+		if o.List && (o.Class == "" || o.Memory != 0) {
+			c.errorf("operand kind %s: a register list needs a Class and no Memory", o.Name)
+		}
+		if o.Syntax != "" && (o.Imm == 0 || o.Imm > 16 || o.Signed || o.Relative || o.Scale != 0 || o.Transform != "") {
+			c.errorf("operand kind %s: Syntax needs an immediate of at most 16 bits without Signed, Relative, Scale and Transform", o.Name)
+		}
 		if o.Transform != "" {
 			e, err := parseExpr(o.Transform)
 			if err != nil {
@@ -177,6 +187,31 @@ func (c *checker) operands() {
 			env.vars["v"] = &wvar{w: o.Imm}
 			if v, ok := c.exprIn(env, e); ok && v.w != 0 && v.w != o.Imm {
 				c.errorf("operand kind %s: Transform has width %d, want %d", o.Name, v.w, o.Imm)
+			}
+		}
+	}
+}
+
+// syntaxes checks the Syntax of the operand kinds, which may call the
+// functions of the shared definitions.
+func (c *checker) syntaxes() {
+	a := c.a
+	for i := range a.Operands {
+		o := &a.Operands[i]
+		if o.Syntax == "" {
+			continue
+		}
+		e, err := parseExpr(o.Syntax)
+		if err != nil {
+			c.errorf("operand kind %s: Syntax: %v", o.Name, err)
+			continue
+		}
+		env := c.env("operand kind " + o.Name)
+		env.vars["v"] = &wvar{w: o.Imm}
+		if v, ok := c.exprIn(env, e); ok {
+			o.sparsed, o.syntaxW = e, v.w
+			if v.w == 0 {
+				o.syntaxW = o.Imm
 			}
 		}
 	}
@@ -292,6 +327,9 @@ func (c *checker) instructions() {
 			continue
 		}
 		in.pattern = pat
+		if len(in.Operands) > 4 {
+			c.errorf("%s: more than four operands", ctx)
+		}
 		in.ops = nil
 		for _, name := range in.Operands {
 			o := a.operands[name]
@@ -314,7 +352,7 @@ func (c *checker) instructions() {
 	}
 }
 
-// opName returns the semantics name of operand i: a, b or c.
+// opName returns the semantics name of operand i: a, b, c or d.
 func opName(i int) string { return string(rune('a' + i)) }
 
 // encoding checks that the encoding of an instruction encodes each
@@ -331,7 +369,7 @@ func (c *checker) encoding(ctx string, in *Instruction) {
 			total += it.Width
 		case Field:
 			total += it.Width
-			i := strings.IndexByte("abc", it.Name[0])
+			i := strings.IndexByte("abcd", it.Name[0])
 			if len(it.Name) != 1 || i < 0 || i >= len(in.ops) {
 				c.errorf("%s: field %s does not name an operand", ctx, it.Name)
 				continue
@@ -339,6 +377,8 @@ func (c *checker) encoding(ctx string, in *Instruction) {
 			o := in.ops[i]
 			want := 0
 			switch {
+			case o.List:
+				want = len(a.classes[o.Class])
 			case o.Class != "" && o.Memory == 0:
 				want = o.regBits(a)
 			case o.Imm != 0:
@@ -360,7 +400,7 @@ func (c *checker) encoding(ctx string, in *Instruction) {
 				c.errorf("%s: unknown fragment %s", ctx, it.Name)
 				continue
 			}
-			i := strings.IndexByte("abc", it.Operand[0])
+			i := strings.IndexByte("abcd", it.Operand[0])
 			if len(it.Operand) != 1 || i < 0 || i >= len(in.ops) {
 				c.errorf("%s: <%s %s> does not name an operand", ctx, it.Name, it.Operand)
 				continue
@@ -396,7 +436,7 @@ func (c *checker) encoding(ctx string, in *Instruction) {
 					}
 					continue
 				}
-				j := strings.IndexByte("abc", b.Operand[0])
+				j := strings.IndexByte("abcd", b.Operand[0])
 				if len(b.Operand) != 1 || j < 0 || j >= len(in.ops) {
 					c.errorf("%s: %s=%s does not name an operand", ctx, k, b.Operand)
 					continue
@@ -409,6 +449,9 @@ func (c *checker) encoding(ctx string, in *Instruction) {
 		}
 	}
 	for name, bits := range covered {
+		if o := in.ops[strings.IndexByte("abcd", name[0])]; o.List {
+			continue // the registers outside the bit ranges cannot be listed
+		}
 		if w := sliceWant[name]; w != 0 && bits != mask(w) {
 			c.errorf("%s: the bit ranges of %s cover %#x, want the %d bits of the operand", ctx, name, bits, w)
 		}

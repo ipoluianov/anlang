@@ -209,7 +209,7 @@ if w != nil {
 
 ## 10. Global state
 
-**mem.global.kinds** — A package-level variable MUST have one of the following types: an atomic type, a mutex type (`sync.Mutex[T]`, `sync.RWMutex[T]`), or — in the `core` profile only — a hardware mapping created by `unsafe.Map` (§11). Its initializer MUST be a constant expression. The declaration rules are in [03-declarations](03-declarations.md); access to such variables gives the effect `Global` ([07-effects](07-effects.md)).
+**mem.global.kinds** — A package-level variable MUST have one of the following types: an atomic type, a mutex type (`sync.Mutex[T]`, `sync.RWMutex[T]`), or — in the `core` profile only — a hardware mapping created by `unsafe.Map` (§11). Its initializer MUST be a constant expression. Until constant initializers of package-level variables are implemented (roadmap step 21), a package-level variable of an atomic type has no initializer and starts with the zero value. The declaration rules are in [03-declarations](03-declarations.md); access to such variables gives the effect `Global` ([07-effects](07-effects.md)).
 
 ```go
 var ticks atomic.U32                    // permitted

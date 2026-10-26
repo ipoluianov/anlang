@@ -94,11 +94,15 @@ type Register struct {
 	// Fixed are the bits of the register that always read as 1, as a
 	// mask.
 	Fixed int
+	// Zero are the bits of the register that always read as 0, as a
+	// mask, such as bit 0 of a program counter of instructions aligned
+	// to two bytes.
+	Zero int
 }
 
-// Operand is a kind of operand. Exactly one of Register, Class, Memory
-// and Imm describes what the operand is; Class and Memory together give
-// an operand that is a register or memory.
+// Operand is a kind of operand. Exactly one of Register, Class, Memory,
+// Imm and Constant describes what the operand is; Class and Memory
+// together give an operand that is a register or memory.
 type Operand struct {
 	Name string
 	// Register is the fixed register the operand denotes.
@@ -139,6 +143,14 @@ type Operand struct {
 	// the operand, in the semantics notation; it is its own inverse,
 	// which encodes the operand.
 	Transform string
+	// Syntax, if not "", is the number that the assembler syntax writes
+	// for the field v of an immediate operand, in the semantics notation,
+	// such as an immediate expanded from a compact encoding; the
+	// semantics see the field itself. The field has at most 16 bits.
+	Syntax string
+	// List marks a register list of Class: a mask whose bit i selects
+	// register number i, written as the registers in braces.
+	List bool
 }
 
 // Fragment is a part of an encoding with alternatives, each of which
@@ -181,7 +193,7 @@ type Prefix struct {
 type Instruction struct {
 	Mnemonic string
 	// Operands are the operand kinds, in assembler order; in the
-	// semantics, the operands are named a, b and c.
+	// semantics, the operands are named a, b, c and d.
 	Operands []string
 	// Encoding is the encoding, in the encoding notation.
 	Encoding string
@@ -202,6 +214,10 @@ type ABI struct {
 	// Frame is the register that holds the frame base; the slots of a
 	// frame are addressed relative to it.
 	Frame string
+	// FrameBottom means that the frame register holds the bottom of the
+	// frame instead of the frame base: the stack pointer after enter, so
+	// that the slots are at offsets that are not negative.
+	FrameBottom bool
 	// Params is the offset from the frame base of the argument area of
 	// the caller, where the parameters and results of a function are.
 	Params int
@@ -213,6 +229,22 @@ type ABI struct {
 	// Flags is the flags register, which the operation flagsout stores
 	// after a call of the instruction package.
 	Flags string
+	// InterruptFrame is the number of bytes that the processor pushes on
+	// the entry of an interrupt handler and that the operation
+	// enter.handler pushes before the frame, for the stack analysis.
+	InterruptFrame int
+	// Structured is set for an architecture whose control flow is
+	// structured, as WebAssembly's (target.arch.structured): a branch
+	// names an enclosing block instead of an address.
+	Structured Structured
+}
+
+// Structured describes the blocks of structured control flow.
+type Structured struct {
+	// Open are the mnemonics of the instructions that open a block, and
+	// End is the mnemonic of the instruction that closes one.
+	Open []string
+	End  string
 }
 
 // Rule is an instruction selection rule (target.arch.rule): the

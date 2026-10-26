@@ -49,7 +49,9 @@ Reference programs that do not depend on the target are stored as described in *
 
 **conf.backend.arch** — A reference program that uses `asm` statements or instruction packages runs only in the emulator of its target, which MUST produce the behavior of its `.out` and `.screen` files.
 
-**conf.backend.select** — A reference program is run on a target if the target accepts it: its profile is one the platform allows (**target.platform.profile**) and its effects are ones the target provides (**target.effects.provides**). The suite MUST contain reference programs in the `core` profile, so that every target with a backend runs some.
+**conf.backend.select** — A reference program is run on a target if the target accepts it: its profile is one the platform allows (**target.platform.profile**), its effects are ones the target provides (**target.effects.provides**) and its image fits the format and the memory of the target (**target.format.size**). The suite MUST contain reference programs in the `core` profile, so that every target with a backend runs some.
+
+**conf.backend.same** — A reference program that the targets `dos-com`, `stm32f103c8` and `web` all accept, unchanged, MUST behave the same in their built-in emulators, with the same standard input. The suite MUST contain at least ten such programs, among them one that reads standard input (the success criterion of the prototype, roadmap step 19).
 
 ## 23.4 Comparison with Go
 
@@ -76,13 +78,19 @@ Reference programs that do not depend on the target are stored as described in *
 **conf.oracle.use** — Where an independent implementation exists, it SHOULD be used as an oracle:
 
 - architecture interpreters against QEMU and processor test suites;
-- the WebAssembly interpreter against the official WebAssembly specification test suite;
+- the images of the reference programs for Cortex-M targets against QEMU, on a board with the same memory map (**conf.backend.ir**);
+- the solver against the enumeration of the values of small domains (**conf.solver.enumeration**);
+- the WebAssembly interpreter against the official WebAssembly specification test suite: every command of the scripts of the core tests of WebAssembly 2.0, with the vector tests, MUST pass; and its validator against V8, the engine of Node.js, on the modules of those scripts, for the binary encoding of each instruction;
+- the modules of the reference programs for the target `web` against Node.js with its WASI (**conf.backend.ir**);
+- the page of the target `web` (**target.format.html**) in a headless browser driven over the DevTools protocol, with input typed while the program waits for it;
 - the type checker against go/types of the Go distribution, on its test programs renamed into Anlang, for the common subset (**conf.go.common-subset**);
 - integer arithmetic, conversions and bounds checks of the IR interpreter against Go, on boundary and random operands of every integer type: Go's integer types for the wrapping types and `bits.Wrapping*`, exact arithmetic for overflow and the other functions of `an/bits`, Go slices, arrays and strings for the bounds and panic messages (**expr.int.checked**, **expr.wrap.ops**, **expr.bits.functions**, **expr.bounds.check**);
 - the IR interpreter against the expected output of the "run" test programs of the Go distribution, renamed into Anlang, for the common subset (**conf.go.common-subset**);
 - linker output against standard format inspection tools;
 - text shaping against a reference shaping test suite;
 - GPU output against format validators.
+
+**conf.solver.enumeration** — For random obligations whose facts bound each of at most four variables to a small range, the solver MUST prove exactly those that hold for every value of the range and refute the others, never returning *unknown*; the checker MUST accept the certificate of every proof, every counterexample MUST satisfy the facts and violate the goal, and the checker MUST reject wrong certificates.
 
 **conf.oracle.scope** — External tools MAY be used only in the tests of the environment. They MUST NOT be part of the toolchain or required by any `anlang` command (see [22-compiler](22-compiler.md), **impl.single-binary**).
 

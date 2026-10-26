@@ -144,4 +144,6 @@ const i8086Rules = []Rule{
 	{Op: "callind", Code: "MOV AX, {x}\nCALL AX"},
 	{Op: "enter", Code: "PUSH BP\nMOV BP, SP\nSUB SP, {n}"},
 	{Op: "leave", Code: "MOV SP, BP\nPOP BP\nRET"},
+	{Op: "irq.save", Width: 16, Code: "PUSHF\nPOP AX\nCLI\nMOV {r}, AX"},
+	{Op: "irq.restore", Width: 16, Code: "MOV AX, {x}\nPUSH AX\nPOPF"},
 }

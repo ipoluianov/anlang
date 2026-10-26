@@ -1,0 +1,27 @@
+// want: ok
+
+// TIM2 is used by main and by its interrupt handler, each time in a
+// critical section of TIM2 (emb.lock.form).
+package main
+
+profile core
+
+import (
+	"an/device"
+	"an/interrupts"
+)
+
+func main() {
+	interrupts.Enable()
+	for {
+		for t := range device.TIM2.Lock {
+			t.CR1 = t.CR1.WithCEN(true)
+		}
+	}
+}
+
+interrupt TIM2() {
+	for t := range device.TIM2.Lock {
+		t.SR = 0
+	}
+}

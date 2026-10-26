@@ -1,0 +1,30 @@
+// want: ok
+
+// main configures TIM2 in its initialization phase, before
+// interrupts.Enable; afterwards only the handler uses it (emb.ctx.single).
+package main
+
+profile core
+
+import (
+	"an/atomic"
+	"an/cpu"
+	"an/device"
+	"an/interrupts"
+)
+
+var ticks atomic.U32
+
+func main() {
+	device.TIM2.DIER = device.TIM2.DIER.WithUIE(true)
+	device.TIM2.CR1 = device.TIM2.CR1.WithCEN(true)
+	interrupts.Enable()
+	for ticks.Load() < 10 {
+		cpu.WaitForInterrupt()
+	}
+}
+
+interrupt TIM2() {
+	device.TIM2.SR = 0
+	ticks.Add(1)
+}

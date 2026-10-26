@@ -180,7 +180,7 @@ AUTH-4  After five failed attempts, login is locked for 15 minutes
 | `anlang check [-target T[,T…]]` | Check types, effects and contracts without generating code |
 | `anlang fmt [-check] [paths]` | Canonical formatting |
 | `anlang test [-target T] [-emu E] [packages]` | Unit, property-based and visual tests; requirement checks |
-| `anlang run [-target T] [-emu E] [-record F]` | Build and run, on the host or in an emulator |
+| `anlang run [-target T] [-emu E] [-screen] [-gpio] [-for D] [-record F]` | Build and run, on the host or in an emulator |
 | `anlang flash [-target T] [-probe P]` | Write a firmware image to a device over SWD/JTAG or UF2 |
 | `anlang size [-target T]` | Flash, RAM and stack usage by package |
 | `anlang query <query>` | Queries to the semantic API |
@@ -261,7 +261,7 @@ AUTH-4  After five failed attempts, login is locked for 15 minutes
 
 **tool.emu.builtin** — Emulators for tests MUST be built into `anlang` and MUST NOT require external programs.
 
-**tool.emu.generated** — The interpreter of each architecture MUST be generated from the formal instruction semantics in its architecture description, the same description from which the backend, the assembler and the architecture instruction package are built (see [13-targets](13-targets.md)).
+**tool.emu.generated** — The interpreter of each architecture MUST be generated from the formal instruction semantics in its architecture description, the same description from which the backend, the assembler and the architecture instruction package are built (see [13-targets](13-targets.md)). The interpreter of an architecture with structured control flow is built in instead and is checked against the test suite of the architecture (**target.arch.structured**, **tool.emu.wasm**).
 
 **tool.emu.ir** — `anlang run -emu ir` MUST run the program in the IR interpreter (see [22-compiler](22-compiler.md), 22.10.3) for any target, without generating machine code. Its observable behavior is the reference for the backends of all targets (see [23-conformance](23-conformance.md), **conf.backend.ir**). A program that panics MUST exit with status 2.
 
@@ -276,6 +276,22 @@ AUTH-4  After five failed attempts, login is locked for 15 minutes
 5. `int 20h` (exit with status 0) and these functions of `int 21h`: `01h`, `07h`, `08h` (read a character; the end of input reads as `1Ah`), `02h`, `06h`, `09h`, `40h` (write; handle 1 is standard output, 2 standard error), `0Bh` (input status), `2Ah`, `2Ch` (date and time), `30h` (version 5.0), `3Fh` (read from handle 0), `4Ch` (exit with the status in `AL`).
 
 `anlang run -screen` writes the text screen after the program ends: its rows without trailing spaces, without trailing empty rows (**tool.emu.observable**). Limits (**tool.emu.limits**): other interrupts and functions stop the emulation with an error; there are no hardware interrupts, graphics modes or files; timing is the cycle count of the description, not measured hardware.
+
+**tool.emu.cortexm** — The built-in emulator of the Cortex-M targets of platform `bare` runs the interpreter of the architecture with the memory regions of the target and models of its peripherals. It loads the BIN image at the start of the `Exec` region, sets `SP` and `PC` from the first two words of the vector table, and models:
+
+1. the semihosting calls of a debugger (`BKPT 0xAB`): `SYS_OPEN` of the console `:tt` (modes 0 to 3 open standard input, 4 to 7 standard output, 8 to 11 standard error), `SYS_CLOSE`, `SYS_WRITEC`, `SYS_WRITE0`, `SYS_WRITE`, `SYS_READ`, `SYS_ISTTY`, `SYS_EXIT` and `SYS_EXIT_EXTENDED`, whose status is 0, or the code for `SYS_EXIT_EXTENDED`, when the reason is `ADP_Stopped_ApplicationExit`, and 1 otherwise;
+2. the registers of the device description (**emb.device.schema**), each holding its value from its reset value; an access to an address of a peripheral without a register stops the emulation with an error;
+3. time, which runs with the executed cycles at the clock of the processor: on the STM32F1, the clock that RCC selects from the 8 MHz internal oscillator, an 8 MHz crystal or the PLL, divided by the AHB prescaler; the oscillators and the PLL are ready as soon as they are on, and the timers on APB1 run at its clock, or twice it if it is divided;
+4. GPIO: the output data register, set and reset by `BSRR` and `BRR`, and the changes of the pins configured as outputs with their time; the input data register reads the output data;
+5. the general-purpose timers: the prescaler, the counter up to the auto-reload value, the update event with its flag, `UG`, and the interrupt it sets pending;
+6. USART: the bytes written to the data register while the port and its transmitter are enabled are its output, which goes to the standard output of `anlang`; the receiver reads the standard input; the transmit register is always empty;
+7. SysTick, counting the processor clock or an eighth of it, with its count flag and its exception pending state; the interrupt controller with the enable and pending registers of the interrupts; a system reset request through `AIRCR`;
+8. `WFI` and `WFE`: the processor sleeps until an enabled interrupt or the SysTick exception is pending, which wakes it even while `PRIMASK` masks it, and the time advances to the next event of a peripheral that sets one pending;
+9. exceptions: while `PRIMASK` is clear and no exception is active, the pending exception with the lowest number (SysTick before the interrupts, an interrupt before those with higher numbers) is taken: the processor pushes `R0`–`R3`, `R12`, `LR`, `PC` and `xPSR` on the main stack, sets `LR` to `EXC_RETURN` and continues at its vector; a branch to an `EXC_RETURN` address pops them. Exceptions do not preempt each other.
+
+`anlang run -gpio` writes the changes of the output pins after the run, one per line: the time in seconds with nine decimals, the pin, such as `PC13`, and `high` or `low` (**tool.emu.observable**); `anlang run -for D` ends the run of a program that does not end when the time of the model reaches the duration `D`, such as `3s`, with status 0. Limits (**tool.emu.limits**): exceptions have one priority, the priority registers are not modeled (roadmap step 33), and the process stack and the faults are not modeled; the other peripherals and the other behavior of the modeled ones have only their registers; other semihosting calls, `BKPT` with another number, `SVC`, `UDF` and a system reset stop the emulation with an error; timing is the cycle count of the description.
+
+**tool.emu.wasm** — The built-in emulator of the target `web` is the WebAssembly interpreter of the toolchain, an implementation of WebAssembly 2.0 with the fixed-width vector instructions. It decodes and validates the module, compiles each function once into instructions over a stack of 64-bit slots with the targets of its branches, and runs `_start` with the functions of WASI of **target.platform.web**: `fd_write` to the standard output and standard error of `anlang`, `fd_read` from its standard input, and `proc_exit`, whose code is the exit status. It also reads the text format of WebAssembly and runs the scripts of the specification test suite (`.wast`), its oracle (**conf.oracle.use**). Limits (**tool.emu.limits**): the call stack has at most 50000 frames and 2^24 slots, beyond which the call traps as an exhausted stack; a memory grows to at most 65536 pages and a table to 2^24 elements; the other functions of WASI and the proposals after WebAssembly 2.0 are not implemented.
 
 **tool.emu.coverage** — `anlang` MUST provide at least:
 

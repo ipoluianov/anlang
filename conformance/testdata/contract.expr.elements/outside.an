@@ -1,0 +1,16 @@
+// want: contract.obligation.unproven
+// checks: contract.expr.elements
+
+// The elements of a are zero, but in an assertion s[i] with i outside
+// the bounds of s is not checked and has an unknown value.
+package main
+
+profile core
+
+func main() {
+	var a [2]int
+	s := a[:]
+	i := 5
+	assert(s[1] == 0)
+	assert(s[i] == 0)
+}

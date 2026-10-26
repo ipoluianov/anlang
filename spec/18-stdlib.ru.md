@@ -37,6 +37,7 @@
 | `an/strings`, `an/unicode`, `an/encoding` | текст и кодировки | да | да | да |
 | `an/errors` | значения ошибок | да | да | да |
 | `an/fmt` | форматирование | без аллокаций | да | да |
+| `an/console` | стандартный ввод | да | да | да |
 | `an/containers` | массивы, очереди, словари | фиксированного размера | да | да |
 | `an/json`, `an/cbor`, `an/binary` | форматы данных | потоковые | да | да |
 | `an/task`, `an/sync`, `an/atomic` | конкурентность | статические задачи | да | да |
@@ -97,15 +98,17 @@
 | --- | --- | --- |
 | `an/task` | `Go`, `Config`, `Low`, `Normal`, `High`, `Critical`, `Wait`, `ErrDeadline`, `Detach`, `Deadline`, `Cancel`, `Cancelled`, `Sleep`, `Yield`, `Run`, `LockThread` | [09-concurrency](09-concurrency.ru.md), [14-embedded](14-embedded.ru.md) |
 | `an/sync` | `Mutex[T]` с `Lock`, `Load`; `RWMutex[T]` с `Lock`, `RLock`, `Load`; спин-блокировка для ядер (*предварительно* `SpinLock[T]`) | [09-concurrency](09-concurrency.ru.md), [15-os](15-os.ru.md) |
-| `an/atomic` | `I8`…`I64`, `U8`…`U64`, `Bool` с `Load`, `Store`, `Add` и порядками памяти | [09-concurrency](09-concurrency.ru.md), [15-os](15-os.ru.md) |
+| `an/atomic` | `I8`…`I64`, `U8`…`U64`, `Bool` с `Load`, `Store`, `Add`, `Swap`, `CompareAndSwap` и порядками памяти | [09-concurrency](09-concurrency.ru.md), [15-os](15-os.ru.md) |
 | `an/arena` | `Arena[T]` с `New`, `Edit`, `Get`, `Delete`; `Ref[T]` | [06-memory](06-memory.ru.md) |
 | `an/effect` | `Effect`; константы базовых эффектов (`Alloc`, `Network`, …); `Declare`, `Mark`, `Defer`, `Without` | [07-effects](07-effects.ru.md) |
 | `an/wcet` | `Within` | [08-contracts](08-contracts.ru.md), [14-embedded](14-embedded.ru.md) |
 | `an/meta` | `Name`, `Fields`, `Variants`, `Field`, `Variant`, `Get`, `Set`, `Is`, `Make`, `Tag`, `Reject` | [10-compile-time](10-compile-time.ru.md) |
-| `an/gen` | эффекты `ReadInput`, `WriteOutput` для генераторов | [10-compile-time](10-compile-time.ru.md) |
+| `an/gen` | эффекты `ReadInput`, `WriteOutput` для генераторов; `ReadFile` | [10-compile-time](10-compile-time.ru.md) |
+| `an/svd` | `Load`, `Parse`: описания устройств (`target.Device`) из SVD-файлов | [14-embedded](14-embedded.ru.md) |
 | `an/secret` | `New`, `Equal`, `Expose`, `Map`, `ConstantTime`; эффект `ExposeSecret` | [11-data-safety](11-data-safety.ru.md) |
 | `an/untrusted` | `Accept` | [11-data-safety](11-data-safety.ru.md) |
 | `an/interrupts` | `Enable` | [14-embedded](14-embedded.ru.md) |
+| `an/cpu` | `WaitForInterrupt` | [14-embedded](14-embedded.ru.md) |
 | `an/bios` | `BootDrive`; `ClearScreen`, `SetCursor`, `Cursor`, `PutChar`, `WriteChar` (int 10h), `ReadKey`, `KeyReady` (int 16h), `Ticks` (int 1Ah) | [15-os](15-os.ru.md), [20-toolchain](20-toolchain.ru.md) |
 | `an/dos` | `Print`, `PrintChar`, `Write`, `ReadChar`, `CharReady`, `Now`, `Time`, `Exit` (int 21h) | [20-toolchain](20-toolchain.ru.md) |
 | `an/encoding` | `CP866` | [10-compile-time](10-compile-time.ru.md) |
@@ -117,6 +120,8 @@
 | `an/app` | `Desc` и соответствие эффектов разрешениям платформ | [17-ui](17-ui.ru.md) |
 | `an/errors` | `New`, `Is`, `As` | этот файл, §18.3.5 |
 | `an/fmt` | `Print`, `Println`, `Printf`; `Fprint`, `Fprintln`, `Fprintf`; `Sprint`, `Sprintln`, `Sprintf` | этот файл, §18.3.4 |
+| `an/console` | `ReadByte` | этот файл, §18.3.4 |
+| `an/math` | функции контрактов `Sum`, `ForAll`, `Exists` | этот файл, §18.3.6 |
 
 ### 18.3.4 Печать
 
@@ -125,6 +130,8 @@
 **std.fmt.fprint** — `fmt.Fprint`, `fmt.Fprintln` и `fmt.Fprintf` принимают `io.Writer` первым аргументом и возвращают `(n int, err error)`, как в Go. На ошибку распространяется **stmt.error.unused** ([05-statements](05-statements.ru.md)).
 
 **std.fmt.sprint** — `fmt.Sprint`, `fmt.Sprintln` и `fmt.Sprintf` возвращают `string` и не имеют эффекта `Console`.
+
+**std.console.read** — `console.ReadByte()` читает следующий байт стандартного ввода программы и возвращает его с `true` или `0` и `false` в конце ввода. Она ждёт, пока байт появится, поэтому её эффекты — `Console` и `Block`. Ввод — клавиатура в DOS, консоль отладчика на платформе `bare`, дескриптор файла 0 на платформе `web` (**target.platform.web**) и стандартный ввод в интерпретаторе IR.
 
 **Примечание** — Печать в стандартный вывод — самый частый случай, а сбой записи там редок и обычно неисправим, поэтому он вызывает панику, а не возвращает ошибку, которую каждому вызывающему пришлось бы отбрасывать. Запись в произвольный `io.Writer`, например в файл или сетевое соединение, возвращает ошибку, потому что там её нужно обрабатывать.
 
@@ -177,3 +184,16 @@ if de, ok := errors.As[mydictionary.Error](err); ok {
 ```
 
 **Примечание** — `anlang port` переводит Go-шную ошибку-маркер `var ErrX = errors.New("...")` в `const ErrX = errors.New("...")`; смысл не меняется, пока тексты маркеров не совпадают.
+
+### 18.3.6 Функции контрактов
+
+**std.math.contract** — `math.Sum(xs)` — сумма элементов среза или массива целых как математическое целое (**contract.expr.math**). Своего типа у неё нет: как нетипизированная константа, она принимает тип другого операнда, так что сравнивается со значением любого целого типа. Она МОЖЕТ встречаться только в выражениях контрактов и в аргументе `assert`; в других местах это ошибка. Пока стандартная библиотека не компилируется из исходников на Anlang, в `an/math` есть только функции контрактов.
+
+**std.math.quantifier** — `math.ForAll(lo, hi, func(i T) bool { return p })` истинно, если p выполняется для каждого целого i с lo ≤ i < hi, а `math.Exists(lo, hi, func(i T) bool { return p })` — если для одного из них. T — целый тип, lo и hi преобразуются в T, а предикат — функциональный литерал, тело которого состоит из одного оператора `return`. Обе — функции контрактов (**std.math.contract**).
+
+```go
+func find(xs []int, x int) int {
+    ensures result != -1 || math.ForAll(0, len(xs), func(j int) bool { return xs[j] != x })
+    …
+}
+```

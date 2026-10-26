@@ -20,7 +20,11 @@ func (a *Arch) InstructionPackage() []byte {
 	w := func(format string, args ...any) { fmt.Fprintf(&b, format+"\n", args...) }
 	w("// Package %s exposes the instructions and registers of the %s", a.Name, a.Name)
 	w("// architecture (spec/13-targets.md §13.5.2). It is generated from the")
-	w("// architecture description arch.%s; the compiler replaces a call of a", strings.ToUpper(a.Name[:1])+a.Name[1:])
+	constName := archConsts[a.Name]
+	if constName == "" {
+		constName = strings.ToUpper(a.Name[:1]) + a.Name[1:]
+	}
+	w("// architecture description arch.%s; the compiler replaces a call of a", constName)
 	w("// function by its instruction.")
 	w("package %s", a.Name)
 	w("")
@@ -55,7 +59,10 @@ func (a *Arch) InstructionPackage() []byte {
 		name := names[k]
 		var params []string
 		for i, o := range in.ops {
-			if o.Imm != 0 {
+			switch {
+			case o.Syntax != "":
+				params = append(params, fmt.Sprintf("%s u%d", opName(i), roundWidth(o.syntaxW)))
+			case o.Imm != 0:
 				params = append(params, fmt.Sprintf("%s u%d", opName(i), roundWidth(o.Imm)))
 			}
 		}
@@ -141,8 +148,8 @@ func (a *Arch) PackageRegisters() []*Register {
 	var regs []*Register
 	for i := range a.Registers {
 		r := &a.Registers[i]
-		if r.Parent != "" || r.Class == "prefix" || r == a.pc {
-			continue
+		if r.Parent != "" || r.Class == "prefix" || r == a.pc || r.Class == "" && r.Name != a.ABI.Flags {
+			continue // only the registers of classes and the flags
 		}
 		regs = append(regs, r)
 	}

@@ -2,6 +2,7 @@ package interp
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"strings"
 	"unicode/utf8"
@@ -16,6 +17,24 @@ func (m *machine) builtin(b *ir.Builtin, c *ir.Call, args []value) value {
 		return int64(m.length(args[0]))
 	case "effect.Mark", "effect.Defer":
 		return nil // effects are checked at compile time (spec/07-effects.md)
+	case "console.ReadByte":
+		var b [1]byte
+		if m.opts.Stdin != nil {
+			if n, _ := m.opts.Stdin.Read(b[:]); n == 1 {
+				return []value{uint64(b[0]), true}
+			}
+		}
+		return []value{uint64(0), false}
+	case "gen.ReadFile":
+		name := args[0].(string)
+		if m.opts.ReadFile == nil {
+			panic(&anPanic{v: "gen.ReadFile: no input files can be read here", t: types.Typ[types.String]})
+		}
+		data, err := m.opts.ReadFile(name)
+		if err != nil {
+			panic(&anPanic{v: "gen.ReadFile: " + err.Error(), t: types.Typ[types.String]})
+		}
+		return stringToSlice(string(data), types.NewSlice(types.Typ[types.U8]))
 	case "unsafe.Data":
 		// The interpreter has no addresses (spec/22-compiler.md §22.10.3).
 		return uint64(0)
@@ -97,8 +116,11 @@ func (m *machine) builtin(b *ir.Builtin, c *ir.Call, args []value) value {
 			if b.Bname == "min" && m.binop(lssOp, b.Typ, a, r).(bool) || b.Bname == "max" && m.binop(lssOp, b.Typ, r, a).(bool) {
 				r = a
 			}
-			// NaN is the result if any operand is NaN, as in Go.
+			// NaN is the result if any operand is NaN, as in Go; of zeros,
+			// -0 is the lesser.
 			if f, ok := a.(float64); ok && f != f {
+				r = a
+			} else if ok && f == 0 && r.(float64) == 0 && math.Signbit(f) == (b.Bname == "min") {
 				r = a
 			}
 		}
@@ -231,7 +253,12 @@ func (m *machine) appendValues(s sliceVal, vals []value, et types.Type) value {
 		s.len = n
 		return s
 	}
-	c := max(n, 2*s.cap, 4)
+	// The capacity of Go's append: the same if the elements fit, which
+	// Go appends in place, otherwise doubled.
+	c := s.cap
+	if n > c {
+		c = max(n, 2*s.cap, 4)
+	}
 	m.alloc(c)
 	elems := make([]value, c)
 	for i := range s.len {

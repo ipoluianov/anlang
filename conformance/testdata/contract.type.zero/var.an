@@ -1,0 +1,23 @@
+// want: contract.type.zero
+
+// The zero value of Positive does not satisfy its invariant, so a
+// variable of the type needs an initial value, and so does a field of it
+// in a literal.
+package main
+
+profile core
+
+type Positive struct {
+	invariant v > 0
+	v int
+}
+
+type Pair struct {
+	a, b Positive
+}
+
+func main() {
+	var p Positive
+	q := Pair{a: Positive{1}}
+	_, _ = p, q
+}

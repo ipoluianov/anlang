@@ -1,0 +1,29 @@
+// want: ok
+
+// Narrowing conversions proven by the facts of their program points:
+// conditions, loops and the values of variables (type.conv.int-narrow-facts).
+package main
+
+profile core
+
+import "an/fmt"
+
+func low(x int) u8 {
+	if x >= 0 && x < 256 {
+		return u8(x)
+	}
+	return 0
+}
+
+func main() {
+	n := 300
+	fmt.Println(low(n), low(65))
+	for i := 0; i < 128; i++ {
+		if i%32 == 0 {
+			fmt.Println(i8(i))
+		}
+	}
+	k := 7
+	k = k * 3
+	fmt.Println(u8(k))
+}

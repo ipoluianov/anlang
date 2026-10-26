@@ -1,0 +1,34 @@
+// want: ok
+
+// The SysTick timer of the Cortex-M3 counts the processor clock: the
+// count flag rises once per period, and TIM2 counts the same time
+// (tool.emu.cortexm).
+package main
+
+profile core
+
+import (
+	"an/device"
+	"an/fmt"
+)
+
+func main() {
+	// A period of 1 ms at the 8 MHz clock after reset.
+	device.STK.LOAD = device.STK.LOAD.WithRELOAD(8000 - 1)
+	device.STK.VAL = 0
+	device.STK.CTRL = device.STK.CTRL.WithCLKSOURCE(device.STK_CLKSOURCE_Processor).WithENABLE(true)
+	// TIM2 counts microseconds.
+	device.RCC.APB1ENR = device.RCC.APB1ENR.WithTIM2EN(true)
+	device.TIM2.PSC = device.TIM2.PSC.WithPSC(8 - 1)
+	device.TIM2.EGR = device.TIM2.EGR.WithUG(true)
+	device.TIM2.CR1 = device.TIM2.CR1.WithCEN(true)
+	start := device.TIM2.CNT.CNT()
+	periods := 0
+	for periods < 5 {
+		if device.STK.CTRL.COUNTFLAG() {
+			periods++
+		}
+	}
+	us := device.TIM2.CNT.CNT() - start
+	fmt.Println("periods:", periods, "about 5 ms:", us >= 4900 && us <= 5100)
+}

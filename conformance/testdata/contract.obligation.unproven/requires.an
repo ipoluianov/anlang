@@ -1,0 +1,15 @@
+// want: contract.obligation.unproven
+
+// The precondition does not hold for n = 0.
+package main
+
+func inverse(n int) int {
+	requires n != 0
+	return 1000 / n
+}
+
+func main() {
+	for n := range 3 {
+		_ = inverse(n)
+	}
+}

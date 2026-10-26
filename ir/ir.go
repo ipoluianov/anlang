@@ -28,6 +28,11 @@ type Program struct {
 	Funcs   []*Func
 	Main    *Func
 	IntBits int // size of int and uint in bits (type.int.word)
+	// Core is set when package main runs in profile core on the target:
+	// the first of its profiles that the platform allows.
+	Core bool
+	// Handlers are the interrupt handlers (spec/14-embedded.md §3).
+	Handlers []*Func
 
 	// MethodSets lists the methods of the types that are converted to
 	// interfaces, for dynamic calls and type assertions.
@@ -57,8 +62,13 @@ type Func struct {
 	Sig      *types.Signature
 	Params   []*Param
 	FreeVars []*FreeVar // captured values or addresses of a function literal
+	Handler  string     // the interrupt vector of an interrupt handler
 	Blocks   []*Block
 	Pos      syntax.Pos
+
+	// RecursionDepth is the proven bound on the depth of the recursion of
+	// a function that calls itself, or 0.
+	RecursionDepth int
 
 	nvalues int
 }
@@ -157,7 +167,7 @@ func (f *FuncValue) Name() string     { return f.Func.Name }
 type Global struct {
 	Var  *types.Var
 	Typ  types.Type // *Pointer
-	Addr *Const
+	Addr *Const     // nil for a variable with static storage
 }
 
 func (g *Global) Type() types.Type { return g.Typ }
@@ -251,6 +261,9 @@ type IndexAddr struct {
 	register
 	X     Value
 	Index Value
+	// Proven is set when the index is proven in bounds
+	// (contract.check.runtime): the bounds check is removed.
+	Proven bool
 }
 
 // SubsliceAddr yields the address of the elements Low to High-1 of the
@@ -274,8 +287,9 @@ type Field struct {
 // Index yields element Index of array or string value X.
 type Index struct {
 	register
-	X     Value
-	Index Value
+	X      Value
+	Index  Value
+	Proven bool // the index is proven in bounds
 }
 
 // Lookup yields the element of map X with key Key; with CommaOk, a pair
@@ -301,6 +315,7 @@ type Slice struct {
 	register
 	X              Value
 	Low, High, Max Value
+	Proven         bool // the bounds are proven
 }
 
 // BinOp is a binary operation; the operands have the same type, except
@@ -309,6 +324,9 @@ type BinOp struct {
 	register
 	Op   syntax.Kind
 	X, Y Value
+	// Proven is set when the checks of the operation are proven not to
+	// fail: overflow, division by zero and a negative shift count.
+	Proven bool
 }
 
 // UnOp is -X, ^X, !X or <-X.
@@ -317,6 +335,7 @@ type UnOp struct {
 	Op      syntax.Kind
 	X       Value
 	CommaOk bool // a receive with comma-ok
+	Proven  bool // a negation is proven not to overflow
 }
 
 // Convert converts X to its type: numeric and string conversions,

@@ -4,20 +4,28 @@ import (
 	"fmt"
 	"math/big"
 	"math/rand"
+	"strconv"
 	"testing"
 
 	"an/arch/desc"
 	"an/types"
 )
 
-// TestRulesI8086 checks the instruction selection rules of the 8086
+// TestRules checks the instruction selection rules of the architectures
 // against the formal semantics (target.arch.rules-test): each rule of a
 // data operation runs in the interpreter generated from the description,
-// exhaustively for 8-bit operands and on boundary and random values for
-// wider ones, with its operands in frame slots and, where its template
-// assembles with them, as constants.
-func TestRulesI8086(t *testing.T) {
-	a, errs := desc.ForName("i8086")
+// or, for an architecture with structured control flow, in its built-in
+// interpreter, exhaustively for 8-bit operands and on boundary and random
+// values for wider ones, with its operands in frame slots and, where its
+// template assembles with them, as constants.
+func TestRules(t *testing.T) {
+	for _, name := range []string{"i8086", "armv7m", "wasm32"} {
+		t.Run(name, func(t *testing.T) { testRules(t, name) })
+	}
+}
+
+func testRules(t *testing.T, name string) {
+	a, errs := desc.ForName(name)
 	if len(errs) > 0 {
 		t.Fatal(errs)
 	}
@@ -25,7 +33,7 @@ func TestRulesI8086(t *testing.T) {
 	checked := 0
 	for _, r := range a.Rules {
 		switch r.Op {
-		case "jump", "branch", "call", "callind", "enter", "leave", "regin", "regout", "flagsout":
+		case "jump", "branch", "call", "callind", "enter", "leave", "regin", "regout", "flagsout", "enter.handler", "leave.handler", "irq.save", "irq.restore", "block", "loop", "end":
 			continue
 		}
 		r := r
@@ -49,8 +57,10 @@ func TestRulesI8086(t *testing.T) {
 	}
 }
 
-// harness runs instruction templates on the 8086 interpreter: code at
-// 0000:0100, the frame base BP at 0x8000.
+// harness runs instruction templates on the interpreter of an
+// architecture: code at 0x100 (0000:0100 on the 8086), the frame base at
+// 0x8000; with FrameBottom, the frame register holds the frame base less
+// harnessFrame.
 type harness struct {
 	t     *testing.T
 	a     *desc.Arch
@@ -64,19 +74,37 @@ type prepared struct {
 	image     []byte
 	end, trap uint64
 	err       error
+	// The function of a structured architecture, which returns whether
+	// control reached the trap label.
+	wasm *wasmTemplate
+}
+
+// mem is the memory of the machine that runs a template.
+type mem interface {
+	Read(addr uint64, width int) uint64
+	Write(addr uint64, width int, v uint64)
 }
 
 const (
-	frameBase = 0x8000
-	offX      = -16 // the slots of x, y and r
-	offY      = -32
-	offR      = -48
+	frameBase    = 0x8000
+	harnessFrame = 0x100
+	offX         = -16 // the slots of x, y and r
+	offY         = -32
+	offR         = -48
 )
 
 func newHarness(t *testing.T, a *desc.Arch) *harness {
-	g := &gen{arch: a, word: a.Word / 8, ptr: a.Pointers.Near / 8, align: a.ABI.Align, intBits: a.Word, frame: a.ABI.Frame,
+	ptr := a.Pointers.Near
+	if a.Pointers.Flat != 0 {
+		ptr = a.Pointers.Flat
+	}
+	g := &gen{arch: a, word: a.Word / 8, ptr: ptr / 8, align: a.ABI.Align, intBits: a.Word, frame: a.ABI.Frame, bottom: a.ABI.FrameBottom,
 		layouts: map[types.Type][2]int{}, funcsByLabel: map[string]bool{}, selected: map[string]int{}, rules: map[string][]desc.Rule{}}
-	return &harness{t: t, a: a, g: g, m: desc.NewMachine(a), cache: map[string]*prepared{}}
+	m := desc.NewMachine(a)
+	if m.Mem == nil {
+		m.Map(0, 0x10000)
+	}
+	return &harness{t: t, a: a, g: g, m: m, cache: map[string]*prepared{}}
 }
 
 // prepare assembles template code with the operands.
@@ -99,8 +127,16 @@ func (h *harness) prepare(code string, ops map[string]operand) *prepared {
 		p.err = errNoAssemble
 		return p
 	}
+	if h.a.ABI.Structured.End != "" {
+		p.wasm, p.err = h.prepareWasm(lines)
+		return p
+	}
 	g.code = nil
 	for _, l := range lines {
+		l = slotTok.ReplaceAllStringFunc(l, func(m string) string {
+			off, _ := strconv.Atoi(slotTok.FindStringSubmatch(m)[1])
+			return strconv.Itoa(harnessFrame + off)
+		})
 		if len(l) > 0 && l[len(l)-1] == ':' {
 			g.code = append(g.code, item{label: l[:len(l)-1]})
 		} else {
@@ -109,26 +145,37 @@ func (h *harness) prepare(code string, ops map[string]operand) *prepared {
 	}
 	g.code = append(g.code, item{label: "END"}, item{text: "NOP"}, item{label: "TRAP"}, item{text: "NOP"})
 	g.data = nil
-	p.image, p.err = g.link(0x100)
+	p.image, p.err = g.link(0x100, -1)
 	p.end, p.trap = uint64(g.addrs["END"]), uint64(g.addrs["TRAP"])
 	return p
 }
 
 // run runs template code with the operands, with memory set by setup,
-// and returns the machine and whether control reached the trap label.
-func (h *harness) run(code string, ops map[string]operand, setup func(m *desc.Machine)) (*desc.Machine, bool, error) {
+// and returns the memory and whether control reached the trap label.
+func (h *harness) run(code string, ops map[string]operand, setup func(m mem)) (mem, bool, error) {
 	p := h.prepare(code, ops)
 	if p.err != nil {
 		return nil, false, p.err
 	}
-	m := h.m
-	copy(m.Mem[0x100:], p.image)
-	for _, r := range []string{"CS", "DS", "ES", "SS"} {
-		m.SetReg(r, 0)
+	if p.wasm != nil {
+		return p.wasm.run(setup)
 	}
-	m.SetReg("IP", 0x100)
+	m := h.m
+	for i, b := range p.image {
+		m.Write(uint64(0x100+i), 8, uint64(b))
+	}
+	for _, r := range []string{"CS", "DS", "ES", "SS"} {
+		if h.a.Register(r) != nil {
+			m.SetReg(r, 0)
+		}
+	}
+	m.SetReg(h.a.PC, 0x100)
 	m.SetReg("SP", 0x7000)
-	m.SetReg("BP", frameBase)
+	if h.a.ABI.FrameBottom {
+		m.SetReg(h.a.ABI.Frame, frameBase-harnessFrame)
+	} else {
+		m.SetReg(h.a.ABI.Frame, frameBase)
+	}
 	setup(m)
 	for steps := 0; ; steps++ {
 		pc := m.FetchAddr()
@@ -153,19 +200,22 @@ func slot(off, width int) operand {
 	return operand{kind: opSlot, off: off, width: widthOf(width / 8)}
 }
 
-func put(m *desc.Machine, off int, width int, v uint64) {
+func put(m mem, off int, width int, v uint64) {
 	for i := 0; i < width/8; i++ {
-		m.Mem[frameBase+off+i] = byte(v >> uint(8*i))
+		m.Write(uint64(frameBase+off+i), 8, v>>uint(8*i))
 	}
 }
 
-func get(m *desc.Machine, off int, width int) uint64 {
+func get(m mem, off int, width int) uint64 {
 	var v uint64
 	for i := 0; i < width/8; i++ {
-		v |= uint64(m.Mem[frameBase+off+i]) << uint(8*i)
+		v |= m.Read(uint64(frameBase+off+i), 8) << uint(8*i)
 	}
 	return v
 }
+
+func setByte(m mem, addr int, b byte) { m.Write(uint64(addr), 8, uint64(b)) }
+func getByte(m mem, addr int) byte    { return byte(m.Read(uint64(addr), 8)) }
 
 // values returns the operand values to test for a width.
 func values(width int, rng *rand.Rand) []uint64 {
@@ -312,7 +362,7 @@ func (h *harness) checkData(r desc.Rule, rng *rand.Rand) {
 	case "eq", "ne", "lt.s", "lt.u", "le.s", "le.u":
 		rw = 8
 	case "shl", "shr.u", "shr.s":
-		yw = 16
+		yw = h.g.word * 8
 	}
 	xs := values(xw, rng)
 	ys := values(yw, rng)
@@ -357,7 +407,7 @@ func (h *harness) sweep(r desc.Rule, xs, ys []uint64, xw, yw, rw int, unary, xIm
 					ops["y"] = imm(y, yw)
 				}
 			}
-			m, trap, err := h.run(r.Code, ops, func(m *desc.Machine) {
+			m, trap, err := h.run(r.Code, ops, func(m mem) {
 				put(m, offX, xw, x)
 				put(m, offY, yw, y)
 				put(m, offR, rw, 0x5A5A5A5A5A5A5A5A)
@@ -387,11 +437,12 @@ func (h *harness) sweep(r desc.Rule, xs, ys []uint64, xw, yw, rw int, unary, xIm
 func (h *harness) checkAddr(r desc.Rule) {
 	x := slot(offX, 0)
 	x.width = 0
-	m, _, err := h.run(r.Code, map[string]operand{"r": slot(offR, 16), "x": x}, func(*desc.Machine) {})
+	pw := h.g.ptr * 8
+	m, _, err := h.run(r.Code, map[string]operand{"r": slot(offR, pw), "x": x}, func(mem) {})
 	if err != nil {
 		h.t.Fatal(err)
 	}
-	if got := get(m, offR, 16); got != uint64(frameBase+offX) {
+	if got := get(m, offR, pw); got != uint64(frameBase+offX) {
 		h.t.Errorf("addr: got %#x, want %#x", got, frameBase+offX)
 	}
 }
@@ -400,31 +451,44 @@ func (h *harness) checkAddr(r desc.Rule) {
 func (h *harness) checkMemory(r desc.Rule, rng *rand.Rand) {
 	const area = 0x4000
 	w := r.Width
-	ptr, pw := uint64(area), 16
+	ptr, pw := uint64(area), h.g.ptr*8
 	if r.Op == "load.far" || r.Op == "store.far" {
 		ptr, pw = 0x0300<<16|0x1000, 32 // 0300:1000 is the physical address 0x4000
 	}
 	for _, k := range []uint64{0, 1, 6, 255} {
 		for _, v := range values(w, rng)[:20] {
-			var ops map[string]operand
 			load := r.Op == "load" || r.Op == "load.far"
-			if load {
-				ops = map[string]operand{"r": slot(offR, w), "p": slot(offX, pw), "k": imm(k, 0)}
-			} else {
-				ops = map[string]operand{"p": slot(offX, pw), "k": imm(k, 0), "x": slot(offY, w)}
+			// The address and the value in slots or, for the templates
+			// that take them, as constants.
+			var variants []map[string]operand
+			for _, p := range []operand{slot(offX, pw), imm(ptr, pw)} {
+				if load {
+					variants = append(variants, map[string]operand{"r": slot(offR, w), "p": p, "k": imm(k, 0)})
+					continue
+				}
+				for _, x := range []operand{slot(offY, w), imm(v, w)} {
+					variants = append(variants, map[string]operand{"p": p, "k": imm(k, 0), "x": x})
+				}
 			}
-			m, _, err := h.run(r.Code, ops, func(m *desc.Machine) {
-				put(m, offX, pw, ptr)
-				put(m, offY, w, v)
-				for i := 0; i < w/8; i++ {
-					m.Mem[area+int(k)+i] = byte(v >> uint(8*i))
-				}
-				if !load {
+			var m mem
+			var err error
+			for _, ops := range variants {
+				m, _, err = h.run(r.Code, ops, func(m mem) {
+					put(m, offX, pw, ptr)
+					put(m, offY, w, v)
 					for i := 0; i < w/8; i++ {
-						m.Mem[area+int(k)+i] = 0xEE
+						setByte(m, area+int(k)+i, byte(v>>uint(8*i)))
 					}
+					if !load {
+						for i := 0; i < w/8; i++ {
+							setByte(m, area+int(k)+i, 0xEE)
+						}
+					}
+				})
+				if err != errNoAssemble {
+					break
 				}
-			})
+			}
 			if err != nil {
 				h.t.Fatal(err)
 			}
@@ -433,7 +497,7 @@ func (h *harness) checkMemory(r desc.Rule, rng *rand.Rand) {
 				got = get(m, offR, w)
 			} else {
 				for i := 0; i < w/8; i++ {
-					got |= uint64(m.Mem[area+int(k)+i]) << uint(8*i)
+					got |= uint64(getByte(m, area+int(k)+i)) << uint(8*i)
 				}
 			}
 			if got != v {
@@ -449,18 +513,34 @@ func (h *harness) checkBlock(r desc.Rule, rng *rand.Rand) {
 	for _, n := range []int{1, 2, 3, 17, 100} {
 		data := make([]byte, n)
 		rng.Read(data)
-		ops := map[string]operand{"p": slot(offX, 16), "n": imm(uint64(n), 0)}
-		if r.Op == "copy" {
-			ops["q"] = slot(offY, 16)
-		}
-		m, _, err := h.run(r.Code, ops, func(m *desc.Machine) {
-			put(m, offX, 16, dst)
-			put(m, offY, 16, src)
-			copy(m.Mem[src:], data)
-			for i := 0; i < n+2; i++ {
-				m.Mem[dst+i] = 0xEE
+		pw := h.g.ptr * 8
+		var variants []map[string]operand
+		for _, p := range []operand{slot(offX, pw), imm(dst, pw)} {
+			if r.Op != "copy" {
+				variants = append(variants, map[string]operand{"p": p, "n": imm(uint64(n), 0)})
+				continue
 			}
-		})
+			for _, q := range []operand{slot(offY, pw), imm(src, pw)} {
+				variants = append(variants, map[string]operand{"p": p, "q": q, "n": imm(uint64(n), 0)})
+			}
+		}
+		var m mem
+		var err error
+		for _, ops := range variants {
+			m, _, err = h.run(r.Code, ops, func(m mem) {
+				put(m, offX, pw, dst)
+				put(m, offY, pw, src)
+				for i, b := range data {
+					setByte(m, src+i, b)
+				}
+				for i := 0; i < n+2; i++ {
+					setByte(m, dst+i, 0xEE)
+				}
+			})
+			if err != errNoAssemble {
+				break
+			}
+		}
 		if err != nil {
 			h.t.Fatal(err)
 		}
@@ -469,11 +549,11 @@ func (h *harness) checkBlock(r desc.Rule, rng *rand.Rand) {
 			if r.Op == "zero" {
 				want = 0
 			}
-			if m.Mem[dst+i] != want {
-				h.t.Fatalf("%s n=%d: byte %d is %#x, want %#x", r.Op, n, i, m.Mem[dst+i], want)
+			if got := getByte(m, dst+i); got != want {
+				h.t.Fatalf("%s n=%d: byte %d is %#x, want %#x", r.Op, n, i, got, want)
 			}
 		}
-		if m.Mem[dst+n] != 0xEE {
+		if getByte(m, dst+n) != 0xEE {
 			h.t.Errorf("%s n=%d writes past the end", r.Op, n)
 		}
 	}

@@ -113,12 +113,12 @@ func (fn *fnGen) binOp(i *ir.BinOp) {
 	}
 	bits, signed, wrapping, ok := g.intInfo(t)
 	if !ok {
-		if i.Op == syntax.Eql || i.Op == syntax.Neq {
-			fn.equality(i, x, y, t)
+		if fb, isFloat := floatBits(t); isFloat {
+			fn.floatBinOp(i, x, y, fb)
 			return
 		}
-		if _, isFloat := t.Underlying().(*types.Basic); isFloat {
-			fn.unsupported(15, "floating-point arithmetic")
+		if i.Op == syntax.Eql || i.Op == syntax.Neq {
+			fn.equality(i, x, y, t)
 			return
 		}
 		fn.errorf("codegen: operator %s on %s", i.Op, t)
@@ -129,7 +129,8 @@ func (fn *fnGen) binOp(i *ir.BinOp) {
 		sfx = ".s"
 	}
 	checked := func(op string) {
-		if wrapping {
+		if wrapping || i.Proven {
+			// A proven operation does not overflow (contract.check.runtime).
 			fn.arith(i, op, bits, x, y, "")
 		} else {
 			fn.arith(i, op+sfx, bits, x, y, "PanicOverflow")
@@ -208,11 +209,11 @@ func (fn *fnGen) divide(i *ir.BinOp, x, y *loc, bits int, signed, wrapping bool)
 		op += ".u"
 	}
 	cy, yconst := fn.constInt(y)
-	if !yconst || cy == 0 {
+	if !i.Proven && (!yconst || cy == 0) {
 		fn.branchIf(fn.test("eq", bits, fn.scalar(y), imm(0, bits)), fn.trap("PanicDivide"))
 	}
 	minusOne := signed && (!yconst || cy == -1)
-	if !minusOne {
+	if !minusOne || i.Proven && !wrapping {
 		fn.arith(i, op, bits, x, y, "")
 		return
 	}
@@ -250,7 +251,7 @@ func (fn *fnGen) shift(i *ir.BinOp, x, y *loc, bits int, signed bool) {
 	g := fn.g
 	ybits, ysigned, _, _ := g.intInfo(i.Y.Type())
 	_, yconst := fn.constInt(y)
-	if ysigned && !yconst {
+	if ysigned && !yconst && !i.Proven {
 		fn.branchIf(fn.test("lt.s", ybits, fn.scalar(y), imm(0, ybits)), fn.trap("PanicShift"))
 	}
 	w := g.word * 8
@@ -350,7 +351,15 @@ func (fn *fnGen) unOp(i *ir.UnOp) {
 			fn.unsupported(30, "channels")
 			return
 		}
-		fn.unsupported(15, "floating-point arithmetic")
+		if fb, isFloat := floatBits(t); isFloat && i.Op == syntax.Sub {
+			fn.floatNeg(i, x, fb)
+			return
+		}
+		if _, isFloat := floatBits(t); isFloat && i.Op == syntax.Add {
+			fn.vals[i] = x
+			return
+		}
+		fn.errorf("codegen: unary operator %s on %s", i.Op, t)
 		return
 	}
 	switch i.Op {
@@ -360,7 +369,7 @@ func (fn *fnGen) unOp(i *ir.UnOp) {
 		fn.arith(i, "not", bits, x, nil, "")
 	case syntax.Sub:
 		switch {
-		case wrapping:
+		case wrapping || i.Proven:
 			fn.arith(i, "neg", bits, x, nil, "")
 		case signed:
 			fn.arith(i, "neg.s", bits, x, nil, "PanicOverflow")
@@ -386,12 +395,10 @@ func (fn *fnGen) convert(i *ir.Convert) {
 	case types.Identical(from.Underlying(), to.Underlying()), types.IsInterface(from) && types.IsInterface(to):
 		fn.vals[i] = &loc{t: to, parts: x.parts, zero: x.zero, at: x.at, addr: x.addr}
 	default:
-		if b, ok := from.Underlying().(*types.Basic); ok && b.Info()&types.IsFloat != 0 {
-			fn.unsupported(15, "floating-point conversions")
-			return
-		}
-		if b, ok := to.Underlying().(*types.Basic); ok && b.Info()&types.IsFloat != 0 {
-			fn.unsupported(15, "floating-point conversions")
+		_, fromFloat := floatBits(from)
+		_, toFloat := floatBits(to)
+		if fromFloat || toFloat {
+			fn.floatConvert(i, x)
 			return
 		}
 		if at, ok := to.Underlying().(*types.Array); ok {
@@ -510,7 +517,7 @@ func (fn *fnGen) slice(i *ir.Slice) {
 	chi, kh := fn.constInt(hi)
 	cmx, km := fn.constInt(mx)
 	cc, kc := fn.constInt(c)
-	if !(kl && kh && km && kc && 0 <= clo && clo <= chi && chi <= cmx && cmx <= cc) {
+	if !i.Proven && !(kl && kh && km && kc && 0 <= clo && clo <= chi && chi <= cmx && cmx <= cc) {
 		fn.callRuntime("CheckSlice", []*loc{lo, hi, mx, c, boolLoc(i.Max != nil), boolLoc(isSlice)})
 	}
 	r := fn.result(i)

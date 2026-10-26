@@ -55,15 +55,29 @@ type Arch struct {
 	cfetch      cexpr
 	caddress    cexpr
 	instrPC     bool // compiling instruction semantics, where PC reads as PCRead
+
+	// The machine without memory that evaluates Syntax.
+	syntaxMu sync.Mutex
+	syntaxM  *Machine
 }
 
 // ABI is the machine model of the code generator (target.arch.abi).
 type ABI struct {
-	Frame    string
-	Params   int
-	Align    int
-	Reserved []string
-	Flags    string
+	Frame       string
+	FrameBottom bool
+	Params      int
+	Align       int
+	Reserved    []string
+	Flags       string
+	// InterruptFrame is what the processor and enter.handler push for an
+	// interrupt handler, for the stack analysis.
+	InterruptFrame int
+	// Structured describes structured control flow: the mnemonics that
+	// open a block and the one that ends it.
+	Structured struct {
+		Open []string
+		End  string
+	}
 }
 
 // Rule is an instruction selection rule (target.arch.rule).
@@ -85,6 +99,7 @@ type Register struct {
 	Parent string
 	Offset int
 	Fixed  int
+	Zero   int
 	Number int // the number within the class
 
 	index  int       // the index in Registers
@@ -106,9 +121,16 @@ type Operand struct {
 	Width     int
 	Scale     int
 	Transform string
+	Syntax    string
+	List      bool
 
 	transform cexpr // compiled Transform
 	tparsed   Expr
+	sparsed   Expr  // parsed Syntax
+	syntaxW   int   // the width of Syntax
+	csyntax   cexpr // compiled Syntax, made by compile
+	// syntaxInv maps the numbers of Syntax to their first fields.
+	syntaxInv map[uint64]uint64
 }
 
 // bits returns the operand bits of the field value v: transformed,
@@ -130,7 +152,7 @@ func (o *Operand) field(a *Arch, v int64) (uint64, bool) {
 	}
 	v >>= uint(o.Scale)
 	if o.Signed {
-		if v < -(1<<(o.Imm-1)) || v >= 1<<(o.Imm-1) {
+		if o.Imm < 64 && (v < -(1<<(o.Imm-1)) || v >= 1<<(o.Imm-1)) {
 			return 0, false
 		}
 	} else if v < 0 || uint64(v) > mask(o.Imm) {
@@ -146,6 +168,8 @@ func (o *Operand) field(a *Arch, v int64) (uint64, bool) {
 // ValueWidth returns the width of the operand in the semantics.
 func (o *Operand) ValueWidth(a *Arch) int {
 	switch {
+	case o.List:
+		return len(a.classes[o.Class])
 	case o.Width != 0:
 		return o.Width
 	case o.Register != "":

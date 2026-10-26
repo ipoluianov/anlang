@@ -1,0 +1,26 @@
+// Package web is the target web: WebAssembly modules for browsers and the
+// runtimes of the WebAssembly System Interface (platform.Web), and an
+// HTML page that runs the module in a browser. The stack of main is in
+// the memory of the module, after the data.
+package web
+
+profile core, app, ui
+
+import (
+	"an/arch"
+	"an/effect"
+	"an/platform"
+	"an/target"
+)
+
+// Description is the target description (target.pkg.description).
+const Description = target.Desc{
+	Arch:     arch.Wasm32,
+	Platform: platform.Web,
+	Word:     32,
+	Formats:  []target.Format{target.Wasm{Origin: 1024}, target.Page},
+	Stack:    256 * target.KiB,
+	Floats:   target.SoftFloat,
+	Provides: []effect.Effect{effect.Console, effect.StaticAlloc},
+	OnPanic:  target.PrintAndExit,
+}

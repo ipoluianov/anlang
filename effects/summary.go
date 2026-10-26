@@ -43,6 +43,9 @@ var (
 	Global  = Base("Global")
 	Console = Base("Console")
 	Foreign = Base("Foreign")
+	// ReadInput is the effect of reading the input files of compile-time
+	// evaluation and of generators, declared by an/gen (eff.base.library).
+	ReadInput = Effect("an/gen.ReadInput#ReadInput")
 )
 
 // RefKind is the kind of a parametric or open reference.
@@ -136,8 +139,10 @@ type Summary struct {
 	// parameters, which close parametric references to open ones.
 	ParamKeys map[int]string
 	// Without lists the effects of the function's clauses ensures
-	// effect.Without (eff.without.form).
-	Without  []Effect
+	// effect.Without (eff.without.form), and of an interrupt handler.
+	Without []Effect
+	// Handler marks an interrupt handler (emb.irq.effects).
+	Handler  bool
 	C        map[Effect]Origin
 	P        map[Ref]Origin
 	Q        map[Ref]Origin

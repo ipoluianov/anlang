@@ -66,6 +66,9 @@ type Var struct {
 	// Map is the address of a hardware mapping: a package-level variable
 	// initialized by unsafe.Map (mem.unsafe.map).
 	Map *Const
+	// Static marks a package-level variable with static storage: of an
+	// atomic type (mem.global.kinds).
+	Static bool
 }
 
 // Inout reports whether v is an inout parameter.
@@ -77,10 +80,16 @@ func (v *Var) Embedded() bool { return v.embedded }
 // IsField reports whether v is a struct field.
 func (v *Var) IsField() bool { return v.field }
 
+// IsPackageLevel reports whether v is a package-level variable.
+func (v *Var) IsPackageLevel() bool { return v.owner == nil && !v.field && !v.param }
+
 // Func is a declared function.
 type Func struct {
 	object
 	Decl *syntax.FuncDecl
+	// Handler is the vector of an interrupt handler (decl.handler.name);
+	// the function is not declared in any scope.
+	Handler string
 }
 
 // Signature returns the type of f.

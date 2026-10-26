@@ -252,7 +252,7 @@ func (c *checker) structType(e *syntax.StructType) Type {
 	for _, cl := range e.Clauses {
 		switch cl.Word {
 		case "invariant":
-			c.notSupported(cl.WordPos, 23, "type invariants")
+			t.Invariants = append(t.Invariants, cl.X)
 		case "layout":
 			if t.Layout != "" {
 				c.errorf(cl.WordPos, "type.struct.layout-once", "a struct type may contain at most one layout clause")
@@ -316,6 +316,20 @@ func (c *checker) structType(e *syntax.StructType) Type {
 		if t.Layout != "" && isValid(typ) && !layoutField(typ) {
 			c.errorf(f.Type.Pos(), "type.layout.fields", "field of type %s in a struct with layout %s: want integer, floating-point, array or layout struct types", typ, t.Layout)
 		}
+	}
+	if len(t.Invariants) > 0 {
+		// The fields are in scope by their names (contract.type.clause).
+		saved := c.scope
+		c.scope = NewScope(saved)
+		for _, f := range t.Fields {
+			if f.name != "_" {
+				c.scope.Insert(f)
+			}
+		}
+		for _, inv := range t.Invariants {
+			c.contractExpr(inv, "invariant")
+		}
+		c.scope = saved
 	}
 	return t
 }

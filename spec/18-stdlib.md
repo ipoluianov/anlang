@@ -37,6 +37,7 @@ This file specifies how the standard library is organized and which packages it 
 | `an/strings`, `an/unicode`, `an/encoding` | text and encodings | yes | yes | yes |
 | `an/errors` | error values | yes | yes | yes |
 | `an/fmt` | formatting | without allocation | yes | yes |
+| `an/console` | standard input | yes | yes | yes |
 | `an/containers` | arrays, queues, maps | fixed size | yes | yes |
 | `an/json`, `an/cbor`, `an/binary` | data formats | streaming | yes | yes |
 | `an/task`, `an/sync`, `an/atomic` | concurrency | static tasks | yes | yes |
@@ -97,15 +98,17 @@ The specification refers to further standard library packages. They are part of 
 | --- | --- | --- |
 | `an/task` | `Go`, `Config`, `Low`, `Normal`, `High`, `Critical`, `Wait`, `ErrDeadline`, `Detach`, `Deadline`, `Cancel`, `Cancelled`, `Sleep`, `Yield`, `Run`, `LockThread` | [09-concurrency](09-concurrency.md), [14-embedded](14-embedded.md) |
 | `an/sync` | `Mutex[T]` with `Lock`, `Load`; `RWMutex[T]` with `Lock`, `RLock`, `Load`; spin lock for kernels (*provisional* `SpinLock[T]`) | [09-concurrency](09-concurrency.md), [15-os](15-os.md) |
-| `an/atomic` | `I8`…`I64`, `U8`…`U64`, `Bool` with `Load`, `Store`, `Add` and memory orders | [09-concurrency](09-concurrency.md), [15-os](15-os.md) |
+| `an/atomic` | `I8`…`I64`, `U8`…`U64`, `Bool` with `Load`, `Store`, `Add`, `Swap`, `CompareAndSwap` and memory orders | [09-concurrency](09-concurrency.md), [15-os](15-os.md) |
 | `an/arena` | `Arena[T]` with `New`, `Edit`, `Get`, `Delete`; `Ref[T]` | [06-memory](06-memory.md) |
 | `an/effect` | `Effect`; base effect constants (`Alloc`, `Network`, …); `Declare`, `Mark`, `Defer`, `Without` | [07-effects](07-effects.md) |
 | `an/wcet` | `Within` | [08-contracts](08-contracts.md), [14-embedded](14-embedded.md) |
 | `an/meta` | `Name`, `Fields`, `Variants`, `Field`, `Variant`, `Get`, `Set`, `Is`, `Make`, `Tag`, `Reject` | [10-compile-time](10-compile-time.md) |
-| `an/gen` | effects `ReadInput`, `WriteOutput` for generators | [10-compile-time](10-compile-time.md) |
+| `an/gen` | effects `ReadInput`, `WriteOutput` for generators; `ReadFile` | [10-compile-time](10-compile-time.md) |
+| `an/svd` | `Load`, `Parse`: device descriptions (`target.Device`) from SVD files | [14-embedded](14-embedded.md) |
 | `an/secret` | `New`, `Equal`, `Expose`, `Map`, `ConstantTime`; effect `ExposeSecret` | [11-data-safety](11-data-safety.md) |
 | `an/untrusted` | `Accept` | [11-data-safety](11-data-safety.md) |
 | `an/interrupts` | `Enable` | [14-embedded](14-embedded.md) |
+| `an/cpu` | `WaitForInterrupt` | [14-embedded](14-embedded.md) |
 | `an/bios` | `BootDrive`; `ClearScreen`, `SetCursor`, `Cursor`, `PutChar`, `WriteChar` (int 10h), `ReadKey`, `KeyReady` (int 16h), `Ticks` (int 1Ah) | [15-os](15-os.md), [20-toolchain](20-toolchain.md) |
 | `an/dos` | `Print`, `PrintChar`, `Write`, `ReadChar`, `CharReady`, `Now`, `Time`, `Exit` (int 21h) | [20-toolchain](20-toolchain.md) |
 | `an/encoding` | `CP866` | [10-compile-time](10-compile-time.md) |
@@ -117,6 +120,8 @@ The specification refers to further standard library packages. They are part of 
 | `an/app` | `Desc` and the mapping from effects to platform permissions | [17-ui](17-ui.md) |
 | `an/errors` | `New`, `Is`, `As` | this file, §18.3.5 |
 | `an/fmt` | `Print`, `Println`, `Printf`; `Fprint`, `Fprintln`, `Fprintf`; `Sprint`, `Sprintln`, `Sprintf` | this file, §18.3.4 |
+| `an/console` | `ReadByte` | this file, §18.3.4 |
+| `an/math` | contract functions `Sum`, `ForAll`, `Exists` | this file, §18.3.6 |
 
 ### 18.3.4 Printing
 
@@ -125,6 +130,8 @@ The specification refers to further standard library packages. They are part of 
 **std.fmt.fprint** — `fmt.Fprint`, `fmt.Fprintln` and `fmt.Fprintf` take an `io.Writer` as the first argument and return `(n int, err error)`, as in Go. The error is subject to **stmt.error.unused** ([05-statements](05-statements.md)).
 
 **std.fmt.sprint** — `fmt.Sprint`, `fmt.Sprintln` and `fmt.Sprintf` return a `string` and have no `Console` effect.
+
+**std.console.read** — `console.ReadByte()` reads the next byte of the standard input of the program and returns it with `true`, or `0` and `false` at the end of the input. It waits until a byte is available, so its effects are `Console` and `Block`. The input is the keyboard on DOS, the console of the debugger on platform `bare`, file descriptor 0 on platform `web` (**target.platform.web**) and the standard input in the IR interpreter.
 
 **Note** — Printing to standard output is the common case, and a write error there is rare and rarely recoverable, so it panics instead of returning an error that every caller would have to discard. Writing to an arbitrary `io.Writer`, such as a file or a network connection, returns the error, because there it must be handled.
 
@@ -177,3 +184,16 @@ if de, ok := errors.As[mydictionary.Error](err); ok {
 ```
 
 **Note** — `anlang port` translates a Go sentinel `var ErrX = errors.New("...")` into `const ErrX = errors.New("...")`; the meaning is unchanged as long as no two sentinels share a text.
+
+### 18.3.6 Contract functions
+
+**std.math.contract** — `math.Sum(xs)` is the sum of the elements of a slice or an array of integers as a mathematical integer (**contract.expr.math**). It has no type of its own: like an untyped constant, it takes the type of the other operand, so that it compares with a value of any integer type. It MAY appear only in contract expressions and in the argument of `assert`; elsewhere it is an error. Until the standard library is compiled from Anlang source, `an/math` has only its contract functions.
+
+**std.math.quantifier** — `math.ForAll(lo, hi, func(i T) bool { return p })` holds if p holds for every integer i with lo ≤ i < hi, and `math.Exists(lo, hi, func(i T) bool { return p })` if it holds for one of them. T is an integer type, lo and hi are converted to T, and the predicate is a function literal whose body is a single `return` statement. Both are contract functions (**std.math.contract**).
+
+```go
+func find(xs []int, x int) int {
+    ensures result != -1 || math.ForAll(0, len(xs), func(j int) bool { return xs[j] != x })
+    …
+}
+```

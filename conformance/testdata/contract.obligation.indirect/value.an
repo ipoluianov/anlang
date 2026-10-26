@@ -1,0 +1,16 @@
+// want: contract.obligation.indirect
+
+package main
+
+func positive(n int) int {
+	requires n > 0
+	return n
+}
+
+func apply(f func(int) int, x int) int {
+	return f(x)
+}
+
+func main() {
+	_ = apply(positive, 0)
+}

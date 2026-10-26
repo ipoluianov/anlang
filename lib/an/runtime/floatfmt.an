@@ -1,0 +1,636 @@
+package runtime
+
+import "an/wrap"
+
+// The decimal formatting of floating-point values (target.floats.soft),
+// with the results of the Go formatting that fmt specifies: the shortest
+// digits that read back as the value for %v, and correctly rounded
+// digits, ties to even, for a precision. The digits are computed exactly
+// with natural numbers of up to 1280 bits (Burger and Dybvig, "Printing
+// Floating-Point Numbers Quickly and Accurately").
+
+// nat is a natural number in base 2^32, the least significant limb first.
+type nat struct {
+	n int // the limbs in use
+	d [40]u32
+}
+
+func (z inout nat) set(v u64) {
+	z.d[0] = u32(v & 0xFFFF_FFFF)
+	z.d[1] = u32(v >> 32)
+	z.n = 2
+	for z.n > 0 && z.d[z.n-1] == 0 {
+		z.n--
+	}
+}
+
+// mulSmall multiplies z by m.
+func (z inout nat) mulSmall(m u32) {
+	var carry u64
+	for i := range z.n {
+		p := u64(wrap.U64(z.d[i])*wrap.U64(m)) + carry // below 2^64
+		z.d[i] = u32(p & 0xFFFF_FFFF)
+		carry = p >> 32
+	}
+	if carry != 0 {
+		z.d[z.n] = u32(carry & 0xFFFF_FFFF)
+		z.n++
+	}
+}
+
+// mulPow10 multiplies z by 10^k.
+func (z inout nat) mulPow10(k int) {
+	for k >= 9 {
+		z.mulSmall(1_000_000_000)
+		k -= 9
+	}
+	p := u32(1)
+	for range k {
+		p *= 10
+	}
+	z.mulSmall(p)
+}
+
+// shl multiplies z by 2^k.
+func (z inout nat) shl(k int) {
+	if z.n == 0 {
+		return
+	}
+	words, bits := k/32, k%32
+	if bits > 0 {
+		var carry u32
+		for i := range z.n {
+			v := z.d[i]
+			z.d[i] = v<<bits | carry
+			carry = v >> (32 - bits)
+		}
+		if carry != 0 {
+			z.d[z.n] = carry
+			z.n++
+		}
+	}
+	if words > 0 {
+		for i := z.n - 1; i >= 0; i-- {
+			z.d[i+words] = z.d[i]
+		}
+		for i := range words {
+			z.d[i] = 0
+		}
+		z.n += words
+	}
+}
+
+// add adds x to z.
+func (z inout nat) add(x inout nat) {
+	var carry u64
+	n := max(z.n, x.n)
+	for i := range n {
+		var a, b u64
+		if i < z.n {
+			a = u64(z.d[i])
+		}
+		if i < x.n {
+			b = u64(x.d[i])
+		}
+		s := a + b + carry
+		z.d[i] = u32(s & 0xFFFF_FFFF)
+		carry = s >> 32
+	}
+	z.n = n
+	if carry != 0 {
+		z.d[z.n] = u32(carry & 0xFFFF_FFFF)
+		z.n++
+	}
+}
+
+// sub subtracts x from z, which is not less than x.
+func (z inout nat) sub(x inout nat) {
+	var borrow u64
+	for i := range z.n {
+		var b u64
+		if i < x.n {
+			b = u64(x.d[i])
+		}
+		d := wrap.U64(z.d[i]) - wrap.U64(b) - wrap.U64(borrow)
+		z.d[i] = u32(u64(d) & 0xFFFF_FFFF)
+		borrow = u64(d) >> 63
+	}
+	for z.n > 0 && z.d[z.n-1] == 0 {
+		z.n--
+	}
+}
+
+// cmpNat returns -1, 0 or 1 as x is less than, equal to or greater than
+// y.
+func cmpNat(x, y inout nat) int {
+	if x.n != y.n {
+		if x.n < y.n {
+			return -1
+		}
+		return 1
+	}
+	for i := x.n - 1; i >= 0; i-- {
+		if x.d[i] != y.d[i] {
+			if x.d[i] < y.d[i] {
+				return -1
+			}
+			return 1
+		}
+	}
+	return 0
+}
+
+// digit returns the quotient of r and s, below 10, and leaves the
+// remainder in r.
+func digit(r, s inout nat) u8 {
+	var d u8
+	for cmpNat(r, s) >= 0 {
+		r.sub(s)
+		d++
+	}
+	return d
+}
+
+// decimal is the digits of a decimal number 0.d1d2… * 10^exp; no digits
+// is zero.
+type decimal struct {
+	n   int
+	d   [400]u8 // the digits as numbers
+	exp int
+}
+
+// bitLen returns the number of bits of x.
+func bitLen(x u64) int {
+	n := 0
+	for x != 0 {
+		x >>= 1
+		n++
+	}
+	return n
+}
+
+// log10Pow2 returns about b * log10(2); the callers correct it.
+func log10Pow2(b int) int {
+	return b * 3 / 10
+}
+
+const decimalDigits = "0123456789"
+
+// floatParts returns the significand f and exponent e of a finite
+// nonzero value f * 2^e of the given width, the precision p of its
+// significand and its minimum exponent.
+func floatParts(x u64, bits int) (u64, int, int, int) {
+	if bits == 32 {
+		y := F32FromF64(x)
+		field := int(y >> 23 & 0xFF)
+		f := u64(y & 0x7F_FFFF)
+		if field == 0 {
+			return f, -149, 24, -149
+		}
+		return f | 0x80_0000, field - 150, 24, -149
+	}
+	field := int(x >> 52 & 0x7FF)
+	f := x & frac64
+	if field == 0 {
+		return f, -1074, 53, -1074
+	}
+	return f | 0x10_0000_0000_0000, field - 1075, 53, -1074
+}
+
+// shortest sets d to the shortest digits that read back as the finite
+// nonzero x of the given width.
+func shortest(x u64, bits int, d inout decimal) {
+	f, e, p, minE := floatParts(x, bits)
+	var r, s, mp, mm nat
+	even := f&1 == 0
+	unequal := f == u64(1)<<(p-1) && e > minE
+	r.set(f)
+	s.set(1)
+	mp.set(1)
+	mm.set(1)
+	if e >= 0 {
+		r.shl(e + 1)
+		s.shl(1)
+		mp.shl(e)
+		mm.shl(e)
+	} else {
+		r.shl(1)
+		s.shl(1 - e)
+	}
+	if unequal {
+		// The gap to the next lower value is half the gap above.
+		r.shl(1)
+		s.shl(1)
+		mp.shl(1)
+	}
+	k := log10Pow2(e+bitLen(f)-1) + 1
+	if k >= 0 {
+		s.mulPow10(k)
+	} else {
+		r.mulPow10(-k)
+		mp.mulPow10(-k)
+		mm.mulPow10(-k)
+	}
+	// Correct k so that the upper boundary (r + mp) / s is below 1, and
+	// at least 0.1.
+	for {
+		var t nat = r
+		t.add(mp)
+		c := cmpNat(t, s)
+		if c < 0 || c == 0 && !even {
+			break
+		}
+		s.mulSmall(10)
+		k++
+	}
+	for {
+		var t nat = r
+		t.add(mp)
+		t.mulSmall(10)
+		c := cmpNat(t, s)
+		if c > 0 || c == 0 && even {
+			break
+		}
+		r.mulSmall(10)
+		mp.mulSmall(10)
+		mm.mulSmall(10)
+		k--
+	}
+	d.exp = k
+	d.n = 0
+	for {
+		r.mulSmall(10)
+		mp.mulSmall(10)
+		mm.mulSmall(10)
+		q := digit(r, s)
+		c := cmpNat(r, mm)
+		low := c < 0 || c == 0 && even
+		var t nat = r
+		t.add(mp)
+		c = cmpNat(t, s)
+		high := c > 0 || c == 0 && even
+		if !low && !high {
+			d.d[d.n] = q
+			d.n++
+			continue
+		}
+		if low && high {
+			// Both digits read back: the nearer one, ties to even.
+			var t2 nat = r
+			t2.shl(1)
+			c = cmpNat(t2, s)
+			if c > 0 || c == 0 && q&1 != 0 {
+				q++
+			}
+		} else if high {
+			q++
+		}
+		d.d[d.n] = q
+		d.n++
+		return
+	}
+}
+
+// fixed sets d to the digits of the finite nonzero x of the given width,
+// rounded to nearest, ties to even: n digits if total is set, otherwise
+// the digits down to the decimal exponent -n. Digits beyond the 400 that
+// d holds count as zeros.
+func fixed(x u64, bits int, n int, total bool, d inout decimal) {
+	f, e, _, _ := floatParts(x, bits)
+	var r, s nat
+	r.set(f)
+	s.set(1)
+	if e >= 0 {
+		r.shl(e)
+	} else {
+		s.shl(-e)
+	}
+	k := log10Pow2(e+bitLen(f)-1) + 1
+	if k >= 0 {
+		s.mulPow10(k)
+	} else {
+		r.mulPow10(-k)
+	}
+	for cmpNat(r, s) >= 0 {
+		s.mulSmall(10)
+		k++
+	}
+	for {
+		var t nat = r
+		t.mulSmall(10)
+		if cmpNat(t, s) >= 0 {
+			break
+		}
+		r.mulSmall(10)
+		k--
+	}
+	// Now x = r/s * 10^k with r/s in [0.1, 1).
+	count := n
+	if !total {
+		count = k + n
+	}
+	d.exp = k
+	d.n = 0
+	if count < 0 {
+		return // rounds to zero
+	}
+	var last u8
+	for d.n < count {
+		r.mulSmall(10)
+		q := digit(r, s)
+		if d.n < len(d.d) {
+			d.d[d.n] = q
+		}
+		last = q
+		d.n++
+	}
+	if d.n > len(d.d) {
+		d.n = len(d.d)
+	}
+	r.shl(1)
+	c := cmpNat(r, s)
+	if c < 0 || c == 0 && last&1 == 0 {
+		for d.n > 0 && d.d[d.n-1] == 0 && total {
+			d.n-- // trailing zeros of a digit count are implied
+		}
+		return
+	}
+	// Round up, carrying through nines.
+	i := d.n - 1
+	for i >= 0 && d.d[i] == 9 {
+		i--
+	}
+	if i < 0 {
+		d.d[0] = 1
+		d.n = 1
+		d.exp++
+		return
+	}
+	d.d[i]++
+	d.n = i + 1
+}
+
+// floatText is the formatted text of a float: its sign and the rest.
+type floatText struct {
+	n   int
+	b   [440]u8
+	neg bool
+}
+
+func (t inout floatText) put(c u8) {
+	if t.n < len(t.b) {
+		t.b[t.n] = c
+		t.n++
+	}
+}
+
+// digitAt returns digit i of d as a character: '0' outside the digits.
+func digitAt(d inout decimal, i int) u8 {
+	if i < 0 || i >= d.n {
+		return '0'
+	}
+	return '0' + d.d[i]
+}
+
+// formatE writes d as %e does with prec digits after the point.
+func formatE(t inout floatText, d inout decimal, prec int, upper bool) {
+	t.put(digitAt(d, 0))
+	if prec > 0 {
+		t.put('.')
+		for i := 1; i <= prec; i++ {
+			t.put(digitAt(d, i))
+		}
+	}
+	if upper {
+		t.put('E')
+	} else {
+		t.put('e')
+	}
+	exp := d.exp - 1
+	if d.n == 0 {
+		exp = 0
+	}
+	if exp < 0 {
+		t.put('-')
+		exp = -exp
+	} else {
+		t.put('+')
+	}
+	if exp >= 100 {
+		t.put(decimalDigits[exp/100])
+	}
+	t.put(decimalDigits[exp/10%10])
+	t.put(decimalDigits[exp%10])
+}
+
+// formatF writes d as %f does with prec digits after the point.
+func formatF(t inout floatText, d inout decimal, prec int) {
+	if d.exp > 0 && d.n > 0 {
+		for i := range d.exp {
+			t.put(digitAt(d, i))
+		}
+	} else {
+		t.put('0')
+	}
+	if prec > 0 {
+		t.put('.')
+		for i := range prec {
+			j := i
+			if d.n > 0 {
+				j += d.exp
+			} else {
+				j = -1
+			}
+			t.put(digitAt(d, j))
+		}
+	}
+}
+
+// formatFloat writes x of the given width as fmt formats it with the verb
+// e, E, f, F, g, G or v and the precision, -1 for none, as Go's
+// strconv.FormatFloat does: a sign, then the digits; +Inf, -Inf or NaN.
+func formatFloat(t inout floatText, x u64, bits int, verb u8, prec int) {
+	t.neg = x&signBit64 != 0
+	if isNaN64(x) {
+		t.neg = false
+		t.put('N')
+		t.put('a')
+		t.put('N')
+		return
+	}
+	if isInf64(x) {
+		t.put('I')
+		t.put('n')
+		t.put('f')
+		return
+	}
+	var d decimal
+	zero := isZero64(x)
+	if verb == 'v' {
+		verb = 'g'
+	}
+	upper := verb == 'E' || verb == 'G'
+	switch verb {
+	case 'e', 'E':
+		if prec < 0 {
+			prec = 6
+		}
+		if !zero {
+			fixed(x, bits, prec+1, true, d)
+		}
+		formatE(t, d, prec, upper)
+	case 'f', 'F':
+		if prec < 0 {
+			prec = 6
+		}
+		if !zero {
+			fixed(x, bits, prec, false, d)
+		}
+		formatF(t, d, prec)
+	default: // g, G
+		shortestDigits := prec < 0
+		if !zero {
+			if shortestDigits {
+				shortest(x, bits, d)
+			} else {
+				if prec == 0 {
+					prec = 1
+				}
+				fixed(x, bits, prec, true, d)
+			}
+		} else {
+			d.exp = 1 // 0 is printed as the digit 0
+		}
+		if shortestDigits {
+			prec = max(d.n, 1)
+		}
+		eprec := prec
+		if eprec > d.n && d.n >= d.exp {
+			eprec = d.n
+		}
+		if shortestDigits {
+			eprec = 6
+		}
+		exp := d.exp - 1
+		if exp < -4 || exp >= eprec {
+			if prec > d.n {
+				prec = d.n
+			}
+			if zero {
+				prec = 1
+			}
+			formatE(t, d, prec-1, upper)
+			return
+		}
+		if prec > d.exp {
+			prec = d.n
+		}
+		formatF(t, d, max(prec-d.exp, 0))
+	}
+}
+
+// PrintFloatF writes x, an f64 or an f32 converted to f64, as the verbs
+// e, E, f, F, g, G and v of fmt.Printf do, with width, precision and
+// flags.
+func PrintFloatF(fd int, x u64, bits int, verb u8, width, prec int, flags u8) {
+	var t floatText
+	formatFloat(t, x, bits, verb, prec)
+	special := t.n > 0 && (t.b[0] == 'I' || t.b[0] == 'N')
+	sign := ""
+	switch {
+	case t.neg:
+		sign = "-"
+	case flags&flagPlus != 0:
+		sign = "+"
+	case flags&flagSpace != 0:
+		sign = " "
+	case t.b[0] == 'I':
+		sign = "+" // +Inf has its sign without the flag
+	}
+	total := len(sign) + t.n
+	zeroPad := flags&flagZero != 0 && flags&flagMinus == 0 && !special
+	if flags&flagMinus == 0 && !zeroPad {
+		pad(fd, spaces, width-total)
+	}
+	writeString(fd, sign)
+	if zeroPad {
+		pad(fd, zeros, width-total)
+	}
+	write(fd, t.b[:t.n])
+	if flags&flagMinus != 0 {
+		pad(fd, spaces, width-total)
+	}
+}
+
+// PrintFloat writes x as fmt.Print does: the shortest digits that read
+// back as x.
+func PrintFloat(fd int, x u64, bits int) {
+	PrintFloatF(fd, x, bits, 'v', 0, -1, 0)
+}
+
+// PrintF64 writes x as the built-in print does, which follows the
+// run-time printing of Go: +d.dddddde+dd, with digits that are not
+// always correctly rounded.
+func PrintF64(fd int, x f64) {
+	switch {
+	case x != x:
+		writeString(fd, "NaN")
+		return
+	case x+x == x && x > 0:
+		writeString(fd, "+Inf")
+		return
+	case x+x == x && x < 0:
+		writeString(fd, "-Inf")
+		return
+	}
+	const n = 7
+	var buf [n + 7]u8
+	buf[0] = '+'
+	e := 0
+	v := x
+	if v == 0 {
+		if 1/v < 0 {
+			buf[0] = '-'
+		}
+	} else {
+		if v < 0 {
+			v = -v
+			buf[0] = '-'
+		}
+		for v >= 10 {
+			e++
+			v /= 10
+		}
+		for v < 1 {
+			e--
+			v *= 10
+		}
+		h := 5.0
+		for range n {
+			h /= 10
+		}
+		v += h
+		if v >= 10 {
+			e++
+			v /= 10
+		}
+	}
+	for i := range n {
+		s := int(v)
+		buf[i+2] = decimalDigits[s]
+		v -= f64(s)
+		v *= 10
+	}
+	buf[1] = buf[2]
+	buf[2] = '.'
+	buf[n+2] = 'e'
+	buf[n+3] = '+'
+	if e < 0 {
+		e = -e
+		buf[n+3] = '-'
+	}
+	buf[n+4] = decimalDigits[e/100]
+	buf[n+5] = decimalDigits[e/10%10]
+	buf[n+6] = decimalDigits[e%10]
+	write(fd, buf[:])
+}

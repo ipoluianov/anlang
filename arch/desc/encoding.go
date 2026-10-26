@@ -11,7 +11,8 @@ import (
 //
 //	HH                 a byte in hexadecimal: 8 fixed bits
 //	%0101              fixed bits in binary
-//	name:width         a field: an operand (a, b, c) or a field of a fragment
+//	name:width         a field: an operand (a, b, c, d) or a field of a fragment; a field
+//	                   may appear twice, with the same value
 //	name[hi:lo]        bits hi to lo of an operand; name[b] is one bit
 //	<frag op k=v ...>  a fragment encoding operand op, with its fields k
 //	                   bound to operands or constants
@@ -276,9 +277,12 @@ func (a *Arch) match(items []Item, r *reader, d *Decoded, prefix string) bool {
 			if !ok {
 				return false
 			}
-			if it.Slice {
-				d.Fields[prefix+it.Name] |= v << uint(it.Lo)
-			} else {
+			switch old, seen := d.Fields[prefix+it.Name]; {
+			case it.Slice:
+				d.Fields[prefix+it.Name] = old | v<<uint(it.Lo)
+			case seen && prefix == "" && old != v:
+				return false // a field encoded twice holds one value
+			default:
 				d.Fields[prefix+it.Name] = v
 			}
 		case Ref:

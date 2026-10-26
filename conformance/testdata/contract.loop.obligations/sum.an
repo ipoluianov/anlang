@@ -1,0 +1,29 @@
+// want: ok
+// checks: contract.loop.header contract.loop.range std.math.contract
+
+// The example of spec/08-contracts.md §8.4: the invariant holds on entry
+// and after each iteration, and at the exit it gives the postcondition.
+package main
+
+profile core
+
+import (
+	"an/fmt"
+	"an/math"
+)
+
+func Sum(xs []i32) i64 {
+	ensures result == math.Sum(xs)
+
+	var s i64
+	for i := range xs {
+		invariant s == math.Sum(xs[:i])
+		s += i64(xs[i])
+	}
+	return s
+}
+
+func main() {
+	xs := [5]i32{3, -1, 4, -1, 5}
+	fmt.Println(Sum(xs[:]), Sum(xs[1:3]))
+}

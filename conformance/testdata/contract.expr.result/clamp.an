@@ -1,0 +1,42 @@
+// want: ok
+// checks: contract.obligation.requires contract.obligation.ensures contract.obligation.assume
+
+// result in ensures, preconditions at calls and postconditions after them.
+package main
+
+profile core
+
+import "an/fmt"
+
+func clamp(x, lo, hi int) int {
+	requires lo <= hi
+	ensures lo <= result && result <= hi
+	if x < lo {
+		return lo
+	}
+	if x > hi {
+		return hi
+	}
+	return x
+}
+
+func digits(a int) (q, r int) {
+	requires a >= 0
+	ensures a == 10*q+r && 0 <= r && r < 10
+	q = a / 10
+	r = a % 10
+	return q, r
+}
+
+func main() {
+	var table [11]int
+	for i := range 11 {
+		table[i] = i * i
+	}
+	for _, x := range [4]int{-5, 3, 12, 10} {
+		c := clamp(x, 0, 10)
+		fmt.Println(x, c, table[c])
+	}
+	q, r := digits(1987)
+	fmt.Println(q, r, table[r])
+}

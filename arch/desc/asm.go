@@ -59,6 +59,16 @@ func (a *Arch) operandText(d *Decoded, i int, o *Operand) string {
 		return o.Register
 	case o.Constant:
 		return strconv.Itoa(o.Value)
+	case o.List:
+		var regs []string
+		for k, r := range a.classes[o.Class] {
+			if d.Fields[name]>>uint(k)&1 != 0 {
+				regs = append(regs, r.Name)
+			}
+		}
+		return "{" + strings.Join(regs, ", ") + "}"
+	case o.Syntax != "":
+		return hexNum(a.syntaxValue(o, d.Fields[name]))
 	case o.Imm != 0:
 		w := o.ValueWidth(a)
 		v := o.bits(a, d.Fields[name]) & mask(w)
@@ -95,44 +105,131 @@ func (a *Arch) operandText(d *Decoded, i int, o *Operand) string {
 	return a.classReg(o.Class, d.Fields[name]).Name
 }
 
-// addressText writes an address expression with the values of its fields.
+// addressText writes an address expression with the values of its
+// fields: its registers, and the values of its other terms, negative for
+// a sign-extended field.
 func (a *Arch) addressText(e Expr, field func(string) (uint64, int)) string {
 	var terms []string
 	var walk func(Expr, bool)
 	walk = func(e Expr, neg bool) {
-		switch e := e.(type) {
-		case *Binary:
-			if e.Op == "+" || e.Op == "-" {
-				walk(e.X, neg)
-				walk(e.Y, neg != (e.Op == "-"))
-				return
-			}
-		case *Ident:
-			if a.regs[e.Name] != nil {
-				terms = append(terms, e.Name)
-				return
-			}
-			v, _ := field(e.Name)
-			terms = append(terms, hexNum(v))
-			return
-		case *CallExpr:
-			if e.Fun == "sx" && len(e.Args) == 2 {
-				if id, ok := e.Args[0].(*Ident); ok {
-					v, w := field(id.Name)
-					if s := int64(signExtend(v, w)); s < 0 {
-						terms = append(terms, "-"+hexNum(uint64(-s)))
-					} else {
-						terms = append(terms, hexNum(uint64(s)))
-					}
-					return
-				}
-			}
+		sign := ""
+		if neg {
+			sign = "-"
 		}
-		terms = append(terms, "?")
+		if r := a.addressReg(e); r != "" {
+			terms = append(terms, sign+r)
+			return
+		}
+		if b, ok := e.(*Binary); ok && (b.Op == "+" || b.Op == "-") {
+			walk(b.X, neg)
+			walk(b.Y, neg != (b.Op == "-"))
+			return
+		}
+		v, ok := a.termValue(e, field)
+		if !ok {
+			terms = append(terms, "?")
+			return
+		}
+		if v < 0 {
+			v, neg = -v, !neg
+		}
+		if neg {
+			terms = append(terms, "-"+hexNum(uint64(v)))
+		} else {
+			terms = append(terms, hexNum(uint64(v)))
+		}
 	}
 	walk(e, false)
 	s := strings.Join(terms, "+")
 	return strings.ReplaceAll(s, "+-", "-")
+}
+
+// addressReg returns the register that a term of an address denotes: a
+// register, or a register masked by a constant, such as a program
+// counter aligned down; "" if the term is not one.
+func (a *Arch) addressReg(e Expr) string {
+	switch e := e.(type) {
+	case *Ident:
+		if a.regs[e.Name] != nil {
+			return e.Name
+		}
+	case *Binary:
+		if _, ok := e.Y.(*Num); ok && e.Op == "&" {
+			return a.addressReg(e.X)
+		}
+	}
+	return ""
+}
+
+// termValue evaluates a term of an address that is not a register, from
+// the values of the fields: sx(field, n) is signed.
+func (a *Arch) termValue(e Expr, field func(string) (uint64, int)) (int64, bool) {
+	switch e := e.(type) {
+	case *Num:
+		return int64(e.Val), true
+	case *Ident:
+		v, w := field(e.Name)
+		return int64(v), w != 0
+	case *CallExpr:
+		if len(e.Args) == 2 && (e.Fun == "sx" || e.Fun == "zx") {
+			v, ok := a.termValue(e.Args[0], field)
+			if !ok {
+				return 0, false
+			}
+			if id, isID := e.Args[0].(*Ident); isID && e.Fun == "sx" {
+				_, w := field(id.Name)
+				return int64(signExtend(uint64(v), w)), true
+			}
+			return v, true
+		}
+	case *Binary:
+		x, ok1 := a.termValue(e.X, field)
+		y, ok2 := a.termValue(e.Y, field)
+		if ok1 && ok2 {
+			switch e.Op {
+			case "*":
+				return x * y, true
+			case "<<":
+				return x << uint(y), true
+			}
+		}
+	}
+	return 0, false
+}
+
+// syntaxValue returns the number of the assembler syntax for field f of
+// an operand with Syntax.
+func (a *Arch) syntaxValue(o *Operand, f uint64) uint64 {
+	a.compileOnce.Do(a.compile)
+	a.syntaxMu.Lock()
+	defer a.syntaxMu.Unlock()
+	return a.syntaxValueLocked(o, f)
+}
+
+func (a *Arch) syntaxValueLocked(o *Operand, f uint64) uint64 {
+	if a.syntaxM == nil {
+		a.syntaxM = newMachine(a, false)
+	}
+	return a.syntaxM.eval(o.csyntax, val{f & mask(o.Imm), o.Imm}).v & mask(o.syntaxW)
+}
+
+// syntaxField returns the first field whose number in the assembler
+// syntax is v, and whether there is one.
+func (a *Arch) syntaxField(o *Operand, v uint64) (uint64, bool) {
+	a.compileOnce.Do(a.compile)
+	a.syntaxMu.Lock()
+	defer a.syntaxMu.Unlock()
+	if o.syntaxInv == nil {
+		o.syntaxInv = map[uint64]uint64{}
+		for f := uint64(0); f <= mask(o.Imm); f++ {
+			n := a.syntaxValueLocked(o, f)
+			if _, ok := o.syntaxInv[n]; !ok {
+				o.syntaxInv[n] = f
+			}
+		}
+	}
+	f, ok := o.syntaxInv[v&mask(o.syntaxW)]
+	return f, ok
 }
 
 // AsmError is an error in assembler text.
@@ -152,10 +249,16 @@ type asmOperand struct {
 	far    bool // segment:offset
 	seg    uint64
 	mem    bool
-	size   int // the width of a memory operand; 0 if not given
-	regs   []string
+	size   int      // the width of a memory operand; 0 if not given
+	regs   []string // sorted
+	order  []string // as written
 	disp   int64
 	hasNum bool // the address has a displacement
+	list   bool // a register list: num has a bit for each register
+	class  string
+	// negZero marks a displacement written as -0, which an alternative
+	// that subtracts its field encodes.
+	negZero bool
 }
 
 // Asm assembles one instruction at address 0.
@@ -183,11 +286,11 @@ func (a *Arch) AsmAt(text string, pc uint64) ([]byte, error) {
 	if i >= len(fields) {
 		return nil, &AsmError{text, "no mnemonic"}
 	}
-	mnemonic := strings.ToUpper(fields[i])
+	mnemonic := fields[i]
 	rest := strings.TrimSpace(strings.Join(fields[i+1:], " "))
 	var ops []asmOperand
 	if rest != "" {
-		for _, s := range strings.Split(rest, ",") {
+		for _, s := range splitOperands(rest) {
 			op, err := a.parseOperand(strings.TrimSpace(s))
 			if err != nil {
 				return nil, &AsmError{text, err.Error()}
@@ -211,7 +314,7 @@ func (a *Arch) AsmAt(text string, pc uint64) ([]byte, error) {
 	var lastErr error
 	for j := range a.Instructions {
 		in := &a.Instructions[j]
-		if in.Mnemonic != mnemonic || len(in.ops) != len(ops) {
+		if !strings.EqualFold(in.Mnemonic, mnemonic) || len(in.ops) != len(ops) {
 			continue
 		}
 		code, err := a.encodeInst(in, ops, int(pc)+len(out))
@@ -230,6 +333,27 @@ func (a *Arch) AsmAt(text string, pc uint64) ([]byte, error) {
 	// The shortest encoding; of equal ones the first form described.
 	sort.SliceStable(cands, func(x, y int) bool { return len(cands[x].code) < len(cands[y].code) })
 	return append(out, cands[0].code...), nil
+}
+
+// splitOperands splits operand text at the commas outside brackets and
+// braces.
+func splitOperands(s string) []string {
+	var parts []string
+	depth, start := 0, 0
+	for i, c := range s {
+		switch c {
+		case '[', '{':
+			depth++
+		case ']', '}':
+			depth--
+		case ',':
+			if depth == 0 {
+				parts = append(parts, s[start:i])
+				start = i + 1
+			}
+		}
+	}
+	return append(parts, s[start:])
 }
 
 func (a *Arch) prefix(name string) *Prefix {
@@ -282,6 +406,21 @@ func (a *Arch) parseOperand(s string) (asmOperand, error) {
 		op.isNum, op.num = true, uint64(v)
 		return op, nil
 	}
+	if strings.HasPrefix(s, "{") && strings.HasSuffix(s, "}") {
+		op.list = true
+		if strings.TrimSpace(s[1:len(s)-1]) == "" {
+			return op, nil
+		}
+		for _, t := range strings.Split(s[1:len(s)-1], ",") {
+			r := a.regs[strings.ToUpper(strings.TrimSpace(t))]
+			if r == nil || r.Class == "" || op.class != "" && r.Class != op.class {
+				return op, fmt.Errorf("invalid register list %q", s)
+			}
+			op.class = r.Class
+			op.num |= 1 << uint(r.Number)
+		}
+		return op, nil
+	}
 	lb := strings.IndexByte(s, '[')
 	if lb < 0 || !strings.HasSuffix(s, "]") {
 		return op, fmt.Errorf("invalid operand %q", s)
@@ -308,12 +447,14 @@ func (a *Arch) parseOperand(s string) (asmOperand, error) {
 		}
 		if r := a.regs[strings.ToUpper(t)]; r != nil {
 			op.regs = append(op.regs, r.Name)
+			op.order = append(op.order, r.Name)
 			continue
 		}
 		v, ok := parseNum(t)
 		if !ok {
 			return op, fmt.Errorf("invalid address term %q", t)
 		}
+		op.negZero = v == 0 && strings.HasPrefix(t, "-")
 		op.disp += v
 		op.hasNum = true
 	}
@@ -324,7 +465,8 @@ func (a *Arch) parseOperand(s string) (asmOperand, error) {
 // addrShape is the shape of the address of a fragment alternative: its
 // registers and its displacement field.
 type addrShape struct {
-	regs   []string
+	regs   []string // sorted
+	order  []string // in the order of the address
 	field  string
 	width  int
 	signed bool
@@ -392,11 +534,11 @@ func (a *Arch) shape(alt *Alternative) addrShape {
 				}
 				return
 			}
-		case *Ident:
-			if a.regs[e.Name] != nil {
-				sh.regs = append(sh.regs, e.Name)
-				return
-			}
+		}
+		if r := a.addressReg(e); r != "" {
+			sh.regs = append(sh.regs, r)
+			sh.order = append(sh.order, r)
+			return
 		}
 		if !field(e, false) {
 			sh.ok = false
@@ -426,6 +568,20 @@ func (a *Arch) encodeInst(in *Instruction, ops []asmOperand, start int) ([]byte,
 			if !op.isNum || op.num != uint64(o.Value) {
 				return nil, fmt.Errorf("operand %d is not %d", i+1, o.Value)
 			}
+		case o.List:
+			if !op.list || op.class != "" && op.class != o.Class {
+				return nil, fmt.Errorf("operand %d is not a list of %s registers", i+1, o.Class)
+			}
+			vals[name] = op.num
+		case o.Syntax != "":
+			if !op.isNum {
+				return nil, fmt.Errorf("operand %d is not a number", i+1)
+			}
+			f, ok := a.syntaxField(o, op.num)
+			if !ok {
+				return nil, fmt.Errorf("operand %d cannot be encoded as %s", i+1, o.Name)
+			}
+			vals[name] = f
 		case o.Imm != 0 && o.Name == "ptr16:16":
 			if !op.far {
 				return nil, fmt.Errorf("operand %d is not a far pointer", i+1)
@@ -456,7 +612,7 @@ func (a *Arch) encodeInst(in *Instruction, ops []asmOperand, start int) ([]byte,
 			v := op.num & mask(o.ValueWidth(a))
 			if o.Signed {
 				s := int64(signExtend(v, o.ValueWidth(a)))
-				if s < -(1<<(o.Imm-1)) || s >= 1<<(o.Imm-1) {
+				if o.Imm < 64 && (s < -(1<<(o.Imm-1)) || s >= 1<<(o.Imm-1)) {
 					return nil, fmt.Errorf("operand %d does not fit in %d signed bits", i+1, o.Imm)
 				}
 				v &= mask(o.Imm)
@@ -487,6 +643,18 @@ func (a *Arch) encodeInst(in *Instruction, ops []asmOperand, start int) ([]byte,
 			alts[name], altFields[name] = alt, fv
 		default:
 			return nil, fmt.Errorf("operand %d does not fit %s", i+1, o.Name)
+		}
+	}
+	// An operand encoded by bit ranges must not have bits outside them.
+	covered := map[string]uint64{}
+	for _, it := range in.pattern {
+		if it.Kind == Field && it.Slice {
+			covered[it.Name] |= mask(it.Width) << uint(it.Lo)
+		}
+	}
+	for name, bits := range covered {
+		if vals[name]&^bits != 0 {
+			return nil, fmt.Errorf("operand %d cannot be encoded by bits %#x", strings.IndexByte("abcd", name[0])+1, bits)
 		}
 	}
 	// A relative operand depends on the length, which does not depend on
@@ -530,7 +698,8 @@ func (a *Arch) encodeInst(in *Instruction, ops []asmOperand, start int) ([]byte,
 }
 
 // chooseAlt chooses the shortest alternative of a fragment that encodes a
-// memory operand.
+// memory operand; of equally short ones, one with the registers in the
+// order written.
 func (a *Arch) chooseAlt(frag string, op asmOperand) (*Alternative, map[string]uint64, error) {
 	f := a.fragments[frag]
 	var best *Alternative
@@ -555,6 +724,9 @@ func (a *Arch) chooseAlt(frag string, op asmOperand) (*Alternative, map[string]u
 			if sh.neg {
 				d = -d
 			}
+			if d == 0 && sh.neg != op.negZero {
+				continue
+			}
 			if d%sh.scale != 0 {
 				continue
 			}
@@ -578,6 +750,10 @@ func (a *Arch) chooseAlt(frag string, op asmOperand) (*Alternative, map[string]u
 		n := 0
 		for _, it := range alt.pattern {
 			n += it.Width
+		}
+		n *= 2
+		if strings.Join(sh.order, "+") != strings.Join(op.order, "+") {
+			n++
 		}
 		if n < bestLen {
 			best, bestFields, bestLen = alt, fields, n

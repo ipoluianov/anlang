@@ -1,0 +1,22 @@
+// Command hellostm32 prints a greeting and a computed value on the
+// STM32F103C8. The console is the semihosting console of a debugger;
+// anlang run -emu builtin runs the program in the Cortex-M emulator.
+package main
+
+profile core
+
+import "an/fmt"
+
+// fib returns the n-th Fibonacci number.
+func fib(n u32) u32 {
+	a, b := u32(0), u32(1)
+	for i := u32(0); i < n; i++ {
+		a, b = b, a+b
+	}
+	return a
+}
+
+func main() {
+	fmt.Println("Hello from Cortex-M!")
+	fmt.Printf("fib(%d) = %d\n", 40, fib(40))
+}

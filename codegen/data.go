@@ -4,6 +4,7 @@ import (
 	"go/constant"
 	"math/big"
 	"strconv"
+	"strings"
 
 	"an/ir"
 	"an/types"
@@ -36,9 +37,15 @@ func (g *gen) constLoc(c *ir.Const) *loc {
 		l.t = t
 		return l
 	case constant.Int:
+		if bits, ok := floatBits(t); ok {
+			return &loc{t: t, parts: g.constParts(floatConstBits(c.Val, bits), bits/8)}
+		}
 		return &loc{t: t, parts: g.constParts(intBits(c.Val), g.sizeof(t))}
+	case constant.Float:
+		bits, _ := floatBits(t)
+		return &loc{t: t, parts: g.constParts(floatConstBits(c.Val, bits), bits/8)}
 	}
-	g.unsupported(15, "floating-point constants")
+	g.unsupported(25, "constants of type "+t.String())
 	return &loc{t: t, zero: true}
 }
 
@@ -66,6 +73,24 @@ func (g *gen) stringLoc(s string) *loc {
 	parts := []operand{{kind: opSym, sym: g.stringData(s), width: g.ptr * 8}}
 	parts = append(parts, g.constParts(uint64(len(s)), g.intBits/8)...)
 	return &loc{t: types.Typ[types.String], parts: parts}
+}
+
+// staticData returns the label of the storage of a package-level
+// variable with static storage: writable data that starts as zero bytes.
+func (g *gen) staticData(v *ir.Global) string {
+	// A label of the characters of labels (symRef).
+	l := "V" + strings.Map(func(r rune) rune {
+		if r == '/' || r == '-' {
+			return '_'
+		}
+		return r
+	}, v.Name())
+	if !g.funcsByLabel[l] {
+		g.funcsByLabel[l] = true
+		t := v.Var.Type()
+		g.data = append(g.data, &dataItem{label: l, bytes: make([]byte, g.sizeof(t)), align: g.alignof(t), writable: true})
+	}
+	return l
 }
 
 // stringData returns the label of the bytes of a string constant.
@@ -119,8 +144,9 @@ func (g *gen) serialize(d *dataItem, off int, v any, t types.Type) {
 			d.relocs = append(d.relocs, reloc{off: off, sym: g.stringData(s)})
 			off += g.ptr
 			putInt(uint64(len(s)), g.intBits/8)
-		default:
-			g.unsupported(15, "floating-point constants")
+		case u.Info()&types.IsFloat != 0:
+			bits, _ := floatBits(t)
+			putInt(floatConstBits(c, bits), bits/8)
 		}
 	case *types.Struct:
 		comp, _ := v.(*types.Composite)

@@ -188,7 +188,20 @@ func (tt suiteTest) run(t *testing.T) ([]*types.Info, []*syntax.Error) {
 	var infos []*types.Info
 	p, errs := build.Load(tt.path)
 	if p != nil {
-		infos, errs = p.Check(p.DefaultTargets()[0])
+		target := p.DefaultTargets()[0]
+		infos, errs = p.Check(target)
+		if want, _ := tt.expectation(t); len(errs) == 0 && len(want) > 0 {
+			// The rules that code generation checks, such as the stack
+			// analysis (emb.stack.limit).
+			tg, _ := build.LookupTarget(target)
+			if d, _ := tg.Description(); d != nil && build.Backend != nil {
+				if prog, berrs := p.BackendProgram(target); len(berrs) > 0 {
+					errs = berrs
+				} else {
+					_, errs = build.Backend(prog, d)
+				}
+			}
+		}
 	}
 	var diags []*syntax.Error
 	for _, err := range errs {
@@ -294,7 +307,11 @@ func (tt suiteTest) interpret(t *testing.T, infos []*types.Info, want string) {
 	}
 	prog.IntBits = 64
 	var out strings.Builder
-	err := interp.Run(prog, interp.Options{Stdout: &out, Stderr: &out, MaxSteps: 1e8})
+	opts := interp.Options{Stdout: &out, Stderr: &out, MaxSteps: 1e8}
+	if in, err := os.ReadFile(filepath.Join("testdata", tt.rule, tt.name+".in")); err == nil {
+		opts.Stdin = strings.NewReader(string(in))
+	}
+	err := interp.Run(prog, opts)
 	var ne *interp.NotExecutableError
 	if errors.As(err, &ne) {
 		// A program for one target: its emulator runs it (TestBackendDOS).

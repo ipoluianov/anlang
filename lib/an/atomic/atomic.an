@@ -1,0 +1,457 @@
+// Package atomic provides values that the main program, interrupt
+// handlers and tasks share (spec/09-concurrency.md §9.7): each operation
+// is indivisible. On the single-core targets of the core profile an
+// operation runs with the interrupts disabled.
+//
+// Until the handles of synchronization types (conc.sync.handle), atomic
+// values are package-level variables, and their methods take them as
+// inout receivers.
+package atomic
+
+profile core, app, ui
+
+import (
+	"an/runtime"
+	"an/wrap"
+)
+
+// U8 is an atomic u8.
+type U8 struct {
+	v u8
+}
+
+// Load returns the value.
+func (a inout U8) Load() u8 {
+	s := runtime.DisableInterrupts()
+	v := a.v
+	runtime.RestoreInterrupts(s)
+	return v
+}
+
+// Store sets the value to v.
+func (a inout U8) Store(v u8) {
+	s := runtime.DisableInterrupts()
+	a.v = v
+	runtime.RestoreInterrupts(s)
+}
+
+// Add adds d to the value, wrapping around, and returns the new value.
+func (a inout U8) Add(d u8) u8 {
+	s := runtime.DisableInterrupts()
+	a.v = u8(wrap.U8(a.v) + wrap.U8(d))
+	v := a.v
+	runtime.RestoreInterrupts(s)
+	return v
+}
+
+// Swap sets the value to v and returns the old value.
+func (a inout U8) Swap(v u8) u8 {
+	s := runtime.DisableInterrupts()
+	old := a.v
+	a.v = v
+	runtime.RestoreInterrupts(s)
+	return old
+}
+
+// CompareAndSwap sets the value to new if it is old, and reports whether
+// it did.
+func (a inout U8) CompareAndSwap(old, new u8) bool {
+	s := runtime.DisableInterrupts()
+	ok := a.v == old
+	if ok {
+		a.v = new
+	}
+	runtime.RestoreInterrupts(s)
+	return ok
+}
+
+// U16 is an atomic u16.
+type U16 struct {
+	v u16
+}
+
+// Load returns the value.
+func (a inout U16) Load() u16 {
+	s := runtime.DisableInterrupts()
+	v := a.v
+	runtime.RestoreInterrupts(s)
+	return v
+}
+
+// Store sets the value to v.
+func (a inout U16) Store(v u16) {
+	s := runtime.DisableInterrupts()
+	a.v = v
+	runtime.RestoreInterrupts(s)
+}
+
+// Add adds d to the value, wrapping around, and returns the new value.
+func (a inout U16) Add(d u16) u16 {
+	s := runtime.DisableInterrupts()
+	a.v = u16(wrap.U16(a.v) + wrap.U16(d))
+	v := a.v
+	runtime.RestoreInterrupts(s)
+	return v
+}
+
+// Swap sets the value to v and returns the old value.
+func (a inout U16) Swap(v u16) u16 {
+	s := runtime.DisableInterrupts()
+	old := a.v
+	a.v = v
+	runtime.RestoreInterrupts(s)
+	return old
+}
+
+// CompareAndSwap sets the value to new if it is old, and reports whether
+// it did.
+func (a inout U16) CompareAndSwap(old, new u16) bool {
+	s := runtime.DisableInterrupts()
+	ok := a.v == old
+	if ok {
+		a.v = new
+	}
+	runtime.RestoreInterrupts(s)
+	return ok
+}
+
+// U32 is an atomic u32.
+type U32 struct {
+	v u32
+}
+
+// Load returns the value.
+func (a inout U32) Load() u32 {
+	s := runtime.DisableInterrupts()
+	v := a.v
+	runtime.RestoreInterrupts(s)
+	return v
+}
+
+// Store sets the value to v.
+func (a inout U32) Store(v u32) {
+	s := runtime.DisableInterrupts()
+	a.v = v
+	runtime.RestoreInterrupts(s)
+}
+
+// Add adds d to the value, wrapping around, and returns the new value.
+func (a inout U32) Add(d u32) u32 {
+	s := runtime.DisableInterrupts()
+	a.v = u32(wrap.U32(a.v) + wrap.U32(d))
+	v := a.v
+	runtime.RestoreInterrupts(s)
+	return v
+}
+
+// Swap sets the value to v and returns the old value.
+func (a inout U32) Swap(v u32) u32 {
+	s := runtime.DisableInterrupts()
+	old := a.v
+	a.v = v
+	runtime.RestoreInterrupts(s)
+	return old
+}
+
+// CompareAndSwap sets the value to new if it is old, and reports whether
+// it did.
+func (a inout U32) CompareAndSwap(old, new u32) bool {
+	s := runtime.DisableInterrupts()
+	ok := a.v == old
+	if ok {
+		a.v = new
+	}
+	runtime.RestoreInterrupts(s)
+	return ok
+}
+
+// U64 is an atomic u64.
+type U64 struct {
+	v u64
+}
+
+// Load returns the value.
+func (a inout U64) Load() u64 {
+	s := runtime.DisableInterrupts()
+	v := a.v
+	runtime.RestoreInterrupts(s)
+	return v
+}
+
+// Store sets the value to v.
+func (a inout U64) Store(v u64) {
+	s := runtime.DisableInterrupts()
+	a.v = v
+	runtime.RestoreInterrupts(s)
+}
+
+// Add adds d to the value, wrapping around, and returns the new value.
+func (a inout U64) Add(d u64) u64 {
+	s := runtime.DisableInterrupts()
+	a.v = u64(wrap.U64(a.v) + wrap.U64(d))
+	v := a.v
+	runtime.RestoreInterrupts(s)
+	return v
+}
+
+// Swap sets the value to v and returns the old value.
+func (a inout U64) Swap(v u64) u64 {
+	s := runtime.DisableInterrupts()
+	old := a.v
+	a.v = v
+	runtime.RestoreInterrupts(s)
+	return old
+}
+
+// CompareAndSwap sets the value to new if it is old, and reports whether
+// it did.
+func (a inout U64) CompareAndSwap(old, new u64) bool {
+	s := runtime.DisableInterrupts()
+	ok := a.v == old
+	if ok {
+		a.v = new
+	}
+	runtime.RestoreInterrupts(s)
+	return ok
+}
+
+// I8 is an atomic i8.
+type I8 struct {
+	v i8
+}
+
+// Load returns the value.
+func (a inout I8) Load() i8 {
+	s := runtime.DisableInterrupts()
+	v := a.v
+	runtime.RestoreInterrupts(s)
+	return v
+}
+
+// Store sets the value to v.
+func (a inout I8) Store(v i8) {
+	s := runtime.DisableInterrupts()
+	a.v = v
+	runtime.RestoreInterrupts(s)
+}
+
+// Add adds d to the value, wrapping around, and returns the new value.
+func (a inout I8) Add(d i8) i8 {
+	s := runtime.DisableInterrupts()
+	a.v = i8(wrap.I8(a.v) + wrap.I8(d))
+	v := a.v
+	runtime.RestoreInterrupts(s)
+	return v
+}
+
+// Swap sets the value to v and returns the old value.
+func (a inout I8) Swap(v i8) i8 {
+	s := runtime.DisableInterrupts()
+	old := a.v
+	a.v = v
+	runtime.RestoreInterrupts(s)
+	return old
+}
+
+// CompareAndSwap sets the value to new if it is old, and reports whether
+// it did.
+func (a inout I8) CompareAndSwap(old, new i8) bool {
+	s := runtime.DisableInterrupts()
+	ok := a.v == old
+	if ok {
+		a.v = new
+	}
+	runtime.RestoreInterrupts(s)
+	return ok
+}
+
+// I16 is an atomic i16.
+type I16 struct {
+	v i16
+}
+
+// Load returns the value.
+func (a inout I16) Load() i16 {
+	s := runtime.DisableInterrupts()
+	v := a.v
+	runtime.RestoreInterrupts(s)
+	return v
+}
+
+// Store sets the value to v.
+func (a inout I16) Store(v i16) {
+	s := runtime.DisableInterrupts()
+	a.v = v
+	runtime.RestoreInterrupts(s)
+}
+
+// Add adds d to the value, wrapping around, and returns the new value.
+func (a inout I16) Add(d i16) i16 {
+	s := runtime.DisableInterrupts()
+	a.v = i16(wrap.I16(a.v) + wrap.I16(d))
+	v := a.v
+	runtime.RestoreInterrupts(s)
+	return v
+}
+
+// Swap sets the value to v and returns the old value.
+func (a inout I16) Swap(v i16) i16 {
+	s := runtime.DisableInterrupts()
+	old := a.v
+	a.v = v
+	runtime.RestoreInterrupts(s)
+	return old
+}
+
+// CompareAndSwap sets the value to new if it is old, and reports whether
+// it did.
+func (a inout I16) CompareAndSwap(old, new i16) bool {
+	s := runtime.DisableInterrupts()
+	ok := a.v == old
+	if ok {
+		a.v = new
+	}
+	runtime.RestoreInterrupts(s)
+	return ok
+}
+
+// I32 is an atomic i32.
+type I32 struct {
+	v i32
+}
+
+// Load returns the value.
+func (a inout I32) Load() i32 {
+	s := runtime.DisableInterrupts()
+	v := a.v
+	runtime.RestoreInterrupts(s)
+	return v
+}
+
+// Store sets the value to v.
+func (a inout I32) Store(v i32) {
+	s := runtime.DisableInterrupts()
+	a.v = v
+	runtime.RestoreInterrupts(s)
+}
+
+// Add adds d to the value, wrapping around, and returns the new value.
+func (a inout I32) Add(d i32) i32 {
+	s := runtime.DisableInterrupts()
+	a.v = i32(wrap.I32(a.v) + wrap.I32(d))
+	v := a.v
+	runtime.RestoreInterrupts(s)
+	return v
+}
+
+// Swap sets the value to v and returns the old value.
+func (a inout I32) Swap(v i32) i32 {
+	s := runtime.DisableInterrupts()
+	old := a.v
+	a.v = v
+	runtime.RestoreInterrupts(s)
+	return old
+}
+
+// CompareAndSwap sets the value to new if it is old, and reports whether
+// it did.
+func (a inout I32) CompareAndSwap(old, new i32) bool {
+	s := runtime.DisableInterrupts()
+	ok := a.v == old
+	if ok {
+		a.v = new
+	}
+	runtime.RestoreInterrupts(s)
+	return ok
+}
+
+// I64 is an atomic i64.
+type I64 struct {
+	v i64
+}
+
+// Load returns the value.
+func (a inout I64) Load() i64 {
+	s := runtime.DisableInterrupts()
+	v := a.v
+	runtime.RestoreInterrupts(s)
+	return v
+}
+
+// Store sets the value to v.
+func (a inout I64) Store(v i64) {
+	s := runtime.DisableInterrupts()
+	a.v = v
+	runtime.RestoreInterrupts(s)
+}
+
+// Add adds d to the value, wrapping around, and returns the new value.
+func (a inout I64) Add(d i64) i64 {
+	s := runtime.DisableInterrupts()
+	a.v = i64(wrap.I64(a.v) + wrap.I64(d))
+	v := a.v
+	runtime.RestoreInterrupts(s)
+	return v
+}
+
+// Swap sets the value to v and returns the old value.
+func (a inout I64) Swap(v i64) i64 {
+	s := runtime.DisableInterrupts()
+	old := a.v
+	a.v = v
+	runtime.RestoreInterrupts(s)
+	return old
+}
+
+// CompareAndSwap sets the value to new if it is old, and reports whether
+// it did.
+func (a inout I64) CompareAndSwap(old, new i64) bool {
+	s := runtime.DisableInterrupts()
+	ok := a.v == old
+	if ok {
+		a.v = new
+	}
+	runtime.RestoreInterrupts(s)
+	return ok
+}
+
+// Bool is an atomic bool.
+type Bool struct {
+	v bool
+}
+
+// Load returns the value.
+func (a inout Bool) Load() bool {
+	s := runtime.DisableInterrupts()
+	v := a.v
+	runtime.RestoreInterrupts(s)
+	return v
+}
+
+// Store sets the value to v.
+func (a inout Bool) Store(v bool) {
+	s := runtime.DisableInterrupts()
+	a.v = v
+	runtime.RestoreInterrupts(s)
+}
+
+// Swap sets the value to v and returns the old value.
+func (a inout Bool) Swap(v bool) bool {
+	s := runtime.DisableInterrupts()
+	old := a.v
+	a.v = v
+	runtime.RestoreInterrupts(s)
+	return old
+}
+
+// CompareAndSwap sets the value to new if it is old, and reports whether
+// it did.
+func (a inout Bool) CompareAndSwap(old, new bool) bool {
+	s := runtime.DisableInterrupts()
+	ok := a.v == old
+	if ok {
+		a.v = new
+	}
+	runtime.RestoreInterrupts(s)
+	return ok
+}

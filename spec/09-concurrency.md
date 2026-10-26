@@ -143,7 +143,7 @@ func SortParallel(xs inout []i32) {
 
 **conc.sync.rwmutex** — `sync.RWMutex[T]` provides `Lock()` as `sync.Mutex[T]` does, and `RLock()`, an iterator that yields a copy of the value under a shared lock.
 
-**conc.sync.atomic** — Atomic types provide `Load`, `Store`, `Add`, `Swap` and `CompareAndSwap` as the atomic types of Go's `sync/atomic`. Explicit memory orders are specified in [15-os](15-os.md).
+**conc.sync.atomic** — Atomic types provide `Load`, `Store`, `Add`, `Swap` and `CompareAndSwap` as the atomic types of Go's `sync/atomic`. Explicit memory orders are specified in [15-os](15-os.md). On a single-core target of the `core` profile an operation runs with the interrupts disabled. Until handles (**conc.sync.handle**) are implemented, atomic values are package-level variables, and their methods take them as `inout` receivers.
 
 **conc.sync.placement** — A synchronization object is placed:
 

@@ -1,0 +1,22 @@
+// want: ok
+
+// fact calls itself with a smaller n, and its precondition bounds n, so
+// the depth of its recursion is at most 13 and its stack fits the target
+// (rt.stack.core-recursion, emb.stack.compute).
+package main
+
+profile core
+
+import "an/fmt"
+
+func fact(n u32) u32 {
+	requires n <= 12
+	if n <= 1 {
+		return 1
+	}
+	return n * fact(n-1)
+}
+
+func main() {
+	fmt.Println(fact(12))
+}

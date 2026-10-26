@@ -1,0 +1,21 @@
+// want: contract.obligation.indirect
+
+package main
+
+type Scaler interface {
+	Scale(k int) int
+}
+
+type Square struct {
+	side int
+}
+
+func (s Square) Scale(k int) int {
+	requires k > 0
+	return s.side * k
+}
+
+func main() {
+	var sc Scaler = Square{side: 2}
+	_ = sc.Scale(0)
+}

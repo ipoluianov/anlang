@@ -18,15 +18,28 @@ type Platform struct {
 	Provides []effect.Effect
 	// Dynamic tells whether the platform has dynamic loading.
 	Dynamic bool
-	// Rules implement the platform operations start, exit and write
+	// Rules implement the platform operations start, exit, write and read
 	// (target.arch.ops) for the architectures of the platform.
 	Rules []arch.Rule
+	// Imports are the functions of the environment that the image
+	// imports, in this order; the rules call them by their index
+	// (target.platform.imports).
+	Imports []Import
 	// Formats are the kinds of the binary formats the platform accepts.
 	Formats []string
 	// Profiles are the profiles allowed for package main.
 	Profiles []string
 	// OnPanic is the default panic action.
 	OnPanic PanicAction
+}
+
+// Import is a function of the environment that an image imports: its
+// module and name, and the widths in bits of its parameters and results.
+type Import struct {
+	Module  string
+	Name    string
+	Params  []int
+	Results []int
 }
 
 // PanicAction is what a panic does (spec/19-runtime.md §19.4). The zero
@@ -48,8 +61,62 @@ const DOS = Platform{
 		{Op: "start", Code: "CLD"},
 		{Op: "exit", Code: "MOV AX, {x}\nMOV AH, 0x4C\nINT 0x21"},
 		{Op: "write", Code: "MOV BX, {x}\nMOV DX, {p}\nMOV CX, {y}\nMOV AH, 0x40\nINT 0x21"},
+		{Op: "read", Code: "MOV BX, {x}\nMOV DX, {p}\nMOV CX, {y}\nMOV AH, 0x3F\nINT 0x21\nMOV {r}, AX"},
 	},
 	Formats:  []string{"flat", "mz"},
 	Profiles: []string{"core"},
+	OnPanic:  PrintAndExit,
+}
+
+// Bare is a microcontroller without an operating system: the program
+// starts at the reset vector of the vector table at the start of the
+// image (target.memory.placement), with the interrupts disabled. On
+// armv7m the standard output and the exit status reach the debugger
+// through semihosting (BKPT 0xAB): a stream is the console ":tt", opened
+// for writing for standard output and for appending for standard error;
+// the exit is SYS_EXIT_EXTENDED, after which the processor resets if no
+// debugger stopped it. A fault, and an interrupt without a handler, is a
+// panic (emb.irq.vectors).
+const Bare = Platform{
+	Name:     "bare",
+	Provides: []effect.Effect{effect.Console, effect.Gpio, effect.Uart, effect.Timers, effect.Interrupts, effect.StaticAlloc, effect.Tasks},
+	Rules: []arch.Rule{
+		{Op: "vectors", Code: ".word {sp}\n.word {f}+1\n.word {d}+1\n.word {d}+1\n.word {d}+1\n.word {d}+1\n.word {d}+1\n.word {d}+1\n.word {d}+1\n.word {d}+1\n.word {d}+1\n.word {d}+1\n.word {d}+1\n.word {d}+1\n.word {d}+1\n.word {d}+1"},
+		{Op: "vector", Code: ".word {f}+1"},
+		{Op: "start", Code: "CPSID"},
+		{Op: "exit", Code: "LDR R2, {x}\nMOVW R1, 0x26\nMOVT R1, 0x2\nPUSH {R1, R2}\nMOV R1, SP\nMOVS R0, 0x20\nBKPT 0xAB\nMOVW R0, 0xED0C\nMOVT R0, 0xE000\nMOVW R1, 0x4\nMOVT R1, 0x5FA\nSTR R1, dword [R0]\n@hang:\nB @hang"},
+		{Op: "write", Code: "LDR R4, {x}\nLDR R5, {p}\nLDR R6, {y}\nSUB SP, SP, 0x20\nMOVW R3, 0x743A\nMOVT R3, 0x74\nSTR R3, dword [SP+0xC]\nADD R3, SP, 0xC\nSTR R3, dword [SP]\nLSLS R3, R4, 0x2\nSTR R3, dword [SP+0x4]\nMOVS R3, 0x3\nSTR R3, dword [SP+0x8]\nMOV R1, SP\nMOVS R0, 0x1\nBKPT 0xAB\nSTR R0, dword [SP+0x10]\nSTR R0, dword [SP]\nSTR R5, dword [SP+0x4]\nSTR R6, dword [SP+0x8]\nMOV R1, SP\nMOVS R0, 0x5\nBKPT 0xAB\nADD R1, SP, 0x10\nMOVS R0, 0x2\nBKPT 0xAB\nADD SP, SP, 0x20"},
+		{Op: "read", Code: "LDR R5, {p}\nLDR R6, {y}\nSUB SP, SP, 0x20\nMOVW R3, 0x743A\nMOVT R3, 0x74\nSTR R3, dword [SP+0xC]\nADD R3, SP, 0xC\nSTR R3, dword [SP]\nMOVS R3, 0x0\nSTR R3, dword [SP+0x4]\nMOVS R3, 0x3\nSTR R3, dword [SP+0x8]\nMOV R1, SP\nMOVS R0, 0x1\nBKPT 0xAB\nSTR R0, dword [SP+0x10]\nSTR R0, dword [SP]\nSTR R5, dword [SP+0x4]\nSTR R6, dword [SP+0x8]\nMOV R1, SP\nMOVS R0, 0x6\nBKPT 0xAB\nSUB R6, R6, R0\nADD R1, SP, 0x10\nMOVS R0, 0x2\nBKPT 0xAB\nADD SP, SP, 0x20\nSTR R6, {r}"},
+	},
+	Formats:  []string{"elf", "bin", "hex"},
+	Profiles: []string{"core"},
+	OnPanic:  Halt,
+}
+
+// Web is a host of WebAssembly modules: a browser, or a runtime of the
+// WebAssembly System Interface. The image is a module that imports the
+// functions fd_write, proc_exit and fd_read of WASI
+// (wasi_snapshot_preview1) and exports its entry as _start
+// (target.format.wasm). Standard input, output and error are the file
+// descriptors 0, 1 and 2; the bytes 0 to 15 of the memory are the scratch
+// area of the rules.
+const Web = Platform{
+	Name:     "web",
+	Provides: []effect.Effect{effect.Console, effect.Clock, effect.Random, effect.Network, effect.StaticAlloc, effect.Alloc},
+	Rules: []arch.Rule{
+		{Op: "start", Code: "i32.const {sp}\nglobal.set SP\ni32.const {sb}\nglobal.set SL"},
+		{Op: "exit", Code: "global.get SP\ni32.load {x.off}\ncall 1\nunreachable"},
+		{Op: "exit", Code: "i32.const {x}\ncall 1\nunreachable"},
+		{Op: "write", Code: "i32.const 0\nglobal.get SP\ni32.load {p.off}\ni32.store 0\ni32.const 0\nglobal.get SP\ni32.load {y.off}\ni32.store 4\nglobal.get SP\ni32.load {x.off}\ni32.const 0\ni32.const 1\ni32.const 8\ncall 0\ndrop"},
+		{Op: "write", Code: "i32.const 0\ni32.const {p}\ni32.store 0\ni32.const 0\nglobal.get SP\ni32.load {y.off}\ni32.store 4\nglobal.get SP\ni32.load {x.off}\ni32.const 0\ni32.const 1\ni32.const 8\ncall 0\ndrop"},
+		{Op: "read", Code: "i32.const 0\nglobal.get SP\ni32.load {p.off}\ni32.store 0\ni32.const 0\nglobal.get SP\ni32.load {y.off}\ni32.store 4\nglobal.get SP\ni32.load {x.off}\ni32.const 0\ni32.const 1\ni32.const 8\ncall 2\ndrop\nglobal.get SP\ni32.const 8\ni32.load 0\ni32.store {r.off}"},
+	},
+	Imports: []Import{
+		{Module: "wasi_snapshot_preview1", Name: "fd_write", Params: []int{32, 32, 32, 32}, Results: []int{32}},
+		{Module: "wasi_snapshot_preview1", Name: "proc_exit", Params: []int{32}},
+		{Module: "wasi_snapshot_preview1", Name: "fd_read", Params: []int{32, 32, 32, 32}, Results: []int{32}},
+	},
+	Formats:  []string{"wasm", "html"},
+	Profiles: []string{"core", "app", "ui"},
 	OnPanic:  PrintAndExit,
 }

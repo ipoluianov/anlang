@@ -1,0 +1,33 @@
+// Package stm32f103c8 is the target stm32f103c8: the STM32F103C8
+// microcontroller, a Cortex-M3 with 64 KiB of flash and 20 KiB of RAM.
+// The console is the semihosting console of a debugger (platform.Bare).
+package stm32f103c8
+
+profile app
+
+import (
+	"an/arch"
+	"an/effect"
+	"an/platform"
+	"an/svd"
+	"an/target"
+)
+
+// Description is the target description (target.pkg.description).
+const Description = target.Desc{
+	Arch:     arch.ARMv7M,
+	Platform: platform.Bare,
+	Word:     32,
+	Memory: []target.Region{
+		{Name: "flash", At: 0x0800_0000, Size: 64 * target.KiB, Exec: true},
+		{Name: "ram", At: 0x2000_0000, Size: 20 * target.KiB},
+	},
+	Stack:    8 * target.KiB,
+	Device:   svd.Load("STM32F103.svd"),
+	Formats:  []target.Format{target.ELF, target.BIN, target.HEX},
+	Floats:   target.SoftFloat,
+	Provides: []effect.Effect{effect.Console, effect.Gpio, effect.Uart, effect.Timers, effect.Interrupts, effect.StaticAlloc, effect.Tasks},
+	Lacks:    []effect.Effect{effect.File},
+	OnPanic:  target.Reset,
+	Clock:    72_000_000,
+}

@@ -1,0 +1,11 @@
+// want: contract.obligation.unproven
+
+package main
+
+func main() {
+	n := 0
+	for i := range 5 {
+		n += i
+	}
+	assert(n == 10) // the loop does not tell n
+}

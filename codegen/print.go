@@ -59,6 +59,8 @@ func (fn *fnGen) builtinArgs(name string, c *ir.Call, args []*loc) *loc {
 		return fn.optionGet(c.Type().(*types.Tuple), args[0])
 	case "decoderune":
 		return fn.callRuntime("DecodeRune", args)
+	case "console.ReadByte":
+		return fn.callRuntime("ReadByte", nil)
 	case "unsafe.Data":
 		r := at(mref{kind: mFrame, off: fn.slot(g.ptr)}, types.Typ[types.Usize])
 		fn.writeWord(*r.at, fn.part(args[0], 0), g.ptr)
@@ -223,6 +225,10 @@ func (fn *fnGen) directive(fd *loc, verb byte, width, prec int, flags u8f, a *lo
 		fn.defLabel(done)
 		return
 	}
+	if bits, ok := floatBits(t); ok && strings.IndexByte("eEfFgGv", verb) >= 0 && flags&16 == 0 {
+		fn.callRuntime("PrintFloatF", []*loc{fd, fn.floatAsF64(a), fn.intLoc(bits), vl, wl, pl, fl})
+		return
+	}
 	if verb == 'v' && plain {
 		fn.printValue(1, a, true)
 		return
@@ -255,8 +261,11 @@ func (fn *fnGen) minMax(name string, t types.Type, args []*loc) *loc {
 			c := fn.callRuntime("CompareString", []*loc{x, y})
 			less = fn.test("lt.s", g.intBits, fn.scalar(c), imm(0, g.intBits))
 		default:
-			fn.unsupported(15, "min and max of floating-point values")
-			return r
+			// Floats: the runtime handles NaN and the signs of zeros.
+			bits, _ := floatBits(t)
+			m := fn.floatRuntime(nil, "M"+name[1:], bits, t, a, r)
+			fn.copyTo(*r.at, m, size)
+			continue
 		}
 		fn.branchIf(fn.test("eq", 8, less, imm(0, 8)), skip)
 		fn.copyTo(*r.at, a, size)
@@ -445,7 +454,7 @@ func (fn *fnGen) printValue(fd int, l *loc, fmtMode bool) {
 			fn.callRuntime("PrintString", []*loc{fdl, l})
 			return
 		case u.Info()&types.IsFloat != 0:
-			fn.unsupported(15, "printing of floating-point values")
+			fn.printFloat(fdl, l, fmtMode)
 			return
 		}
 	case *types.Struct:
@@ -848,6 +857,11 @@ func (fn *fnGen) equal(x, y *loc, t types.Type, ne string) {
 			return
 		case u.Info()&types.IsString != 0:
 			eq := fn.callRuntime("EqualString", []*loc{x, y})
+			fn.branchIf(fn.test("eq", 8, fn.scalar(eq), imm(0, 8)), ne)
+			return
+		case u.Info()&types.IsFloat != 0:
+			bits, _ := floatBits(t)
+			eq := fn.floatRuntime(nil, "Eq", bits, types.Typ[types.Bool], x, y)
 			fn.branchIf(fn.test("eq", 8, fn.scalar(eq), imm(0, 8)), ne)
 			return
 		}

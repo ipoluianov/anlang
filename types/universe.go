@@ -21,6 +21,7 @@ const (
 	_Panic
 	_Print
 	_Println
+	_Assert
 
 	// Functions of an/fmt implemented by the compiler.
 	_FmtPrint
@@ -59,12 +60,24 @@ const (
 
 	// Compile-time functions of an/encoding (spec/10-compile-time.md §10.7).
 	_EncodingCP866
+
+	// Functions of an/gen with effect ReadInput (spec/10-compile-time.md
+	// §10.1).
+	_GenReadFile
+
+	// Functions of an/console (spec/18-stdlib.md).
+	_ConsoleReadByte
+
+	// Contract functions of an/math (std.math.contract).
+	_MathSum
+	_MathForAll
+	_MathExists
 )
 
 var builtinNames = map[builtinID]string{
 	_Append: "append", _Cap: "cap", _Clear: "clear", _Close: "close", _Copy: "copy",
 	_Delete: "delete", _Len: "len", _Make: "make", _Max: "max", _Min: "min",
-	_Panic: "panic", _Print: "print", _Println: "println",
+	_Panic: "panic", _Print: "print", _Println: "println", _Assert: "assert",
 	_FmtPrint: "Print", _FmtPrintln: "Println", _FmtSprint: "Sprint", _FmtSprintln: "Sprintln",
 	_FmtPrintf: "Printf", _FmtSprintf: "Sprintf",
 	_BitsWrappingAdd: "WrappingAdd", _BitsWrappingSub: "WrappingSub", _BitsWrappingMul: "WrappingMul",
@@ -73,6 +86,7 @@ var builtinNames = map[builtinID]string{
 	_EffectMark: "Mark", _EffectDefer: "Defer", _EffectDeclare: "Declare", _EffectWithout: "Without",
 	_MetaName: "Name", _MetaFields: "Fields", _MetaVariants: "Variants", _MetaReject: "Reject",
 	_UnsafeMap: "Map", _UnsafeData: "Data", _EncodingCP866: "CP866",
+	_GenReadFile: "ReadFile", _ConsoleReadByte: "ReadByte", _MathSum: "Sum", _MathForAll: "ForAll", _MathExists: "Exists",
 }
 
 // Universe is the universe block (type.universe).
@@ -150,7 +164,7 @@ func init() {
 	Universe.Insert(universeIota)
 	Universe.Insert(&Nil{object{name: "nil", typ: Typ[UntypedNil]}})
 
-	for id := _Append; id <= _Println; id++ {
+	for id := _Append; id <= _Assert; id++ {
 		Universe.Insert(&Builtin{object: object{name: builtinNames[id], typ: Typ[Invalid]}, id: id})
 	}
 }
@@ -170,6 +184,13 @@ var stdPackages = map[string]*Package{
 	// until compile-time evaluation can run functions that allocate in
 	// packages of the core profile.
 	"an/encoding": newStdPackage("an/encoding", _EncodingCP866),
+	// Temporary: an/gen is built into the compiler until files can be read
+	// from Anlang source.
+	"an/gen":     newStdPackage("an/gen", _GenReadFile),
+	"an/console": newStdPackage("an/console", _ConsoleReadByte),
+	// Temporary: an/math has only its contract functions until the
+	// standard library is compiled from Anlang source.
+	"an/math": newStdPackage("an/math", _MathSum, _MathForAll, _MathExists),
 	"an/bits": newStdPackage("an/bits", _BitsWrappingAdd, _BitsWrappingSub, _BitsWrappingMul,
 		_BitsSaturatingAdd, _BitsSaturatingSub, _BitsSaturatingMul, _BitsCheckedAdd, _BitsCheckedSub, _BitsCheckedMul),
 }

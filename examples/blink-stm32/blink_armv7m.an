@@ -1,0 +1,68 @@
+// Command blinkstm32 blinks the LED on pin PC13 of an STM32F103C8 board,
+// such as the Blue Pill, once a second. It runs the processor at 72 MHz
+// from the PLL and the 8 MHz crystal, and sleeps until timer TIM2 counts
+// half a second. The interrupt of the timer stays masked: WFI wakes up
+// when the interrupt is pending, and the program clears it.
+package main
+
+profile core
+
+import (
+	"an/arch/armv7m"
+	"an/device"
+)
+
+// clock72MHz runs the processor at 72 MHz: the PLL multiplies the 8 MHz
+// crystal by 9, and the low-speed bus APB1 runs at 36 MHz, which clocks
+// its timers at 72 MHz.
+func clock72MHz() {
+	device.RCC.CR = device.RCC.CR.WithHSEON(true)
+	for !device.RCC.CR.HSERDY() {
+	}
+	device.FLASH.ACR = device.FLASH.ACR.WithLATENCY(device.FLASH_LATENCY_WS2)
+	device.RCC.CFGR = device.RCC.CFGR.WithPLLSRC(device.RCC_PLLSRC_HSE).WithPLLMUL(device.RCC_PLLMUL_Mul9).WithPPRE1(device.RCC_PPRE_Div2)
+	device.RCC.CR = device.RCC.CR.WithPLLON(true)
+	for !device.RCC.CR.PLLRDY() {
+	}
+	device.RCC.CFGR = device.RCC.CFGR.WithSW(device.RCC_SW_PLL)
+	for {
+		if sws, ok := device.RCC.CFGR.SWS(); ok && sws == device.RCC_SWS_PLL {
+			break
+		}
+	}
+}
+
+// tim2Bit is the bit of the interrupt of TIM2 in the registers of the
+// interrupt controller.
+const tim2Bit = 1 << 28
+
+func main() {
+	clock72MHz()
+	device.RCC.APB2ENR = device.RCC.APB2ENR.WithIOPCEN(true)
+	device.RCC.APB1ENR = device.RCC.APB1ENR.WithTIM2EN(true)
+	// PC13 is a push-pull output; the LED is on when the pin is low.
+	device.GPIOC.CRH = device.GPIOC.CRH.WithMODE13(device.GPIO_MODE_Output2MHz).WithCNF13(0)
+	device.GPIOC.BSRR = device.GPIOC.BSRR.WithBS13(true)
+	// TIM2 counts at 10 kHz and updates every 5000 counts.
+	device.TIM2.PSC = device.TIM2.PSC.WithPSC(7200 - 1)
+	device.TIM2.ARR = device.TIM2.ARR.WithARR(5000 - 1)
+	device.TIM2.EGR = device.TIM2.EGR.WithUG(true)
+	device.TIM2.SR = 0
+	device.TIM2.DIER = device.TIM2.DIER.WithUIE(true)
+	device.NVIC.ICPR0 = tim2Bit
+	device.NVIC.ISER0 = tim2Bit
+	armv7m.Cpsid(armv7m.Regs{})
+	device.TIM2.CR1 = device.TIM2.CR1.WithCEN(true)
+	on := false
+	for {
+		armv7m.Wfi(armv7m.Regs{})
+		device.TIM2.SR = 0
+		device.NVIC.ICPR0 = tim2Bit
+		on = !on
+		if on {
+			device.GPIOC.BSRR = device.GPIOC.BSRR.WithBR13(true)
+		} else {
+			device.GPIOC.BSRR = device.GPIOC.BSRR.WithBS13(true)
+		}
+	}
+}

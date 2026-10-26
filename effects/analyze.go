@@ -32,6 +32,13 @@ func Analyze(info *types.Info, imported func(key string) *Summary) *Package {
 		fn := a.newFn(funcKey(f), f.Signature(), nil)
 		fn.sum.Pos = f.Decl.Name.Pos()
 		a.without(fn, f.Decl.Body)
+		if f.Handler != "" {
+			// An interrupt handler neither allocates, nor blocks, nor
+			// panics (emb.irq.effects).
+			fn.sum.Handler = true
+			fn.sum.Without = append(fn.sum.Without, Alloc, Block, Panic)
+			a.pkg.Without[fn.key] = append(a.pkg.Without[fn.key], Alloc, Block, Panic)
+		}
 		a.walkBody(fn, f.Decl.Body)
 	}
 	for _, inst := range info.TemplateInstances {
@@ -200,6 +207,9 @@ func instKey(info *types.Info, inst *types.TemplateInstance) string {
 
 // funcKey returns the key of a declared function or method: the package
 // path and the name, with the receiver base type name for a method.
+// FuncKey returns the key of the summary of function f.
+func FuncKey(f *types.Func) string { return funcKey(f) }
+
 func funcKey(f *types.Func) string {
 	path := "?"
 	if f.Pkg() != nil {

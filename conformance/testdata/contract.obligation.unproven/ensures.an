@@ -1,0 +1,16 @@
+// want: contract.obligation.unproven
+
+// The postcondition does not hold when x is negative.
+package main
+
+func abs(x int) int {
+	ensures result >= 0
+	if x > 0 {
+		return x
+	}
+	return x
+}
+
+func main() {
+	_ = abs(-1)
+}

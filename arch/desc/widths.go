@@ -196,12 +196,12 @@ func (c *checker) lvalueWidth(env *wenv, name string) int {
 	return 0
 }
 
-// operand returns the operand named by a, b or c, or nil.
+// operand returns the operand named by a, b, c or d, or nil.
 func (c *checker) operand(env *wenv, name string) *Operand {
 	if env.inst == nil || len(name) != 1 {
 		return nil
 	}
-	i := strings.IndexByte("abc", name[0])
+	i := strings.IndexByte("abcd", name[0])
 	if i < 0 || i >= len(env.inst.ops) {
 		return nil
 	}

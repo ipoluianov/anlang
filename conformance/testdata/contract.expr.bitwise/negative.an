@@ -1,0 +1,18 @@
+// want: contract.obligation.unproven
+// checks: contract.expr.bitwise
+
+// In a contract, -1 has infinitely many one bits: -1 & 0xFF is 255, and
+// the postcondition does not hold.
+package main
+
+profile core
+
+func f(x int) int {
+	requires x == -1
+	ensures result&0xFF == 0
+	return x
+}
+
+func main() {
+	_ = f(-1)
+}

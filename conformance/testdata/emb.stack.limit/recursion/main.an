@@ -1,0 +1,20 @@
+// want: emb.stack.limit
+
+// fact calls itself with a smaller n, but only the type of n bounds it:
+// the stack for that depth of recursion exceeds the stack of the target.
+package main
+
+profile core
+
+import "an/fmt"
+
+func fact(n u32) u32 {
+	if n <= 1 {
+		return 1
+	}
+	return n * fact(n-1)
+}
+
+func main() {
+	fmt.Println(fact(5))
+}

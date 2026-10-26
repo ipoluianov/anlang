@@ -12,8 +12,8 @@ import (
 )
 
 // The primitives: the code generator implements them with the platform
-// operations write and exit (target.arch.ops) and with the chain of
-// deferred calls.
+// operations write, read and exit (target.arch.ops) and with the chain
+// of deferred calls.
 
 // write writes the bytes p to stream fd: 1 is standard output, 2
 // standard error.
@@ -29,8 +29,34 @@ func writeString(fd int, s string) {
 // exit ends the program with status code.
 func exit(code int) {}
 
+// read reads a byte of stream fd, 0 for standard input, into b and
+// returns the number of bytes read: 1, or 0 at the end of the stream.
+func read(fd int, b inout u8) int {
+	effect.Mark(effect.Console)
+	return 0
+}
+
+// ReadByte reads a byte of standard input for console.ReadByte; ok is
+// false at its end.
+func ReadByte() (b u8, ok bool) {
+	n := read(0, b)
+	return b, n == 1
+}
+
 // runDefers runs the pending deferred calls of all frames, newest first.
 func runDefers() {}
+
+// DisableInterrupts disables the interrupts and returns their state
+// before, for RestoreInterrupts. It is a primitive that the code
+// generator implements with the operation irq.save, on targets that have
+// it (comp.gen.runtime).
+func DisableInterrupts() uint {
+	return 0
+}
+
+// RestoreInterrupts restores the state of the interrupts that
+// DisableInterrupts returned, with the operation irq.restore.
+func RestoreInterrupts(s uint) {}
 
 // Printing in the formats of fmt.Print and print.
 
@@ -162,6 +188,12 @@ func PanicDivide() {
 // PanicShift is the panic of a shift by a negative count.
 func PanicShift() {
 	Panic("runtime error: negative shift amount")
+}
+
+// PanicInterrupt is the panic of an exception or an interrupt without a
+// handler (emb.irq.vectors).
+func PanicInterrupt() {
+	Panic("unhandled interrupt")
 }
 
 // PanicIndex is the panic of an index i out of the range of a length n.

@@ -33,7 +33,7 @@ func run(t *testing.T, dir string) (string, *dos.Machine) {
 	if len(errs) > 0 {
 		t.Fatal(errs)
 	}
-	m, err := dos.Load(a, image)
+	m, err := dos.Load(a, image.Bytes)
 	if err != nil {
 		t.Fatal(err)
 	}

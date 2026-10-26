@@ -1,0 +1,30 @@
+// want: ok
+
+// In an invariant clause the fields of the struct are in scope by their
+// names; the invariants of the fields hold as well.
+package main
+
+profile core
+
+import "an/fmt"
+
+type Range struct {
+	invariant lo <= hi
+	lo, hi int
+}
+
+type Window struct {
+	invariant r.hi-r.lo <= limit && limit <= 100
+	r     Range
+	limit int
+}
+
+func size(w Window) int {
+	ensures 0 <= result && result <= 100
+	return w.r.hi - w.r.lo
+}
+
+func main() {
+	w := Window{r: Range{1, 5}, limit: 10}
+	fmt.Println(size(w))
+}

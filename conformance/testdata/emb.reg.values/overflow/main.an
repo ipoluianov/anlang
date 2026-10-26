@@ -1,0 +1,13 @@
+// want: contract.obligation.unproven
+// checks: emb.reg.values
+
+// 4 does not fit the 2 bits of the field CNF13.
+package main
+
+profile core
+
+import "an/device"
+
+func main() {
+	device.GPIOC.CRH = device.GPIOC.CRH.WithCNF13(4)
+}

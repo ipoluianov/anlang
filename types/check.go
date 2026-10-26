@@ -27,6 +27,14 @@ type Config struct {
 	IntBits  int    // size of int and uint in bits (type.int.word); 0 means 64
 	AddrBits int    // size of usize in bits (type.int.usize); 0 means IntBits
 	Arch     string // the architecture of the target, for asm statements
+	// Interrupts are the names of the interrupt vectors of the device of
+	// the target (emb.irq.name).
+	Interrupts []string
+	// DeferNarrowing leaves the narrowing conversions that the checker
+	// does not prove to the proof obligations, which have the facts of
+	// their program points (type.conv.int-narrow-facts): they are in
+	// Info.Narrowings.
+	DeferNarrowing bool
 }
 
 // Info is the result of type checking.
@@ -42,12 +50,16 @@ type Info struct {
 	Scope *Scope
 	// Funcs are the package-level functions in source order.
 	Funcs []*Func
+	// Handlers are the interrupt handlers, also in Funcs.
+	Handlers []*Func
 	// Methods are the methods in source order.
 	Methods []*Func
 	// Main is func main; nil for packages other than main.
 	Main *Func
 	// Pkg is the checked package.
 	Pkg *Package
+	// Files are the files of the package.
+	Files []*syntax.File
 	// Selections maps selector expressions of fields and methods to
 	// what they select.
 	Selections map[*syntax.SelectorExpr]*Selection
@@ -73,8 +85,23 @@ type Info struct {
 	StaticSwitch map[*syntax.TypeSwitchStmt]int
 	// MetaCalls maps calls of descriptor methods to what they do.
 	MetaCalls map[*syntax.CallExpr]*MetaCall
+	// ContractResults maps the ensures clauses of the functions with one
+	// unnamed result to the variable result (contract.expr.result).
+	ContractResults map[*syntax.ContractStmt]*Var
+	// Narrowings maps the operands of the narrowing conversions left to the
+	// proof obligations to the types they convert to (Config.DeferNarrowing).
+	Narrowings map[syntax.Expr]Type
+	// Proven holds the expressions and statements whose run-time checks the
+	// solver proves not to fail (contract.check.runtime): index and slice
+	// expressions, arithmetic, and the statements x op= y and x++.
+	Proven map[syntax.Node]bool
+	// RecursionDepth maps the functions that call themselves to the
+	// proven bound on the depth of their recursion (rt.stack.core-recursion).
+	RecursionDepth map[*Func]int
 
 	ctx *checker // for the type operations of the API
+
+	intBits, addrBits int // the widths of int and usize on the target
 }
 
 // TypeAndValue is the type and, for a constant, the value of an
@@ -150,6 +177,7 @@ type checker struct {
 	declInit   syntax.Expr
 	declMapVar *Var // the package-level variable whose unsafe.Map initializer is checked
 	inEnsures  bool // checking the expression of an ensures clause
+	inContract int  // checking a contract expression or the argument of assert
 
 	// rangeKeys are the range key variables with a known number of
 	// iterations (type.conv.int-narrow-facts 6).
@@ -190,6 +218,7 @@ func Check(conf *Config, files []*syntax.File) (*Info, []*syntax.Error) {
 		addrBits: conf.AddrBits,
 		files:    files,
 		info: &Info{
+			Files: files,
 			Types: map[syntax.Expr]TypeAndValue{},
 			Defs:  map[*syntax.Name]Object{},
 			Uses:  map[*syntax.Name]Object{},
@@ -202,7 +231,13 @@ func Check(conf *Config, files []*syntax.File) (*Info, []*syntax.Error) {
 			Unrolled:      map[*syntax.RangeStmt][]*Unrolled{},
 			StaticSwitch:  map[*syntax.TypeSwitchStmt]int{},
 			MetaCalls:     map[*syntax.CallExpr]*MetaCall{},
-			Bytes:         map[syntax.Expr][]byte{},
+
+			Bytes: map[syntax.Expr][]byte{},
+
+			ContractResults: map[*syntax.ContractStmt]*Var{},
+			Narrowings:      map[syntax.Expr]Type{},
+			Proven:          map[syntax.Node]bool{},
+			RecursionDepth:  map[*Func]int{},
 		},
 		pkgScope: NewScope(Universe),
 		decls:    map[Object]*declInfo{},
@@ -226,6 +261,7 @@ func Check(conf *Config, files []*syntax.File) (*Info, []*syntax.Error) {
 	if c.addrBits == 0 {
 		c.addrBits = c.intBits
 	}
+	c.info.intBits, c.info.addrBits = c.intBits, c.addrBits
 	path := conf.Path
 	if path == "" {
 		path = conf.Module
@@ -514,8 +550,11 @@ func (c *checker) collectFunc(fs *Scope, d *syntax.FuncDecl) {
 	case d.Recv != nil:
 		c.methodDecls = append(c.methodDecls, methodDecl{fs, d})
 		return
+	case d.Handler == "interrupt":
+		c.handlerDecl(fs, d)
+		return
 	case d.Handler != "":
-		c.notSupported(d.Pos(), 17, d.Handler+" handlers")
+		c.notSupported(d.Pos(), 54, d.Handler+" handlers")
 		return
 	case d.Gpu.IsValid():
 		c.notSupported(d.Pos(), 64, "gpu functions")
@@ -535,6 +574,35 @@ func (c *checker) collectFunc(fs *Scope, d *syntax.FuncDecl) {
 	if c.declarePkg(d.Name, obj, &declInfo{file: fs, fdecl: d}) {
 		c.info.Funcs = append(c.info.Funcs, obj)
 	}
+}
+
+// handlerDecl declares an interrupt handler (spec/14-embedded.md §3): a
+// function without a name in any scope, checked like the others.
+func (c *checker) handlerDecl(fs *Scope, d *syntax.FuncDecl) {
+	name := d.Name.Name
+	if len(c.pkg.Profiles) != 1 || c.pkg.Profiles[0] != "core" {
+		c.errorf(d.Pos(), "emb.irq.profile", "interrupt %s: interrupt handlers are permitted only in packages whose profile set is exactly {core}", name)
+	}
+	if d.Type.TypeParams != nil {
+		c.errorf(d.Name.Pos(), "decl.handler.no-generic", "interrupt %s has type parameters", name)
+	}
+	if len(d.Type.Params.List) > 0 || d.Type.Results != nil && len(d.Type.Results.List) > 0 {
+		c.errorf(d.Name.Pos(), "emb.irq.signature", "interrupt %s has parameters or results: a handler has neither", name)
+	}
+	if !slices.Contains(c.conf.Interrupts, name) {
+		c.errorf(d.Name.Pos(), "emb.irq.name", "interrupt %s: the device of the target has no interrupt vector %s", name, name)
+	}
+	for _, h := range c.info.Handlers {
+		if h.Handler == name {
+			c.errorf(d.Name.Pos(), "emb.irq.name", "interrupt %s has a second handler (the first at %s)", name, h.Pos())
+		}
+	}
+	obj := &Func{object: object{pos: d.Name.Pos(), name: "interrupt " + name, pkg: c.pkg, parent: c.pkgScope}, Decl: d, Handler: name}
+	c.info.Defs[d.Name] = nil
+	c.decls[obj] = &declInfo{file: fs, fdecl: d}
+	c.objList = append(c.objList, obj)
+	c.info.Funcs = append(c.info.Funcs, obj)
+	c.info.Handlers = append(c.info.Handlers, obj)
 }
 
 // declarePkg declares a package-level object. It reports whether the
@@ -672,6 +740,12 @@ func (c *checker) importPath(spec *syntax.ImportSpec, path string, err error) *P
 		return pkg // a standard library package compiled from source
 	}
 	pkg := stdPackages[path]
+	if pkg == nil && path == "an/device" {
+		// The build provides an/device for a target with a device
+		// description.
+		c.errorf(spec.Path.Pos(), "emb.device.package", "package an/device exists only for a target with a device description, and this target has none")
+		return nil
+	}
 	if pkg == nil {
 		c.notSupported(spec.Path.Pos(), 29, fmt.Sprintf("package %q", path))
 	}

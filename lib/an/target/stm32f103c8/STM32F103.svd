@@ -1,0 +1,2619 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The peripherals of the STM32F103C8 that Anlang models, written for
+     Anlang from the register map of the reference manual (RM0008). Part
+     of Anlang, MIT license. -->
+<device schemaVersion="1.1">
+  <name>STM32F103</name>
+  <description>STM32F103 medium-density performance line</description>
+  <addressUnitBits>8</addressUnitBits>
+  <width>32</width>
+  <size>32</size>
+  <access>read-write</access>
+  <resetValue>0x00000000</resetValue>
+  <resetMask>0xFFFFFFFF</resetMask>
+  <peripherals>
+    <peripheral>
+      <name>TIM2</name>
+      <description>General-purpose timer</description>
+      <groupName>TIM</groupName>
+      <baseAddress>0x40000000</baseAddress>
+      <interrupt>
+        <name>TIM2</name>
+        <description>TIM2 global interrupt</description>
+        <value>28</value>
+      </interrupt>
+      <registers>
+        <register>
+          <name>CR1</name>
+          <description>Control register 1</description>
+          <addressOffset>0x00</addressOffset>
+          <resetValue>0x00000000</resetValue>
+          <fields>
+            <field>
+              <name>CEN</name>
+              <description>Counter enable</description>
+              <bitOffset>0</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>UDIS</name>
+              <description>Update disable</description>
+              <bitOffset>1</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>URS</name>
+              <description>Update request source</description>
+              <bitOffset>2</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>OPM</name>
+              <description>One-pulse mode</description>
+              <bitOffset>3</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>DIR</name>
+              <description>Direction</description>
+              <bitOffset>4</bitOffset>
+              <bitWidth>1</bitWidth>
+              <enumeratedValues>
+                <enumeratedValue>
+                  <name>Up</name>
+                  <description>upcounter</description>
+                  <value>0</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Down</name>
+                  <description>downcounter</description>
+                  <value>1</value>
+                </enumeratedValue>
+              </enumeratedValues>
+            </field>
+            <field>
+              <name>CMS</name>
+              <description>Center-aligned mode selection</description>
+              <bitOffset>5</bitOffset>
+              <bitWidth>2</bitWidth>
+            </field>
+            <field>
+              <name>ARPE</name>
+              <description>Auto-reload preload enable</description>
+              <bitOffset>7</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>CKD</name>
+              <description>Clock division</description>
+              <bitOffset>8</bitOffset>
+              <bitWidth>2</bitWidth>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>CR2</name>
+          <description>Control register 2</description>
+          <addressOffset>0x04</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+        <register>
+          <name>SMCR</name>
+          <description>Slave mode control register</description>
+          <addressOffset>0x08</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+        <register>
+          <name>DIER</name>
+          <description>DMA/interrupt enable register</description>
+          <addressOffset>0x0C</addressOffset>
+          <resetValue>0x00000000</resetValue>
+          <fields>
+            <field>
+              <name>UIE</name>
+              <description>Update interrupt enable</description>
+              <bitOffset>0</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>CC1IE</name>
+              <description>Capture/compare 1 interrupt enable</description>
+              <bitOffset>1</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>CC2IE</name>
+              <description>Capture/compare 2 interrupt enable</description>
+              <bitOffset>2</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>CC3IE</name>
+              <description>Capture/compare 3 interrupt enable</description>
+              <bitOffset>3</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>CC4IE</name>
+              <description>Capture/compare 4 interrupt enable</description>
+              <bitOffset>4</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>TIE</name>
+              <description>Trigger interrupt enable</description>
+              <bitOffset>6</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>SR</name>
+          <description>Status register</description>
+          <addressOffset>0x10</addressOffset>
+          <resetValue>0x00000000</resetValue>
+          <fields>
+            <field>
+              <name>UIF</name>
+              <description>Update interrupt flag</description>
+              <bitOffset>0</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>CC1IF</name>
+              <description>Capture/compare 1 interrupt flag</description>
+              <bitOffset>1</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>CC2IF</name>
+              <description>Capture/compare 2 interrupt flag</description>
+              <bitOffset>2</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>CC3IF</name>
+              <description>Capture/compare 3 interrupt flag</description>
+              <bitOffset>3</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>CC4IF</name>
+              <description>Capture/compare 4 interrupt flag</description>
+              <bitOffset>4</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>TIF</name>
+              <description>Trigger interrupt flag</description>
+              <bitOffset>6</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>EGR</name>
+          <description>Event generation register</description>
+          <addressOffset>0x14</addressOffset>
+          <access>write-only</access>
+          <resetValue>0x00000000</resetValue>
+          <fields>
+            <field>
+              <name>UG</name>
+              <description>Update generation</description>
+              <bitOffset>0</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>CCMR1</name>
+          <description>Capture/compare mode register 1</description>
+          <addressOffset>0x18</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+        <register>
+          <name>CCMR2</name>
+          <description>Capture/compare mode register 2</description>
+          <addressOffset>0x1C</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+        <register>
+          <name>CCER</name>
+          <description>Capture/compare enable register</description>
+          <addressOffset>0x20</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+        <register>
+          <name>CNT</name>
+          <description>Counter</description>
+          <addressOffset>0x24</addressOffset>
+          <resetValue>0x00000000</resetValue>
+          <fields>
+            <field>
+              <name>CNT</name>
+              <description>Counter value</description>
+              <bitOffset>0</bitOffset>
+              <bitWidth>16</bitWidth>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>PSC</name>
+          <description>Prescaler</description>
+          <addressOffset>0x28</addressOffset>
+          <resetValue>0x00000000</resetValue>
+          <fields>
+            <field>
+              <name>PSC</name>
+              <description>Prescaler value</description>
+              <bitOffset>0</bitOffset>
+              <bitWidth>16</bitWidth>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>ARR</name>
+          <description>Auto-reload register</description>
+          <addressOffset>0x2C</addressOffset>
+          <resetValue>0x0000FFFF</resetValue>
+          <fields>
+            <field>
+              <name>ARR</name>
+              <description>Auto-reload value</description>
+              <bitOffset>0</bitOffset>
+              <bitWidth>16</bitWidth>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>CCR1</name>
+          <description>Capture/compare register 1</description>
+          <addressOffset>0x34</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+        <register>
+          <name>CCR2</name>
+          <description>Capture/compare register 2</description>
+          <addressOffset>0x38</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+        <register>
+          <name>CCR3</name>
+          <description>Capture/compare register 3</description>
+          <addressOffset>0x3C</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+        <register>
+          <name>CCR4</name>
+          <description>Capture/compare register 4</description>
+          <addressOffset>0x40</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+        <register>
+          <name>DCR</name>
+          <description>DMA control register</description>
+          <addressOffset>0x48</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+        <register>
+          <name>DMAR</name>
+          <description>DMA address for full transfer</description>
+          <addressOffset>0x4C</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+      </registers>
+    </peripheral>
+    <peripheral derivedFrom="TIM2">
+      <name>TIM3</name>
+      <baseAddress>0x40000400</baseAddress>
+      <interrupt>
+        <name>TIM3</name>
+        <description>TIM3 global interrupt</description>
+        <value>29</value>
+      </interrupt>
+    </peripheral>
+    <peripheral derivedFrom="TIM2">
+      <name>TIM4</name>
+      <baseAddress>0x40000800</baseAddress>
+      <interrupt>
+        <name>TIM4</name>
+        <description>TIM4 global interrupt</description>
+        <value>30</value>
+      </interrupt>
+    </peripheral>
+    <peripheral derivedFrom="USART1">
+      <name>USART2</name>
+      <baseAddress>0x40004400</baseAddress>
+      <interrupt>
+        <name>USART2</name>
+        <description>USART2 global interrupt</description>
+        <value>38</value>
+      </interrupt>
+    </peripheral>
+    <peripheral derivedFrom="USART1">
+      <name>USART3</name>
+      <baseAddress>0x40004800</baseAddress>
+      <interrupt>
+        <name>USART3</name>
+        <description>USART3 global interrupt</description>
+        <value>39</value>
+      </interrupt>
+    </peripheral>
+    <peripheral>
+      <name>AFIO</name>
+      <description>Alternate function I/O</description>
+      <groupName>AFIO</groupName>
+      <baseAddress>0x40010000</baseAddress>
+      <registers>
+        <register>
+          <name>EVCR</name>
+          <description>Event control register</description>
+          <addressOffset>0x00</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+        <register>
+          <name>MAPR</name>
+          <description>AF remap and debug I/O configuration register</description>
+          <addressOffset>0x04</addressOffset>
+          <resetValue>0x00000000</resetValue>
+          <fields>
+            <field>
+              <name>SWJ_CFG</name>
+              <description>Serial wire JTAG configuration</description>
+              <bitOffset>24</bitOffset>
+              <bitWidth>3</bitWidth>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>EXTICR1</name>
+          <description>External interrupt configuration register 1</description>
+          <addressOffset>0x08</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+        <register>
+          <name>EXTICR2</name>
+          <description>External interrupt configuration register 2</description>
+          <addressOffset>0x0C</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+        <register>
+          <name>EXTICR3</name>
+          <description>External interrupt configuration register 3</description>
+          <addressOffset>0x10</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+        <register>
+          <name>EXTICR4</name>
+          <description>External interrupt configuration register 4</description>
+          <addressOffset>0x14</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+      </registers>
+    </peripheral>
+    <peripheral>
+      <name>GPIOA</name>
+      <description>General-purpose I/O</description>
+      <groupName>GPIO</groupName>
+      <baseAddress>0x40010800</baseAddress>
+      <registers>
+        <register>
+          <name>CRL</name>
+          <description>Port configuration register low</description>
+          <addressOffset>0x00</addressOffset>
+          <resetValue>0x44444444</resetValue>
+          <fields>
+            <field>
+              <name>MODE0</name>
+              <description>Mode of pin 0</description>
+              <bitOffset>0</bitOffset>
+              <bitWidth>2</bitWidth>
+              <enumeratedValues>
+                <enumeratedValue>
+                  <name>Input</name>
+                  <description>input</description>
+                  <value>0</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output10MHz</name>
+                  <description>output, 10 MHz</description>
+                  <value>1</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output2MHz</name>
+                  <description>output, 2 MHz</description>
+                  <value>2</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output50MHz</name>
+                  <description>output, 50 MHz</description>
+                  <value>3</value>
+                </enumeratedValue>
+              </enumeratedValues>
+            </field>
+            <field>
+              <name>CNF0</name>
+              <description>Configuration of pin 0: analog, floating or pull input; push-pull, open-drain or alternate function output</description>
+              <bitOffset>2</bitOffset>
+              <bitWidth>2</bitWidth>
+            </field>
+            <field>
+              <name>MODE1</name>
+              <description>Mode of pin 1</description>
+              <bitOffset>4</bitOffset>
+              <bitWidth>2</bitWidth>
+              <enumeratedValues>
+                <enumeratedValue>
+                  <name>Input</name>
+                  <description>input</description>
+                  <value>0</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output10MHz</name>
+                  <description>output, 10 MHz</description>
+                  <value>1</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output2MHz</name>
+                  <description>output, 2 MHz</description>
+                  <value>2</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output50MHz</name>
+                  <description>output, 50 MHz</description>
+                  <value>3</value>
+                </enumeratedValue>
+              </enumeratedValues>
+            </field>
+            <field>
+              <name>CNF1</name>
+              <description>Configuration of pin 1: analog, floating or pull input; push-pull, open-drain or alternate function output</description>
+              <bitOffset>6</bitOffset>
+              <bitWidth>2</bitWidth>
+            </field>
+            <field>
+              <name>MODE2</name>
+              <description>Mode of pin 2</description>
+              <bitOffset>8</bitOffset>
+              <bitWidth>2</bitWidth>
+              <enumeratedValues>
+                <enumeratedValue>
+                  <name>Input</name>
+                  <description>input</description>
+                  <value>0</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output10MHz</name>
+                  <description>output, 10 MHz</description>
+                  <value>1</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output2MHz</name>
+                  <description>output, 2 MHz</description>
+                  <value>2</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output50MHz</name>
+                  <description>output, 50 MHz</description>
+                  <value>3</value>
+                </enumeratedValue>
+              </enumeratedValues>
+            </field>
+            <field>
+              <name>CNF2</name>
+              <description>Configuration of pin 2: analog, floating or pull input; push-pull, open-drain or alternate function output</description>
+              <bitOffset>10</bitOffset>
+              <bitWidth>2</bitWidth>
+            </field>
+            <field>
+              <name>MODE3</name>
+              <description>Mode of pin 3</description>
+              <bitOffset>12</bitOffset>
+              <bitWidth>2</bitWidth>
+              <enumeratedValues>
+                <enumeratedValue>
+                  <name>Input</name>
+                  <description>input</description>
+                  <value>0</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output10MHz</name>
+                  <description>output, 10 MHz</description>
+                  <value>1</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output2MHz</name>
+                  <description>output, 2 MHz</description>
+                  <value>2</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output50MHz</name>
+                  <description>output, 50 MHz</description>
+                  <value>3</value>
+                </enumeratedValue>
+              </enumeratedValues>
+            </field>
+            <field>
+              <name>CNF3</name>
+              <description>Configuration of pin 3: analog, floating or pull input; push-pull, open-drain or alternate function output</description>
+              <bitOffset>14</bitOffset>
+              <bitWidth>2</bitWidth>
+            </field>
+            <field>
+              <name>MODE4</name>
+              <description>Mode of pin 4</description>
+              <bitOffset>16</bitOffset>
+              <bitWidth>2</bitWidth>
+              <enumeratedValues>
+                <enumeratedValue>
+                  <name>Input</name>
+                  <description>input</description>
+                  <value>0</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output10MHz</name>
+                  <description>output, 10 MHz</description>
+                  <value>1</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output2MHz</name>
+                  <description>output, 2 MHz</description>
+                  <value>2</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output50MHz</name>
+                  <description>output, 50 MHz</description>
+                  <value>3</value>
+                </enumeratedValue>
+              </enumeratedValues>
+            </field>
+            <field>
+              <name>CNF4</name>
+              <description>Configuration of pin 4: analog, floating or pull input; push-pull, open-drain or alternate function output</description>
+              <bitOffset>18</bitOffset>
+              <bitWidth>2</bitWidth>
+            </field>
+            <field>
+              <name>MODE5</name>
+              <description>Mode of pin 5</description>
+              <bitOffset>20</bitOffset>
+              <bitWidth>2</bitWidth>
+              <enumeratedValues>
+                <enumeratedValue>
+                  <name>Input</name>
+                  <description>input</description>
+                  <value>0</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output10MHz</name>
+                  <description>output, 10 MHz</description>
+                  <value>1</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output2MHz</name>
+                  <description>output, 2 MHz</description>
+                  <value>2</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output50MHz</name>
+                  <description>output, 50 MHz</description>
+                  <value>3</value>
+                </enumeratedValue>
+              </enumeratedValues>
+            </field>
+            <field>
+              <name>CNF5</name>
+              <description>Configuration of pin 5: analog, floating or pull input; push-pull, open-drain or alternate function output</description>
+              <bitOffset>22</bitOffset>
+              <bitWidth>2</bitWidth>
+            </field>
+            <field>
+              <name>MODE6</name>
+              <description>Mode of pin 6</description>
+              <bitOffset>24</bitOffset>
+              <bitWidth>2</bitWidth>
+              <enumeratedValues>
+                <enumeratedValue>
+                  <name>Input</name>
+                  <description>input</description>
+                  <value>0</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output10MHz</name>
+                  <description>output, 10 MHz</description>
+                  <value>1</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output2MHz</name>
+                  <description>output, 2 MHz</description>
+                  <value>2</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output50MHz</name>
+                  <description>output, 50 MHz</description>
+                  <value>3</value>
+                </enumeratedValue>
+              </enumeratedValues>
+            </field>
+            <field>
+              <name>CNF6</name>
+              <description>Configuration of pin 6: analog, floating or pull input; push-pull, open-drain or alternate function output</description>
+              <bitOffset>26</bitOffset>
+              <bitWidth>2</bitWidth>
+            </field>
+            <field>
+              <name>MODE7</name>
+              <description>Mode of pin 7</description>
+              <bitOffset>28</bitOffset>
+              <bitWidth>2</bitWidth>
+              <enumeratedValues>
+                <enumeratedValue>
+                  <name>Input</name>
+                  <description>input</description>
+                  <value>0</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output10MHz</name>
+                  <description>output, 10 MHz</description>
+                  <value>1</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output2MHz</name>
+                  <description>output, 2 MHz</description>
+                  <value>2</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output50MHz</name>
+                  <description>output, 50 MHz</description>
+                  <value>3</value>
+                </enumeratedValue>
+              </enumeratedValues>
+            </field>
+            <field>
+              <name>CNF7</name>
+              <description>Configuration of pin 7: analog, floating or pull input; push-pull, open-drain or alternate function output</description>
+              <bitOffset>30</bitOffset>
+              <bitWidth>2</bitWidth>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>CRH</name>
+          <description>Port configuration register high</description>
+          <addressOffset>0x04</addressOffset>
+          <resetValue>0x44444444</resetValue>
+          <fields>
+            <field>
+              <name>MODE8</name>
+              <description>Mode of pin 8</description>
+              <bitOffset>0</bitOffset>
+              <bitWidth>2</bitWidth>
+              <enumeratedValues>
+                <enumeratedValue>
+                  <name>Input</name>
+                  <description>input</description>
+                  <value>0</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output10MHz</name>
+                  <description>output, 10 MHz</description>
+                  <value>1</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output2MHz</name>
+                  <description>output, 2 MHz</description>
+                  <value>2</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output50MHz</name>
+                  <description>output, 50 MHz</description>
+                  <value>3</value>
+                </enumeratedValue>
+              </enumeratedValues>
+            </field>
+            <field>
+              <name>CNF8</name>
+              <description>Configuration of pin 8: analog, floating or pull input; push-pull, open-drain or alternate function output</description>
+              <bitOffset>2</bitOffset>
+              <bitWidth>2</bitWidth>
+            </field>
+            <field>
+              <name>MODE9</name>
+              <description>Mode of pin 9</description>
+              <bitOffset>4</bitOffset>
+              <bitWidth>2</bitWidth>
+              <enumeratedValues>
+                <enumeratedValue>
+                  <name>Input</name>
+                  <description>input</description>
+                  <value>0</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output10MHz</name>
+                  <description>output, 10 MHz</description>
+                  <value>1</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output2MHz</name>
+                  <description>output, 2 MHz</description>
+                  <value>2</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output50MHz</name>
+                  <description>output, 50 MHz</description>
+                  <value>3</value>
+                </enumeratedValue>
+              </enumeratedValues>
+            </field>
+            <field>
+              <name>CNF9</name>
+              <description>Configuration of pin 9: analog, floating or pull input; push-pull, open-drain or alternate function output</description>
+              <bitOffset>6</bitOffset>
+              <bitWidth>2</bitWidth>
+            </field>
+            <field>
+              <name>MODE10</name>
+              <description>Mode of pin 10</description>
+              <bitOffset>8</bitOffset>
+              <bitWidth>2</bitWidth>
+              <enumeratedValues>
+                <enumeratedValue>
+                  <name>Input</name>
+                  <description>input</description>
+                  <value>0</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output10MHz</name>
+                  <description>output, 10 MHz</description>
+                  <value>1</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output2MHz</name>
+                  <description>output, 2 MHz</description>
+                  <value>2</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output50MHz</name>
+                  <description>output, 50 MHz</description>
+                  <value>3</value>
+                </enumeratedValue>
+              </enumeratedValues>
+            </field>
+            <field>
+              <name>CNF10</name>
+              <description>Configuration of pin 10: analog, floating or pull input; push-pull, open-drain or alternate function output</description>
+              <bitOffset>10</bitOffset>
+              <bitWidth>2</bitWidth>
+            </field>
+            <field>
+              <name>MODE11</name>
+              <description>Mode of pin 11</description>
+              <bitOffset>12</bitOffset>
+              <bitWidth>2</bitWidth>
+              <enumeratedValues>
+                <enumeratedValue>
+                  <name>Input</name>
+                  <description>input</description>
+                  <value>0</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output10MHz</name>
+                  <description>output, 10 MHz</description>
+                  <value>1</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output2MHz</name>
+                  <description>output, 2 MHz</description>
+                  <value>2</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output50MHz</name>
+                  <description>output, 50 MHz</description>
+                  <value>3</value>
+                </enumeratedValue>
+              </enumeratedValues>
+            </field>
+            <field>
+              <name>CNF11</name>
+              <description>Configuration of pin 11: analog, floating or pull input; push-pull, open-drain or alternate function output</description>
+              <bitOffset>14</bitOffset>
+              <bitWidth>2</bitWidth>
+            </field>
+            <field>
+              <name>MODE12</name>
+              <description>Mode of pin 12</description>
+              <bitOffset>16</bitOffset>
+              <bitWidth>2</bitWidth>
+              <enumeratedValues>
+                <enumeratedValue>
+                  <name>Input</name>
+                  <description>input</description>
+                  <value>0</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output10MHz</name>
+                  <description>output, 10 MHz</description>
+                  <value>1</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output2MHz</name>
+                  <description>output, 2 MHz</description>
+                  <value>2</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output50MHz</name>
+                  <description>output, 50 MHz</description>
+                  <value>3</value>
+                </enumeratedValue>
+              </enumeratedValues>
+            </field>
+            <field>
+              <name>CNF12</name>
+              <description>Configuration of pin 12: analog, floating or pull input; push-pull, open-drain or alternate function output</description>
+              <bitOffset>18</bitOffset>
+              <bitWidth>2</bitWidth>
+            </field>
+            <field>
+              <name>MODE13</name>
+              <description>Mode of pin 13</description>
+              <bitOffset>20</bitOffset>
+              <bitWidth>2</bitWidth>
+              <enumeratedValues>
+                <enumeratedValue>
+                  <name>Input</name>
+                  <description>input</description>
+                  <value>0</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output10MHz</name>
+                  <description>output, 10 MHz</description>
+                  <value>1</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output2MHz</name>
+                  <description>output, 2 MHz</description>
+                  <value>2</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output50MHz</name>
+                  <description>output, 50 MHz</description>
+                  <value>3</value>
+                </enumeratedValue>
+              </enumeratedValues>
+            </field>
+            <field>
+              <name>CNF13</name>
+              <description>Configuration of pin 13: analog, floating or pull input; push-pull, open-drain or alternate function output</description>
+              <bitOffset>22</bitOffset>
+              <bitWidth>2</bitWidth>
+            </field>
+            <field>
+              <name>MODE14</name>
+              <description>Mode of pin 14</description>
+              <bitOffset>24</bitOffset>
+              <bitWidth>2</bitWidth>
+              <enumeratedValues>
+                <enumeratedValue>
+                  <name>Input</name>
+                  <description>input</description>
+                  <value>0</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output10MHz</name>
+                  <description>output, 10 MHz</description>
+                  <value>1</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output2MHz</name>
+                  <description>output, 2 MHz</description>
+                  <value>2</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output50MHz</name>
+                  <description>output, 50 MHz</description>
+                  <value>3</value>
+                </enumeratedValue>
+              </enumeratedValues>
+            </field>
+            <field>
+              <name>CNF14</name>
+              <description>Configuration of pin 14: analog, floating or pull input; push-pull, open-drain or alternate function output</description>
+              <bitOffset>26</bitOffset>
+              <bitWidth>2</bitWidth>
+            </field>
+            <field>
+              <name>MODE15</name>
+              <description>Mode of pin 15</description>
+              <bitOffset>28</bitOffset>
+              <bitWidth>2</bitWidth>
+              <enumeratedValues>
+                <enumeratedValue>
+                  <name>Input</name>
+                  <description>input</description>
+                  <value>0</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output10MHz</name>
+                  <description>output, 10 MHz</description>
+                  <value>1</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output2MHz</name>
+                  <description>output, 2 MHz</description>
+                  <value>2</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Output50MHz</name>
+                  <description>output, 50 MHz</description>
+                  <value>3</value>
+                </enumeratedValue>
+              </enumeratedValues>
+            </field>
+            <field>
+              <name>CNF15</name>
+              <description>Configuration of pin 15: analog, floating or pull input; push-pull, open-drain or alternate function output</description>
+              <bitOffset>30</bitOffset>
+              <bitWidth>2</bitWidth>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>IDR</name>
+          <description>Port input data register</description>
+          <addressOffset>0x08</addressOffset>
+          <access>read-only</access>
+          <resetValue>0x00000000</resetValue>
+          <fields>
+            <field>
+              <name>IDR0</name>
+              <description>Input data of pin 0</description>
+              <bitOffset>0</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>IDR1</name>
+              <description>Input data of pin 1</description>
+              <bitOffset>1</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>IDR2</name>
+              <description>Input data of pin 2</description>
+              <bitOffset>2</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>IDR3</name>
+              <description>Input data of pin 3</description>
+              <bitOffset>3</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>IDR4</name>
+              <description>Input data of pin 4</description>
+              <bitOffset>4</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>IDR5</name>
+              <description>Input data of pin 5</description>
+              <bitOffset>5</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>IDR6</name>
+              <description>Input data of pin 6</description>
+              <bitOffset>6</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>IDR7</name>
+              <description>Input data of pin 7</description>
+              <bitOffset>7</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>IDR8</name>
+              <description>Input data of pin 8</description>
+              <bitOffset>8</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>IDR9</name>
+              <description>Input data of pin 9</description>
+              <bitOffset>9</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>IDR10</name>
+              <description>Input data of pin 10</description>
+              <bitOffset>10</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>IDR11</name>
+              <description>Input data of pin 11</description>
+              <bitOffset>11</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>IDR12</name>
+              <description>Input data of pin 12</description>
+              <bitOffset>12</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>IDR13</name>
+              <description>Input data of pin 13</description>
+              <bitOffset>13</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>IDR14</name>
+              <description>Input data of pin 14</description>
+              <bitOffset>14</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>IDR15</name>
+              <description>Input data of pin 15</description>
+              <bitOffset>15</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>ODR</name>
+          <description>Port output data register</description>
+          <addressOffset>0x0C</addressOffset>
+          <resetValue>0x00000000</resetValue>
+          <fields>
+            <field>
+              <name>ODR0</name>
+              <description>Output data of pin 0</description>
+              <bitOffset>0</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>ODR1</name>
+              <description>Output data of pin 1</description>
+              <bitOffset>1</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>ODR2</name>
+              <description>Output data of pin 2</description>
+              <bitOffset>2</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>ODR3</name>
+              <description>Output data of pin 3</description>
+              <bitOffset>3</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>ODR4</name>
+              <description>Output data of pin 4</description>
+              <bitOffset>4</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>ODR5</name>
+              <description>Output data of pin 5</description>
+              <bitOffset>5</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>ODR6</name>
+              <description>Output data of pin 6</description>
+              <bitOffset>6</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>ODR7</name>
+              <description>Output data of pin 7</description>
+              <bitOffset>7</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>ODR8</name>
+              <description>Output data of pin 8</description>
+              <bitOffset>8</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>ODR9</name>
+              <description>Output data of pin 9</description>
+              <bitOffset>9</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>ODR10</name>
+              <description>Output data of pin 10</description>
+              <bitOffset>10</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>ODR11</name>
+              <description>Output data of pin 11</description>
+              <bitOffset>11</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>ODR12</name>
+              <description>Output data of pin 12</description>
+              <bitOffset>12</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>ODR13</name>
+              <description>Output data of pin 13</description>
+              <bitOffset>13</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>ODR14</name>
+              <description>Output data of pin 14</description>
+              <bitOffset>14</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>ODR15</name>
+              <description>Output data of pin 15</description>
+              <bitOffset>15</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>BSRR</name>
+          <description>Port bit set/reset register</description>
+          <addressOffset>0x10</addressOffset>
+          <access>write-only</access>
+          <resetValue>0x00000000</resetValue>
+          <fields>
+            <field>
+              <name>BS0</name>
+              <description>Set pin 0</description>
+              <bitOffset>0</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BS1</name>
+              <description>Set pin 1</description>
+              <bitOffset>1</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BS2</name>
+              <description>Set pin 2</description>
+              <bitOffset>2</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BS3</name>
+              <description>Set pin 3</description>
+              <bitOffset>3</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BS4</name>
+              <description>Set pin 4</description>
+              <bitOffset>4</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BS5</name>
+              <description>Set pin 5</description>
+              <bitOffset>5</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BS6</name>
+              <description>Set pin 6</description>
+              <bitOffset>6</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BS7</name>
+              <description>Set pin 7</description>
+              <bitOffset>7</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BS8</name>
+              <description>Set pin 8</description>
+              <bitOffset>8</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BS9</name>
+              <description>Set pin 9</description>
+              <bitOffset>9</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BS10</name>
+              <description>Set pin 10</description>
+              <bitOffset>10</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BS11</name>
+              <description>Set pin 11</description>
+              <bitOffset>11</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BS12</name>
+              <description>Set pin 12</description>
+              <bitOffset>12</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BS13</name>
+              <description>Set pin 13</description>
+              <bitOffset>13</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BS14</name>
+              <description>Set pin 14</description>
+              <bitOffset>14</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BS15</name>
+              <description>Set pin 15</description>
+              <bitOffset>15</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BR0</name>
+              <description>Reset pin 0</description>
+              <bitOffset>16</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BR1</name>
+              <description>Reset pin 1</description>
+              <bitOffset>17</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BR2</name>
+              <description>Reset pin 2</description>
+              <bitOffset>18</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BR3</name>
+              <description>Reset pin 3</description>
+              <bitOffset>19</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BR4</name>
+              <description>Reset pin 4</description>
+              <bitOffset>20</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BR5</name>
+              <description>Reset pin 5</description>
+              <bitOffset>21</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BR6</name>
+              <description>Reset pin 6</description>
+              <bitOffset>22</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BR7</name>
+              <description>Reset pin 7</description>
+              <bitOffset>23</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BR8</name>
+              <description>Reset pin 8</description>
+              <bitOffset>24</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BR9</name>
+              <description>Reset pin 9</description>
+              <bitOffset>25</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BR10</name>
+              <description>Reset pin 10</description>
+              <bitOffset>26</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BR11</name>
+              <description>Reset pin 11</description>
+              <bitOffset>27</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BR12</name>
+              <description>Reset pin 12</description>
+              <bitOffset>28</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BR13</name>
+              <description>Reset pin 13</description>
+              <bitOffset>29</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BR14</name>
+              <description>Reset pin 14</description>
+              <bitOffset>30</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BR15</name>
+              <description>Reset pin 15</description>
+              <bitOffset>31</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>BRR</name>
+          <description>Port bit reset register</description>
+          <addressOffset>0x14</addressOffset>
+          <access>write-only</access>
+          <resetValue>0x00000000</resetValue>
+          <fields>
+            <field>
+              <name>BR0</name>
+              <description>Reset pin 0</description>
+              <bitOffset>0</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BR1</name>
+              <description>Reset pin 1</description>
+              <bitOffset>1</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BR2</name>
+              <description>Reset pin 2</description>
+              <bitOffset>2</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BR3</name>
+              <description>Reset pin 3</description>
+              <bitOffset>3</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BR4</name>
+              <description>Reset pin 4</description>
+              <bitOffset>4</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BR5</name>
+              <description>Reset pin 5</description>
+              <bitOffset>5</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BR6</name>
+              <description>Reset pin 6</description>
+              <bitOffset>6</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BR7</name>
+              <description>Reset pin 7</description>
+              <bitOffset>7</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BR8</name>
+              <description>Reset pin 8</description>
+              <bitOffset>8</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BR9</name>
+              <description>Reset pin 9</description>
+              <bitOffset>9</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BR10</name>
+              <description>Reset pin 10</description>
+              <bitOffset>10</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BR11</name>
+              <description>Reset pin 11</description>
+              <bitOffset>11</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BR12</name>
+              <description>Reset pin 12</description>
+              <bitOffset>12</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BR13</name>
+              <description>Reset pin 13</description>
+              <bitOffset>13</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BR14</name>
+              <description>Reset pin 14</description>
+              <bitOffset>14</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BR15</name>
+              <description>Reset pin 15</description>
+              <bitOffset>15</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>LCKR</name>
+          <description>Port configuration lock register</description>
+          <addressOffset>0x18</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+      </registers>
+    </peripheral>
+    <peripheral derivedFrom="GPIOA">
+      <name>GPIOB</name>
+      <baseAddress>0x40010C00</baseAddress>
+    </peripheral>
+    <peripheral derivedFrom="GPIOA">
+      <name>GPIOC</name>
+      <baseAddress>0x40011000</baseAddress>
+    </peripheral>
+    <peripheral derivedFrom="GPIOA">
+      <name>GPIOD</name>
+      <baseAddress>0x40011400</baseAddress>
+    </peripheral>
+    <peripheral derivedFrom="GPIOA">
+      <name>GPIOE</name>
+      <baseAddress>0x40011800</baseAddress>
+    </peripheral>
+    <peripheral>
+      <name>USART1</name>
+      <description>Universal synchronous asynchronous receiver transmitter</description>
+      <groupName>USART</groupName>
+      <baseAddress>0x40013800</baseAddress>
+      <interrupt>
+        <name>USART1</name>
+        <description>USART1 global interrupt</description>
+        <value>37</value>
+      </interrupt>
+      <registers>
+        <register>
+          <name>SR</name>
+          <description>Status register</description>
+          <addressOffset>0x00</addressOffset>
+          <resetValue>0x000000C0</resetValue>
+          <fields>
+            <field>
+              <name>PE</name>
+              <description>Parity error</description>
+              <bitOffset>0</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>FE</name>
+              <description>Framing error</description>
+              <bitOffset>1</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>NE</name>
+              <description>Noise error flag</description>
+              <bitOffset>2</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>ORE</name>
+              <description>Overrun error</description>
+              <bitOffset>3</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>IDLE</name>
+              <description>IDLE line detected</description>
+              <bitOffset>4</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>RXNE</name>
+              <description>Read data register not empty</description>
+              <bitOffset>5</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>TC</name>
+              <description>Transmission complete</description>
+              <bitOffset>6</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>TXE</name>
+              <description>Transmit data register empty</description>
+              <bitOffset>7</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>LBD</name>
+              <description>LIN break detection flag</description>
+              <bitOffset>8</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>CTS</name>
+              <description>CTS flag</description>
+              <bitOffset>9</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>DR</name>
+          <description>Data register</description>
+          <addressOffset>0x04</addressOffset>
+          <resetValue>0x00000000</resetValue>
+          <fields>
+            <field>
+              <name>DR</name>
+              <description>Data value</description>
+              <bitOffset>0</bitOffset>
+              <bitWidth>9</bitWidth>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>BRR</name>
+          <description>Baud rate register</description>
+          <addressOffset>0x08</addressOffset>
+          <resetValue>0x00000000</resetValue>
+          <fields>
+            <field>
+              <name>DIV_Fraction</name>
+              <description>Fraction of USARTDIV</description>
+              <bitOffset>0</bitOffset>
+              <bitWidth>4</bitWidth>
+            </field>
+            <field>
+              <name>DIV_Mantissa</name>
+              <description>Mantissa of USARTDIV</description>
+              <bitOffset>4</bitOffset>
+              <bitWidth>12</bitWidth>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>CR1</name>
+          <description>Control register 1</description>
+          <addressOffset>0x0C</addressOffset>
+          <resetValue>0x00000000</resetValue>
+          <fields>
+            <field>
+              <name>SBK</name>
+              <description>Send break</description>
+              <bitOffset>0</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>RWU</name>
+              <description>Receiver wakeup</description>
+              <bitOffset>1</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>RE</name>
+              <description>Receiver enable</description>
+              <bitOffset>2</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>TE</name>
+              <description>Transmitter enable</description>
+              <bitOffset>3</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>IDLEIE</name>
+              <description>IDLE interrupt enable</description>
+              <bitOffset>4</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>RXNEIE</name>
+              <description>RXNE interrupt enable</description>
+              <bitOffset>5</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>TCIE</name>
+              <description>Transmission complete interrupt enable</description>
+              <bitOffset>6</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>TXEIE</name>
+              <description>TXE interrupt enable</description>
+              <bitOffset>7</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>PEIE</name>
+              <description>PE interrupt enable</description>
+              <bitOffset>8</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>PS</name>
+              <description>Parity selection</description>
+              <bitOffset>9</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>PCE</name>
+              <description>Parity control enable</description>
+              <bitOffset>10</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>WAKE</name>
+              <description>Wakeup method</description>
+              <bitOffset>11</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>M</name>
+              <description>Word length</description>
+              <bitOffset>12</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>UE</name>
+              <description>USART enable</description>
+              <bitOffset>13</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>CR2</name>
+          <description>Control register 2</description>
+          <addressOffset>0x10</addressOffset>
+          <resetValue>0x00000000</resetValue>
+          <fields>
+            <field>
+              <name>STOP</name>
+              <description>Stop bits</description>
+              <bitOffset>12</bitOffset>
+              <bitWidth>2</bitWidth>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>CR3</name>
+          <description>Control register 3</description>
+          <addressOffset>0x14</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+        <register>
+          <name>GTPR</name>
+          <description>Guard time and prescaler register</description>
+          <addressOffset>0x18</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+      </registers>
+    </peripheral>
+    <peripheral>
+      <name>RCC</name>
+      <description>Reset and clock control</description>
+      <groupName>RCC</groupName>
+      <baseAddress>0x40021000</baseAddress>
+      <interrupt>
+        <name>RCC</name>
+        <description>RCC global interrupt</description>
+        <value>5</value>
+      </interrupt>
+      <registers>
+        <register>
+          <name>CR</name>
+          <description>Clock control register</description>
+          <addressOffset>0x00</addressOffset>
+          <resetValue>0x00000083</resetValue>
+          <fields>
+            <field>
+              <name>HSION</name>
+              <description>Internal high-speed clock enable</description>
+              <bitOffset>0</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>HSIRDY</name>
+              <description>Internal high-speed clock ready flag</description>
+              <bitOffset>1</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>HSITRIM</name>
+              <description>Internal high-speed clock trimming</description>
+              <bitOffset>3</bitOffset>
+              <bitWidth>5</bitWidth>
+            </field>
+            <field>
+              <name>HSICAL</name>
+              <description>Internal high-speed clock calibration</description>
+              <bitOffset>8</bitOffset>
+              <bitWidth>8</bitWidth>
+            </field>
+            <field>
+              <name>HSEON</name>
+              <description>External high-speed clock enable</description>
+              <bitOffset>16</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>HSERDY</name>
+              <description>External high-speed clock ready flag</description>
+              <bitOffset>17</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>HSEBYP</name>
+              <description>External high-speed clock bypass</description>
+              <bitOffset>18</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>CSSON</name>
+              <description>Clock security system enable</description>
+              <bitOffset>19</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>PLLON</name>
+              <description>PLL enable</description>
+              <bitOffset>24</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>PLLRDY</name>
+              <description>PLL clock ready flag</description>
+              <bitOffset>25</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>CFGR</name>
+          <description>Clock configuration register</description>
+          <addressOffset>0x04</addressOffset>
+          <resetValue>0x00000000</resetValue>
+          <fields>
+            <field>
+              <name>SW</name>
+              <description>System clock switch</description>
+              <bitOffset>0</bitOffset>
+              <bitWidth>2</bitWidth>
+              <enumeratedValues>
+                <enumeratedValue>
+                  <name>HSI</name>
+                  <description>HSI oscillator</description>
+                  <value>0</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>HSE</name>
+                  <description>HSE oscillator</description>
+                  <value>1</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>PLL</name>
+                  <description>PLL</description>
+                  <value>2</value>
+                </enumeratedValue>
+              </enumeratedValues>
+            </field>
+            <field>
+              <name>SWS</name>
+              <description>System clock switch status</description>
+              <bitOffset>2</bitOffset>
+              <bitWidth>2</bitWidth>
+              <enumeratedValues>
+                <enumeratedValue>
+                  <name>HSI</name>
+                  <description>HSI oscillator</description>
+                  <value>0</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>HSE</name>
+                  <description>HSE oscillator</description>
+                  <value>1</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>PLL</name>
+                  <description>PLL</description>
+                  <value>2</value>
+                </enumeratedValue>
+              </enumeratedValues>
+            </field>
+            <field>
+              <name>HPRE</name>
+              <description>AHB prescaler</description>
+              <bitOffset>4</bitOffset>
+              <bitWidth>4</bitWidth>
+              <enumeratedValues>
+                <enumeratedValue>
+                  <name>Div1</name>
+                  <description>not divided</description>
+                  <value>0</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Div2</name>
+                  <description>divided by 2</description>
+                  <value>8</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Div4</name>
+                  <description>divided by 4</description>
+                  <value>9</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Div8</name>
+                  <description>divided by 8</description>
+                  <value>10</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Div16</name>
+                  <description>divided by 16</description>
+                  <value>11</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Div64</name>
+                  <description>divided by 64</description>
+                  <value>12</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Div128</name>
+                  <description>divided by 128</description>
+                  <value>13</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Div256</name>
+                  <description>divided by 256</description>
+                  <value>14</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Div512</name>
+                  <description>divided by 512</description>
+                  <value>15</value>
+                </enumeratedValue>
+              </enumeratedValues>
+            </field>
+            <field>
+              <name>PPRE1</name>
+              <description>APB low-speed prescaler (APB1)</description>
+              <bitOffset>8</bitOffset>
+              <bitWidth>3</bitWidth>
+              <enumeratedValues>
+                <enumeratedValue>
+                  <name>Div1</name>
+                  <description>not divided</description>
+                  <value>0</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Div2</name>
+                  <description>divided by 2</description>
+                  <value>4</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Div4</name>
+                  <description>divided by 4</description>
+                  <value>5</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Div8</name>
+                  <description>divided by 8</description>
+                  <value>6</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Div16</name>
+                  <description>divided by 16</description>
+                  <value>7</value>
+                </enumeratedValue>
+              </enumeratedValues>
+            </field>
+            <field>
+              <name>PPRE2</name>
+              <description>APB high-speed prescaler (APB2)</description>
+              <bitOffset>11</bitOffset>
+              <bitWidth>3</bitWidth>
+              <enumeratedValues>
+                <enumeratedValue>
+                  <name>Div1</name>
+                  <description>not divided</description>
+                  <value>0</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Div2</name>
+                  <description>divided by 2</description>
+                  <value>4</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Div4</name>
+                  <description>divided by 4</description>
+                  <value>5</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Div8</name>
+                  <description>divided by 8</description>
+                  <value>6</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Div16</name>
+                  <description>divided by 16</description>
+                  <value>7</value>
+                </enumeratedValue>
+              </enumeratedValues>
+            </field>
+            <field>
+              <name>ADCPRE</name>
+              <description>ADC prescaler</description>
+              <bitOffset>14</bitOffset>
+              <bitWidth>2</bitWidth>
+            </field>
+            <field>
+              <name>PLLSRC</name>
+              <description>PLL entry clock source</description>
+              <bitOffset>16</bitOffset>
+              <bitWidth>1</bitWidth>
+              <enumeratedValues>
+                <enumeratedValue>
+                  <name>HSIDiv2</name>
+                  <description>HSI divided by 2</description>
+                  <value>0</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>HSE</name>
+                  <description>HSE</description>
+                  <value>1</value>
+                </enumeratedValue>
+              </enumeratedValues>
+            </field>
+            <field>
+              <name>PLLXTPRE</name>
+              <description>HSE divider for PLL entry</description>
+              <bitOffset>17</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>PLLMUL</name>
+              <description>PLL multiplication factor</description>
+              <bitOffset>18</bitOffset>
+              <bitWidth>4</bitWidth>
+              <enumeratedValues>
+                <enumeratedValue>
+                  <name>Mul2</name>
+                  <description>input clock times 2</description>
+                  <value>0</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Mul3</name>
+                  <description>input clock times 3</description>
+                  <value>1</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Mul4</name>
+                  <description>input clock times 4</description>
+                  <value>2</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Mul5</name>
+                  <description>input clock times 5</description>
+                  <value>3</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Mul6</name>
+                  <description>input clock times 6</description>
+                  <value>4</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Mul7</name>
+                  <description>input clock times 7</description>
+                  <value>5</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Mul8</name>
+                  <description>input clock times 8</description>
+                  <value>6</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Mul9</name>
+                  <description>input clock times 9</description>
+                  <value>7</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Mul10</name>
+                  <description>input clock times 10</description>
+                  <value>8</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Mul11</name>
+                  <description>input clock times 11</description>
+                  <value>9</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Mul12</name>
+                  <description>input clock times 12</description>
+                  <value>10</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Mul13</name>
+                  <description>input clock times 13</description>
+                  <value>11</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Mul14</name>
+                  <description>input clock times 14</description>
+                  <value>12</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Mul15</name>
+                  <description>input clock times 15</description>
+                  <value>13</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Mul16</name>
+                  <description>input clock times 16</description>
+                  <value>14</value>
+                </enumeratedValue>
+              </enumeratedValues>
+            </field>
+            <field>
+              <name>USBPRE</name>
+              <description>USB prescaler</description>
+              <bitOffset>22</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>MCO</name>
+              <description>Microcontroller clock output</description>
+              <bitOffset>24</bitOffset>
+              <bitWidth>3</bitWidth>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>CIR</name>
+          <description>Clock interrupt register</description>
+          <addressOffset>0x08</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+        <register>
+          <name>APB2RSTR</name>
+          <description>APB2 peripheral reset register</description>
+          <addressOffset>0x0C</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+        <register>
+          <name>APB1RSTR</name>
+          <description>APB1 peripheral reset register</description>
+          <addressOffset>0x10</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+        <register>
+          <name>AHBENR</name>
+          <description>AHB peripheral clock enable register</description>
+          <addressOffset>0x14</addressOffset>
+          <resetValue>0x00000014</resetValue>
+          <fields>
+            <field>
+              <name>DMA1EN</name>
+              <description>DMA1 clock enable</description>
+              <bitOffset>0</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>SRAMEN</name>
+              <description>SRAM interface clock enable</description>
+              <bitOffset>2</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>FLITFEN</name>
+              <description>FLITF clock enable</description>
+              <bitOffset>4</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>CRCEN</name>
+              <description>CRC clock enable</description>
+              <bitOffset>6</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>APB2ENR</name>
+          <description>APB2 peripheral clock enable register</description>
+          <addressOffset>0x18</addressOffset>
+          <resetValue>0x00000000</resetValue>
+          <fields>
+            <field>
+              <name>AFIOEN</name>
+              <description>Alternate function I/O clock enable</description>
+              <bitOffset>0</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>IOPAEN</name>
+              <description>I/O port A clock enable</description>
+              <bitOffset>2</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>IOPBEN</name>
+              <description>I/O port B clock enable</description>
+              <bitOffset>3</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>IOPCEN</name>
+              <description>I/O port C clock enable</description>
+              <bitOffset>4</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>IOPDEN</name>
+              <description>I/O port D clock enable</description>
+              <bitOffset>5</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>IOPEEN</name>
+              <description>I/O port E clock enable</description>
+              <bitOffset>6</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>ADC1EN</name>
+              <description>ADC 1 interface clock enable</description>
+              <bitOffset>9</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>ADC2EN</name>
+              <description>ADC 2 interface clock enable</description>
+              <bitOffset>10</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>TIM1EN</name>
+              <description>TIM1 timer clock enable</description>
+              <bitOffset>11</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>SPI1EN</name>
+              <description>SPI 1 clock enable</description>
+              <bitOffset>12</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>USART1EN</name>
+              <description>USART1 clock enable</description>
+              <bitOffset>14</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>APB1ENR</name>
+          <description>APB1 peripheral clock enable register</description>
+          <addressOffset>0x1C</addressOffset>
+          <resetValue>0x00000000</resetValue>
+          <fields>
+            <field>
+              <name>TIM2EN</name>
+              <description>Timer 2 clock enable</description>
+              <bitOffset>0</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>TIM3EN</name>
+              <description>Timer 3 clock enable</description>
+              <bitOffset>1</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>TIM4EN</name>
+              <description>Timer 4 clock enable</description>
+              <bitOffset>2</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>WWDGEN</name>
+              <description>Window watchdog clock enable</description>
+              <bitOffset>11</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>SPI2EN</name>
+              <description>SPI 2 clock enable</description>
+              <bitOffset>14</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>USART2EN</name>
+              <description>USART 2 clock enable</description>
+              <bitOffset>17</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>USART3EN</name>
+              <description>USART 3 clock enable</description>
+              <bitOffset>18</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>I2C1EN</name>
+              <description>I2C 1 clock enable</description>
+              <bitOffset>21</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>I2C2EN</name>
+              <description>I2C 2 clock enable</description>
+              <bitOffset>22</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>USBEN</name>
+              <description>USB clock enable</description>
+              <bitOffset>23</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>CANEN</name>
+              <description>CAN clock enable</description>
+              <bitOffset>25</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>BKPEN</name>
+              <description>Backup interface clock enable</description>
+              <bitOffset>27</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>PWREN</name>
+              <description>Power interface clock enable</description>
+              <bitOffset>28</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>BDCR</name>
+          <description>Backup domain control register</description>
+          <addressOffset>0x20</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+        <register>
+          <name>CSR</name>
+          <description>Control and status register</description>
+          <addressOffset>0x24</addressOffset>
+          <resetValue>0x0C000000</resetValue>
+        </register>
+      </registers>
+    </peripheral>
+    <peripheral>
+      <name>FLASH</name>
+      <description>Flash memory interface</description>
+      <groupName>FLASH</groupName>
+      <baseAddress>0x40022000</baseAddress>
+      <interrupt>
+        <name>FLASH</name>
+        <description>Flash global interrupt</description>
+        <value>4</value>
+      </interrupt>
+      <registers>
+        <register>
+          <name>ACR</name>
+          <description>Flash access control register</description>
+          <addressOffset>0x00</addressOffset>
+          <resetValue>0x00000030</resetValue>
+          <fields>
+            <field>
+              <name>LATENCY</name>
+              <description>Latency</description>
+              <bitOffset>0</bitOffset>
+              <bitWidth>3</bitWidth>
+              <enumeratedValues>
+                <enumeratedValue>
+                  <name>WS0</name>
+                  <description>zero wait states, for 24 MHz or less</description>
+                  <value>0</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>WS1</name>
+                  <description>one wait state, for 24 to 48 MHz</description>
+                  <value>1</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>WS2</name>
+                  <description>two wait states, for 48 to 72 MHz</description>
+                  <value>2</value>
+                </enumeratedValue>
+              </enumeratedValues>
+            </field>
+            <field>
+              <name>HLFCYA</name>
+              <description>Flash half cycle access enable</description>
+              <bitOffset>3</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>PRFTBE</name>
+              <description>Prefetch buffer enable</description>
+              <bitOffset>4</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>PRFTBS</name>
+              <description>Prefetch buffer status</description>
+              <bitOffset>5</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+          </fields>
+        </register>
+      </registers>
+    </peripheral>
+    <peripheral>
+      <name>STK</name>
+      <description>SysTick timer</description>
+      <groupName>STK</groupName>
+      <baseAddress>0xE000E010</baseAddress>
+      <registers>
+        <register>
+          <name>CTRL</name>
+          <description>SysTick control and status register</description>
+          <addressOffset>0x00</addressOffset>
+          <resetValue>0x00000000</resetValue>
+          <fields>
+            <field>
+              <name>ENABLE</name>
+              <description>Counter enable</description>
+              <bitOffset>0</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>TICKINT</name>
+              <description>SysTick exception request enable</description>
+              <bitOffset>1</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>CLKSOURCE</name>
+              <description>Clock source selection</description>
+              <bitOffset>2</bitOffset>
+              <bitWidth>1</bitWidth>
+              <enumeratedValues>
+                <enumeratedValue>
+                  <name>External</name>
+                  <description>the processor clock divided by 8</description>
+                  <value>0</value>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>Processor</name>
+                  <description>the processor clock</description>
+                  <value>1</value>
+                </enumeratedValue>
+              </enumeratedValues>
+            </field>
+            <field>
+              <name>COUNTFLAG</name>
+              <description>Counted to 0 since the last read</description>
+              <bitOffset>16</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>LOAD</name>
+          <description>SysTick reload value register</description>
+          <addressOffset>0x04</addressOffset>
+          <resetValue>0x00000000</resetValue>
+          <fields>
+            <field>
+              <name>RELOAD</name>
+              <description>Reload value</description>
+              <bitOffset>0</bitOffset>
+              <bitWidth>24</bitWidth>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>VAL</name>
+          <description>SysTick current value register</description>
+          <addressOffset>0x08</addressOffset>
+          <resetValue>0x00000000</resetValue>
+          <fields>
+            <field>
+              <name>CURRENT</name>
+              <description>Current counter value</description>
+              <bitOffset>0</bitOffset>
+              <bitWidth>24</bitWidth>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>CALIB</name>
+          <description>SysTick calibration value register</description>
+          <addressOffset>0x0C</addressOffset>
+          <access>read-only</access>
+          <resetValue>0x40002328</resetValue>
+          <fields>
+            <field>
+              <name>TENMS</name>
+              <description>Calibration value</description>
+              <bitOffset>0</bitOffset>
+              <bitWidth>24</bitWidth>
+            </field>
+          </fields>
+        </register>
+      </registers>
+    </peripheral>
+    <peripheral>
+      <name>NVIC</name>
+      <description>Nested vectored interrupt controller</description>
+      <groupName>NVIC</groupName>
+      <baseAddress>0xE000E100</baseAddress>
+      <registers>
+        <register>
+          <name>ISER0</name>
+          <description>Interrupt set-enable register 0: interrupts 0 to 31</description>
+          <addressOffset>0x00</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+        <register>
+          <name>ISER1</name>
+          <description>Interrupt set-enable register 1: interrupts 32 to 63</description>
+          <addressOffset>0x04</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+        <register>
+          <name>ICER0</name>
+          <description>Interrupt clear-enable register 0: interrupts 0 to 31</description>
+          <addressOffset>0x80</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+        <register>
+          <name>ICER1</name>
+          <description>Interrupt clear-enable register 1: interrupts 32 to 63</description>
+          <addressOffset>0x84</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+        <register>
+          <name>ISPR0</name>
+          <description>Interrupt set-pending register 0: interrupts 0 to 31</description>
+          <addressOffset>0x100</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+        <register>
+          <name>ISPR1</name>
+          <description>Interrupt set-pending register 1: interrupts 32 to 63</description>
+          <addressOffset>0x104</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+        <register>
+          <name>ICPR0</name>
+          <description>Interrupt clear-pending register 0: interrupts 0 to 31</description>
+          <addressOffset>0x180</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+        <register>
+          <name>ICPR1</name>
+          <description>Interrupt clear-pending register 1: interrupts 32 to 63</description>
+          <addressOffset>0x184</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+      </registers>
+    </peripheral>
+    <peripheral>
+      <name>SCB</name>
+      <description>System control block</description>
+      <groupName>SCB</groupName>
+      <baseAddress>0xE000ED00</baseAddress>
+      <registers>
+        <register>
+          <name>CPUID</name>
+          <description>CPUID base register</description>
+          <addressOffset>0x00</addressOffset>
+          <access>read-only</access>
+          <resetValue>0x412FC231</resetValue>
+        </register>
+        <register>
+          <name>ICSR</name>
+          <description>Interrupt control and state register</description>
+          <addressOffset>0x04</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+        <register>
+          <name>VTOR</name>
+          <description>Vector table offset register</description>
+          <addressOffset>0x08</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+        <register>
+          <name>AIRCR</name>
+          <description>Application interrupt and reset control register</description>
+          <addressOffset>0x0C</addressOffset>
+          <resetValue>0xFA050000</resetValue>
+          <fields>
+            <field>
+              <name>VECTCLRACTIVE</name>
+              <description>Clear the active state of exceptions</description>
+              <bitOffset>1</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>SYSRESETREQ</name>
+              <description>System reset request</description>
+              <bitOffset>2</bitOffset>
+              <bitWidth>1</bitWidth>
+            </field>
+            <field>
+              <name>PRIGROUP</name>
+              <description>Interrupt priority grouping</description>
+              <bitOffset>8</bitOffset>
+              <bitWidth>3</bitWidth>
+            </field>
+            <field>
+              <name>VECTKEY</name>
+              <description>Register key: 0x05FA on write</description>
+              <bitOffset>16</bitOffset>
+              <bitWidth>16</bitWidth>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>SCR</name>
+          <description>System control register</description>
+          <addressOffset>0x10</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+        <register>
+          <name>CCR</name>
+          <description>Configuration and control register</description>
+          <addressOffset>0x14</addressOffset>
+          <resetValue>0x00000000</resetValue>
+        </register>
+      </registers>
+    </peripheral>
+  </peripherals>
+</device>

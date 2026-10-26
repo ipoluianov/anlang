@@ -32,6 +32,28 @@ type fnGen struct {
 	// fmtOnly are the conversions to interfaces used only as arguments
 	// of fmt.Print and fmt.Println, which print the values directly.
 	fmtOnly map[*ir.MakeInterface]bool
+	// handler marks an interrupt handler that the operations enter.handler
+	// and leave.handler enter and leave, saving the registers that the
+	// templates may use.
+	handler bool
+	label   string // the label of the routine, for the stack analysis
+	indKey  string // the signature of the indirect call being made
+}
+
+// enterOp and leaveOp return the operations that enter and leave the
+// function.
+func (fn *fnGen) enterOp() string {
+	if fn.handler {
+		return "enter.handler"
+	}
+	return "enter"
+}
+
+func (fn *fnGen) leaveOp() string {
+	if fn.handler {
+		return "leave.handler"
+	}
+	return "leave"
 }
 
 // loc is where the value of an IR value is: a constant, the zero value,
@@ -97,6 +119,18 @@ func (fn *fnGen) emitLines(lines []string) {
 	}
 }
 
+// emitOp emits the lines of operation name; control does not continue
+// after a jump, a return or the end of the program.
+func (fn *fnGen) emitOp(name string, lines []string) {
+	fn.emitLines(lines)
+	switch name {
+	case "jump", "leave", "leave.handler", "exit":
+		if n := len(fn.code); n > 0 && fn.code[n-1].text != "" {
+			fn.code[n-1].term = true
+		}
+	}
+}
+
 func (fn *fnGen) defLabel(l string) {
 	fn.code = append(fn.code, item{label: l, fn: fn.name})
 }
@@ -105,8 +139,16 @@ func (fn *fnGen) defLabel(l string) {
 // constants are moved into slots if no template assembles with them.
 func (fn *fnGen) op(name string, width, from int, ops map[string]operand, labels map[string]string) {
 	g := fn.g
+	if s := fn.stackInfo(); s != nil {
+		switch name {
+		case "call":
+			s.calls = append(s.calls, labels["f"])
+		case "callind":
+			s.ind = append(s.ind, fn.indKey)
+		}
+	}
 	if lines, ok := g.selectRule(name, width, from, ops, labels); ok {
-		fn.emitLines(lines)
+		fn.emitOp(name, lines)
 		return
 	}
 	changed := false
@@ -123,6 +165,13 @@ func (fn *fnGen) op(name string, width, from int, ops map[string]operand, labels
 			if from != 0 {
 				w = from
 			}
+			if name == "branch" {
+				w = 8 // the condition is a byte
+			}
+		case "y":
+			if name == "shl" || name == "shr.u" || name == "shr.s" {
+				w = g.word * 8 // a count of the word width
+			}
 		}
 		if w == 0 {
 			w = g.word * 8
@@ -134,7 +183,7 @@ func (fn *fnGen) op(name string, width, from int, ops map[string]operand, labels
 	}
 	if changed {
 		if lines, ok := g.selectRule(name, width, from, ops, labels); ok {
-			fn.emitLines(lines)
+			fn.emitOp(name, lines)
 			return
 		}
 	}
@@ -237,6 +286,9 @@ func (fn *fnGen) loc(v ir.Value) *loc {
 	case *ir.FuncValue:
 		return fn.g.funcValue(v.Type(), v.Func)
 	case *ir.Global:
+		if v.Addr == nil {
+			return addrOf(mref{kind: mStatic, sym: fn.g.staticData(v)}, v.Type())
+		}
 		a := fn.g.constLoc(v.Addr)
 		if v.Addr.Typ == types.Type(types.UnsafeKinds["Far"]) {
 			return addrOf(mref{kind: mFar, ptr: fn.scalar(a)}, v.Type())
@@ -511,7 +563,9 @@ func (g *gen) bindingLayout(fvs []*ir.FreeVar) []int {
 // the address of the code; a closure record holds the values of its free
 // variables after it.
 func (g *gen) funcValue(t types.Type, f *ir.Func) *loc {
-	return &loc{t: t, parts: []operand{{kind: opSym, sym: g.funcRecord(g.funcLabel(f)), width: g.ptr * 8}}}
+	code := g.funcLabel(f)
+	g.addressTaken(code, sigKey(paramTypes(f), resultTypes(f.Sig)))
+	return &loc{t: t, parts: []operand{{kind: opSym, sym: g.funcRecord(code), width: g.ptr * 8}}}
 }
 
 // funcRecord returns the label of the constant record of the code at
@@ -575,7 +629,9 @@ func (g *gen) function(f *ir.Func) {
 	}
 	fn.fmtOnly = fmtOnlyConversions(f)
 	fn.defLabel(g.funcs[f])
-	fn.op("enter", 0, 0, map[string]operand{"n": {kind: opFrame}}, nil)
+	fn.label = g.funcs[f]
+	fn.handler = g.handlers[f] && g.hasRule("enter.handler", 0, 0)
+	fn.op(fn.enterOp(), 0, 0, map[string]operand{"n": {kind: opFrame}}, nil)
 	if hasDefer(f) {
 		g.usesDefer = true
 		fn.deferAt = fn.slot(g.ptr)
@@ -648,10 +704,18 @@ func hasDefer(f *ir.Func) bool {
 	return false
 }
 
-// finish resolves the offsets of the argument area and the frame size
-// and adds the code of the function to the program.
+// finish resolves the offsets of the argument area, of the slots
+// addressed from the bottom of the frame and the frame size, and adds
+// the code of the function to the program.
 func (fn *fnGen) finish() {
 	frame := roundUp(fn.frame+fn.args, fn.g.align)
+	if s := fn.stackInfo(); s != nil {
+		s.frame = frame + fn.g.arch.ABI.Params
+		if fn.handler {
+			s.frame = frame + fn.g.arch.ABI.InterruptFrame
+			s.handler = true
+		}
+	}
 	for i := range fn.code {
 		t := fn.code[i].text
 		if t == "" {
@@ -661,7 +725,14 @@ func (fn *fnGen) finish() {
 			k, _ := strconv.Atoi(argRef.FindStringSubmatch(m)[1])
 			return fmt.Sprintf("%+d", k-frame)
 		})
+		t = slotTok.ReplaceAllStringFunc(t, func(m string) string {
+			k, _ := strconv.Atoi(slotTok.FindStringSubmatch(m)[1])
+			return strconv.Itoa(frame + k) // from the bottom of the frame
+		})
 		fn.code[i].text = strings.ReplaceAll(t, "\x01F\x01", strconv.Itoa(frame))
+	}
+	if fn.g.structured {
+		fn.code = fn.structure(fn.code)
 	}
 	fn.g.code = append(fn.g.code, fn.code...)
 }

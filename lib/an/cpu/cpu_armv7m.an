@@ -1,0 +1,11 @@
+// Package cpu gives access to the processor (spec/14-embedded.md).
+package cpu
+
+profile core
+
+import "an/arch/armv7m"
+
+// WaitForInterrupt sleeps until an interrupt is pending.
+func WaitForInterrupt() {
+	armv7m.Wfi(armv7m.Regs{})
+}

@@ -1,0 +1,24 @@
+// want: ok
+
+// Assertions proven from the facts of their points, and assumed after
+// them (contract.assert.meaning).
+package main
+
+profile core
+
+import "an/fmt"
+
+func main() {
+	total := 0
+	for i := range 10 {
+		assert(i >= 0 && i < 10)
+		total += i
+	}
+	x := 5
+	if total > 40 {
+		x = 7
+	}
+	assert(x == 5 || x == 7)
+	assert(x >= 5)
+	fmt.Println(total, x)
+}

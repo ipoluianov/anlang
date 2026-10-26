@@ -14,6 +14,9 @@ type walker struct {
 	callees map[syntax.Expr]bool // expressions in callee position
 	comms   map[syntax.Node]bool // channel operations of select cases
 	commaOk map[syntax.Expr]bool // type assertions with a comma-ok result
+	// locked are the peripherals whose critical section the walk is in
+	// (emb.ctx.multi).
+	locked map[string]bool
 }
 
 func (a *analyzer) walkBody(fn *fnFacts, body *syntax.BlockStmt) {
@@ -34,6 +37,8 @@ var AsmEffects func(arch, text string) []string
 func (w *walker) visit(n syntax.Node) bool {
 	a, fn := w.a, w.fn
 	switch n := n.(type) {
+	case *syntax.ContractStmt:
+		return false // the invariant of a loop has no effects
 	case *syntax.FuncLit:
 		w.funcLit(n)
 		return false
@@ -43,6 +48,7 @@ func (w *walker) visit(n syntax.Node) bool {
 		case *types.Var:
 			if isPackageVar(obj) {
 				fn.source(Global, n.Pos(), "use of package-level variable "+n.Name)
+				w.device(obj, n.Pos())
 			}
 		case *types.Func:
 			if !w.callees[n] {
@@ -73,6 +79,10 @@ func (w *walker) visit(n syntax.Node) bool {
 		return false
 
 	case *syntax.CallExpr:
+		if a.builtinName(n.Fun) == "assert" {
+			// A proof obligation, not evaluated (contract.assert.meaning).
+			return false
+		}
 		w.callees[unparen(n.Fun)] = true
 		if ix, ok := unparen(n.Fun).(*syntax.IndexExpr); ok {
 			w.callees[unparen(ix.X)] = true // an explicit instantiation
@@ -193,6 +203,24 @@ func (w *walker) visit(n syntax.Node) bool {
 		if _, ok := coreOf(a.typeOf(n.X)).(*types.Chan); ok {
 			fn.source(Block, n.Range, "range over a channel")
 		}
+		if sel, ok := n.X.(*syntax.SelectorExpr); ok && a.info.Selections[sel] != nil && a.info.Selections[sel].Kind == types.MethodVal {
+			// A method value ranged over is called, not kept: it binds its
+			// receiver without allocating.
+			w.callees[sel] = true
+		}
+		if unit := w.lockUnit(n.X); unit != "" {
+			// The body is a critical section of the peripheral, which Lock
+			// enters.
+			saved := w.locked[unit]
+			if w.locked == nil {
+				w.locked = map[string]bool{}
+			}
+			w.locked[unit] = true
+			syntax.Walk(n.X, w.visit)
+			syntax.Walk(n.Body, w.visit)
+			w.locked[unit] = saved
+			return false
+		}
 		if n.Tok == syntax.Assign {
 			for _, e := range []syntax.Expr{n.Key, n.Value} {
 				if e != nil {
@@ -228,6 +256,57 @@ func (w *walker) visit(n syntax.Node) bool {
 
 // isPackageVar reports whether v is a package-level variable
 // (eff.source.global).
+// DeviceClasses are the hardware effect classes of the groups of
+// peripherals (eff.base.set, group Hardware).
+var DeviceClasses = map[string]string{"GPIO": "Gpio", "AFIO": "Gpio", "USART": "Uart", "UART": "Uart", "TIM": "Timers"}
+
+// UnitEffect returns the instance effect of a peripheral of an/device
+// (emb.periph.effect), or of its critical section if locked.
+func UnitEffect(name string, locked bool) Effect {
+	if locked {
+		return Effect("an/device." + name + ".Lock#" + name + ".Lock")
+	}
+	return Effect("an/device." + name + "#" + name)
+}
+
+// device adds the effects of a use of a package-level variable that is a
+// peripheral of an/device: its instance effect and the effect of its
+// class.
+func (w *walker) device(v *types.Var, pos syntax.Pos) {
+	if v.Map == nil || v.Pkg() == nil || v.Pkg().Path != "an/device" {
+		return
+	}
+	w.fn.source(UnitEffect(v.Name(), w.locked[v.Name()]), pos, "use of peripheral "+v.Name())
+	if n, ok := v.Type().(*types.Named); ok {
+		if class := DeviceClasses[strings.TrimSuffix(n.Obj.Name(), "_Regs")]; class != "" {
+			w.fn.source(Base(class), pos, "use of peripheral "+v.Name())
+		}
+	}
+}
+
+// lockUnit returns the peripheral of a range expression device.U.Lock,
+// whose body is a critical section of U (emb.lock.form).
+func (w *walker) lockUnit(x syntax.Expr) string {
+	sel, ok := x.(*syntax.SelectorExpr)
+	if !ok || sel.Sel.Name != "Lock" {
+		return ""
+	}
+	var id *syntax.Name
+	switch e := sel.X.(type) {
+	case *syntax.SelectorExpr:
+		id = e.Sel
+	case *syntax.Name:
+		id = e
+	}
+	if id == nil {
+		return ""
+	}
+	if v, ok := w.a.info.Uses[id].(*types.Var); ok && v.Map != nil && v.Pkg() != nil && v.Pkg().Path == "an/device" {
+		return v.Name()
+	}
+	return ""
+}
+
 func isPackageVar(v *types.Var) bool {
 	p := v.Parent()
 	return p != nil && (p.Parent() == types.Universe || p.Parent() == nil) && !v.IsField()
@@ -670,6 +749,7 @@ func (w *walker) selector(n *syntax.SelectorExpr) {
 		case *types.Var:
 			if isPackageVar(obj) {
 				fn.source(Global, n.Sel.Pos(), "use of package-level variable "+n.Sel.Name)
+				w.device(obj, n.Sel.Pos())
 			}
 		case *types.Func:
 			if !w.callees[n] {

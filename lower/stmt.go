@@ -22,8 +22,15 @@ func (fb *funcBuilder) stmt(s syntax.Stmt) {
 	}
 	switch s := s.(type) {
 	case *syntax.EmptyStmt:
+	case *syntax.ContractStmt:
+		// Contracts are checked at compile time only.
 	case *syntax.ExprStmt:
 		if call, ok := unparen(s.X).(*syntax.CallExpr); ok {
+			if id, ok := unparen(call.Fun).(*syntax.Name); ok {
+				if b, ok := fb.info.Uses[id].(*types.Builtin); ok && b.Name() == "assert" && b.Pkg() == "" {
+					return // a proof obligation (contract.assert.meaning)
+				}
+			}
 			fb.call(call, true)
 			return
 		}
@@ -39,7 +46,7 @@ func (fb *funcBuilder) stmt(s syntax.Stmt) {
 		if s.Tok == syntax.Dec {
 			op = syntax.Sub
 		}
-		fb.opAssign(s.X, op, nil)
+		fb.opAssign(s, s.X, op, nil)
 	case *syntax.BlockStmt:
 		fb.stmts(s.List)
 	case *syntax.IfStmt:
@@ -153,7 +160,7 @@ func (fb *funcBuilder) assign(s *syntax.AssignStmt) {
 	switch s.Tok {
 	case syntax.Assign, syntax.Define:
 	default:
-		fb.opAssign(s.Lhs[0], assignOp(s.Tok), s.Rhs[0])
+		fb.opAssign(s, s.Lhs[0], assignOp(s.Tok), s.Rhs[0])
 		return
 	}
 	var vals []ir.Value
@@ -260,8 +267,9 @@ func assignOp(tok syntax.Kind) syntax.Kind {
 	return syntax.Illegal
 }
 
-// opAssign translates x op= y, and x++ and x-- with y nil.
-func (fb *funcBuilder) opAssign(x syntax.Expr, op syntax.Kind, y syntax.Expr) {
+// opAssign translates x op= y, and x++ and x-- with y nil, of statement
+// n.
+func (fb *funcBuilder) opAssign(n syntax.Stmt, x syntax.Expr, op syntax.Kind, y syntax.Expr) {
 	t := fb.typeOf(x)
 	var rhs ir.Value
 	if y == nil {
@@ -280,7 +288,7 @@ func (fb *funcBuilder) opAssign(x syntax.Expr, op syntax.Kind, y syntax.Expr) {
 			}
 			k := fb.convert(fb.expr(ix.Indices[0]), mt.Key)
 			old := fb.emit(&ir.Lookup{X: fb.load(cell), Key: k}, mt.Elem)
-			v := fb.emit(&ir.BinOp{Op: op, X: old, Y: rhs}, t)
+			v := fb.emit(&ir.BinOp{Op: op, X: old, Y: rhs, Proven: fb.info.Proven[n]}, t)
 			fb.emitStmt(&ir.MapUpdate{Map: cell, Key: k, Value: v})
 			return
 		}
@@ -290,7 +298,7 @@ func (fb *funcBuilder) opAssign(x syntax.Expr, op syntax.Kind, y syntax.Expr) {
 		fb.b.errorf(x.Pos(), 6, "assignment to %T", x)
 		return
 	}
-	v := fb.emit(&ir.BinOp{Op: op, X: fb.load(a), Y: rhs}, t)
+	v := fb.emit(&ir.BinOp{Op: op, X: fb.load(a), Y: rhs, Proven: fb.info.Proven[n]}, t)
 	fb.store(a, v)
 }
 

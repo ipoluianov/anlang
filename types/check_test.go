@@ -28,9 +28,7 @@ func TestCheckErrors(t *testing.T) {
 	tests := []struct {
 		src string
 		msg string
-	}{
-		{"package main\nfunc f(n int) int {\n\trequires n > 0\n\treturn n\n}\nfunc main() { _ = f(1) }", "requires clauses: not supported yet"},
-	}
+	}{}
 	for _, tt := range tests {
 		_, errs := check(t, tt.src)
 		if len(errs) == 0 {

@@ -1,0 +1,13 @@
+// Package interrupts controls the interrupts of a microcontroller
+// (spec/14-embedded.md §2.5): main starts with them disabled, and
+// Enable, called only directly from main, ends its initialization phase.
+package interrupts
+
+profile core
+
+import "an/arch/i8086"
+
+// Enable enables the interrupts.
+func Enable() {
+	i8086.Sti(i8086.Regs{})
+}

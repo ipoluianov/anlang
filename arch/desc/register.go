@@ -11,7 +11,7 @@ import (
 
 // The architectures whose descriptions are in package an/arch, by the
 // name of their constant.
-var archConsts = map[string]string{"i8086": "I8086"}
+var archConsts = map[string]string{"i8086": "I8086", "armv7m": "ARMv7M", "wasm32": "Wasm32"}
 
 var (
 	pkgMu     sync.Mutex

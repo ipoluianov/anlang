@@ -1,0 +1,27 @@
+// want: ok
+
+// The configuration of pin PC13 from values that fit the 2 bits of the
+// fields CNF11 … CNF13: the preconditions of the With methods are proven
+// (emb.reg.values).
+package main
+
+profile core
+
+import (
+	"an/device"
+	"an/fmt"
+)
+
+func configure(mode device.GPIO_CRH_CNF) {
+	device.GPIOC.CRH = device.GPIOC.CRH.WithCNF13(mode & 3)
+	if mode < 4 {
+		device.GPIOC.CRH = device.GPIOC.CRH.WithCNF12(mode)
+	}
+	device.GPIOC.CRH = device.GPIOC.CRH.WithCNF11(mode >> 6)
+}
+
+func main() {
+	device.RCC.APB2ENR = device.RCC.APB2ENR.WithIOPCEN(true)
+	configure(6)
+	fmt.Println(device.GPIOC.CRH.CNF13(), device.GPIOC.CRH.CNF12(), device.GPIOC.CRH.CNF11())
+}

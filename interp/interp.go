@@ -62,6 +62,11 @@ type Options struct {
 	// MaxMemory bounds the number of values the program creates in
 	// slices, arrays, structs and maps; 0 means no limit.
 	MaxMemory int64
+	// ReadFile reads a file for gen.ReadFile; nil means no files can be
+	// read (ct.eval.read-input).
+	ReadFile func(name string) ([]byte, error)
+	// Stdin is the standard input, for console.ReadByte; nil is empty.
+	Stdin io.Reader
 }
 
 // machine runs one program.
@@ -74,6 +79,7 @@ type machine struct {
 	memory  int64
 	intBits int
 	stack   []*ir.Func // functions being called, innermost last
+	statics map[*types.Var]*cell
 }
 
 // funcInfo is the prepared form of a function.
@@ -113,7 +119,7 @@ func Eval(p *ir.Program, opts Options) (result any, err error) {
 }
 
 func newMachine(p *ir.Program, opts Options) *machine {
-	m := &machine{prog: p, opts: opts, funcs: map[*ir.Func]*funcInfo{}, consts: map[*ir.Const]value{}, intBits: p.IntBits}
+	m := &machine{prog: p, opts: opts, funcs: map[*ir.Func]*funcInfo{}, consts: map[*ir.Const]value{}, intBits: p.IntBits, statics: map[*types.Var]*cell{}}
 	if m.intBits == 0 {
 		m.intBits = 64
 	}
@@ -280,6 +286,18 @@ func (m *machine) get(fr *frame, v ir.Value) value {
 		return &closure{fn: m.info(v.Func)}
 	case interface{ ID() int }:
 		return fr.regs[v.ID()]
+	case *ir.Global:
+		if v.Addr == nil {
+			// A variable with static storage, zero at the start.
+			c := m.statics[v.Var]
+			if c == nil {
+				c = &cell{v: m.zero(v.Var.Type())}
+				m.statics[v.Var] = c
+			}
+			return c
+		}
+		// A hardware mapping: the interpreter has no hardware.
+		panic(&NotExecutableError{Func: fr.fi.fn.Name})
 	}
 	panic(fmt.Sprintf("interp: operand %T", v))
 }

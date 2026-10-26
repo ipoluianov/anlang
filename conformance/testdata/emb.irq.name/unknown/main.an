@@ -1,0 +1,10 @@
+// want: emb.irq.name
+
+// The device of stm32f103c8 has no interrupt vector TIM9.
+package main
+
+profile core
+
+func main() {}
+
+interrupt TIM9() {}

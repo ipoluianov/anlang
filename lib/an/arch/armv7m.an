@@ -1,0 +1,3591 @@
+// The architecture description of ARMv7-M (spec/13-targets.md §13.5): the
+// Thumb instruction set of the Cortex-M3 and Cortex-M4 processors without
+// the DSP and floating-point extensions.
+//
+// The description leaves out the IT instruction, so a 16-bit data
+// processing instruction always sets the flags, as outside an IT block;
+// exceptions, so SVC, BKPT and UDF halt the machine; register operands
+// shifted by a constant other than 0; loads and stores with writeback
+// other than PUSH, POP and the multiple forms; exclusive accesses,
+// coprocessors and the unprivileged forms. The register list of a 16-bit
+// LDMIA does not contain its base register. STMIA, LDMIA, STMDB and
+// LDMDB write back the base register; STM and LDM do not.
+package arch
+
+// ARMv7M describes ARMv7-M.
+const ARMv7M = Arch{
+	Name:        "armv7m",
+	Word:        32,
+	Endian:      Little,
+	Unit:        16,
+	AddressBits: 32,
+	Pointers:    Pointers{Flat: 32},
+	Address:     "off",
+	PC:          "PC",
+	PCRead:      4,
+	Fetch:       "PC",
+	Registers: []Register{
+		{Name: "R0", Width: 32, Class: "r"},
+		{Name: "R1", Width: 32, Class: "r"},
+		{Name: "R2", Width: 32, Class: "r"},
+		{Name: "R3", Width: 32, Class: "r"},
+		{Name: "R4", Width: 32, Class: "r"},
+		{Name: "R5", Width: 32, Class: "r"},
+		{Name: "R6", Width: 32, Class: "r"},
+		{Name: "R7", Width: 32, Class: "r"},
+		{Name: "R8", Width: 32, Class: "r"},
+		{Name: "R9", Width: 32, Class: "r"},
+		{Name: "R10", Width: 32, Class: "r"},
+		{Name: "R11", Width: 32, Class: "r"},
+		{Name: "R12", Width: 32, Class: "r"},
+		{Name: "SP", Width: 32, Class: "r", Zero: 0x3},
+		{Name: "LR", Width: 32, Class: "r"},
+		{Name: "PC", Width: 32, Class: "r", Zero: 0x1},
+		{Name: "APSR", Width: 32, Zero: 0x7FFFFFF},
+		{Name: "N", Width: 1, Class: "flag", Parent: "APSR", Offset: 31},
+		{Name: "Z", Width: 1, Class: "flag", Parent: "APSR", Offset: 30},
+		{Name: "C", Width: 1, Class: "flag", Parent: "APSR", Offset: 29},
+		{Name: "V", Width: 1, Class: "flag", Parent: "APSR", Offset: 28},
+		{Name: "Q", Width: 1, Class: "flag", Parent: "APSR", Offset: 27},
+		{Name: "IPSR", Width: 9},
+		{Name: "PSP", Width: 32, Zero: 0x3},
+		{Name: "PRIMASK", Width: 1},
+		{Name: "BASEPRI", Width: 8},
+		{Name: "FAULTMASK", Width: 1},
+		{Name: "CONTROL", Width: 2},
+	},
+	Operands: []Operand{
+		{Name: "r", Class: "r"},
+		{Name: "lo", Class: "r", Registers: 8},
+		{Name: "list", Class: "r", List: true},
+		{Name: "imm3", Imm: 3, Width: 32},
+		{Name: "imm5", Imm: 5},
+		{Name: "shift", Imm: 5, Syntax: "count(v)"},
+		{Name: "imm7x4", Imm: 7, Width: 32, Scale: 2},
+		{Name: "imm8", Imm: 8, Width: 32},
+		{Name: "imm8x4", Imm: 8, Width: 32, Scale: 2},
+		{Name: "imm12", Imm: 12, Width: 32},
+		{Name: "imm16", Imm: 16, Width: 32},
+		{Name: "const", Imm: 12, Syntax: "expand(v)"},
+		{Name: "width", Imm: 5, Syntax: "zx(v, 6) + 1"},
+		{Name: "code8", Imm: 8},
+		{Name: "rel6", Imm: 6, Relative: true, Width: 32, Scale: 1},
+		{Name: "rel8", Imm: 8, Signed: true, Relative: true, Width: 32, Scale: 1},
+		{Name: "rel11", Imm: 11, Signed: true, Relative: true, Width: 32, Scale: 1},
+		{Name: "rel20", Imm: 20, Signed: true, Relative: true, Width: 32, Scale: 1},
+		{Name: "rel24", Imm: 24, Signed: true, Relative: true, Width: 32, Scale: 1, Transform: "v ^ (zx(!v[23], 24) * 0x600000)"},
+		{Name: "0", Constant: true},
+		{Name: "SP", Register: "SP"},
+		{Name: "PC", Register: "PC"},
+		{Name: "APSR", Register: "APSR"},
+		{Name: "IPSR", Register: "IPSR"},
+		{Name: "PSP", Register: "PSP"},
+		{Name: "PRIMASK", Register: "PRIMASK"},
+		{Name: "BASEPRI", Register: "BASEPRI"},
+		{Name: "FAULTMASK", Register: "FAULTMASK"},
+		{Name: "CONTROL", Register: "CONTROL"},
+		{Name: "R0", Register: "R0"},
+		{Name: "R1", Register: "R1"},
+		{Name: "R2", Register: "R2"},
+		{Name: "R3", Register: "R3"},
+		{Name: "R4", Register: "R4"},
+		{Name: "R5", Register: "R5"},
+		{Name: "R6", Register: "R6"},
+		{Name: "R7", Register: "R7"},
+		{Name: "m32i5w", Memory: 32, Fragment: "i5w"},
+		{Name: "m16i5h", Memory: 16, Fragment: "i5h"},
+		{Name: "m8i5b", Memory: 8, Fragment: "i5b"},
+		{Name: "m8rr", Memory: 8, Fragment: "rr"},
+		{Name: "m16rr", Memory: 16, Fragment: "rr"},
+		{Name: "m32rr", Memory: 32, Fragment: "rr"},
+		{Name: "m32sp8", Memory: 32, Fragment: "sp8"},
+		{Name: "m32pc8", Memory: 32, Fragment: "pc8"},
+		{Name: "m8i12l", Memory: 8, Fragment: "i12l"},
+		{Name: "m16i12l", Memory: 16, Fragment: "i12l"},
+		{Name: "m32i12l", Memory: 32, Fragment: "i12l"},
+		{Name: "m8i12s", Memory: 8, Fragment: "i12s"},
+		{Name: "m16i12s", Memory: 16, Fragment: "i12s"},
+		{Name: "m32i12s", Memory: 32, Fragment: "i12s"},
+		{Name: "m8n8", Memory: 8, Fragment: "n8"},
+		{Name: "m16n8", Memory: 16, Fragment: "n8"},
+		{Name: "m32n8", Memory: 32, Fragment: "n8"},
+		{Name: "m8litm", Memory: 8, Fragment: "litm"},
+		{Name: "m16litm", Memory: 16, Fragment: "litm"},
+		{Name: "m32litm", Memory: 32, Fragment: "litm"},
+		{Name: "m8rr32", Memory: 8, Fragment: "rr32"},
+		{Name: "m16rr32", Memory: 16, Fragment: "rr32"},
+		{Name: "m32rr32", Memory: 32, Fragment: "rr32"},
+		{Name: "m64d8p", Memory: 64, Fragment: "d8p"},
+		{Name: "m64d8m", Memory: 64, Fragment: "d8m"},
+	},
+	Fragments: []Fragment{
+		{
+			Name: "i5w",
+			Alternatives: []Alternative{
+				{Encoding: "imm:5 %000", Address: "R0 + zx(imm, 32) * 4"},
+				{Encoding: "imm:5 %001", Address: "R1 + zx(imm, 32) * 4"},
+				{Encoding: "imm:5 %010", Address: "R2 + zx(imm, 32) * 4"},
+				{Encoding: "imm:5 %011", Address: "R3 + zx(imm, 32) * 4"},
+				{Encoding: "imm:5 %100", Address: "R4 + zx(imm, 32) * 4"},
+				{Encoding: "imm:5 %101", Address: "R5 + zx(imm, 32) * 4"},
+				{Encoding: "imm:5 %110", Address: "R6 + zx(imm, 32) * 4"},
+				{Encoding: "imm:5 %111", Address: "R7 + zx(imm, 32) * 4"},
+			},
+		},
+		{
+			Name: "i5h",
+			Alternatives: []Alternative{
+				{Encoding: "imm:5 %000", Address: "R0 + zx(imm, 32) * 2"},
+				{Encoding: "imm:5 %001", Address: "R1 + zx(imm, 32) * 2"},
+				{Encoding: "imm:5 %010", Address: "R2 + zx(imm, 32) * 2"},
+				{Encoding: "imm:5 %011", Address: "R3 + zx(imm, 32) * 2"},
+				{Encoding: "imm:5 %100", Address: "R4 + zx(imm, 32) * 2"},
+				{Encoding: "imm:5 %101", Address: "R5 + zx(imm, 32) * 2"},
+				{Encoding: "imm:5 %110", Address: "R6 + zx(imm, 32) * 2"},
+				{Encoding: "imm:5 %111", Address: "R7 + zx(imm, 32) * 2"},
+			},
+		},
+		{
+			Name: "i5b",
+			Alternatives: []Alternative{
+				{Encoding: "imm:5 %000", Address: "R0 + zx(imm, 32)"},
+				{Encoding: "imm:5 %001", Address: "R1 + zx(imm, 32)"},
+				{Encoding: "imm:5 %010", Address: "R2 + zx(imm, 32)"},
+				{Encoding: "imm:5 %011", Address: "R3 + zx(imm, 32)"},
+				{Encoding: "imm:5 %100", Address: "R4 + zx(imm, 32)"},
+				{Encoding: "imm:5 %101", Address: "R5 + zx(imm, 32)"},
+				{Encoding: "imm:5 %110", Address: "R6 + zx(imm, 32)"},
+				{Encoding: "imm:5 %111", Address: "R7 + zx(imm, 32)"},
+			},
+		},
+		{
+			Name: "rr",
+			Alternatives: []Alternative{
+				{Encoding: "%000 %000", Address: "R0 + R0"},
+				{Encoding: "%000 %001", Address: "R1 + R0"},
+				{Encoding: "%000 %010", Address: "R2 + R0"},
+				{Encoding: "%000 %011", Address: "R3 + R0"},
+				{Encoding: "%000 %100", Address: "R4 + R0"},
+				{Encoding: "%000 %101", Address: "R5 + R0"},
+				{Encoding: "%000 %110", Address: "R6 + R0"},
+				{Encoding: "%000 %111", Address: "R7 + R0"},
+				{Encoding: "%001 %000", Address: "R0 + R1"},
+				{Encoding: "%001 %001", Address: "R1 + R1"},
+				{Encoding: "%001 %010", Address: "R2 + R1"},
+				{Encoding: "%001 %011", Address: "R3 + R1"},
+				{Encoding: "%001 %100", Address: "R4 + R1"},
+				{Encoding: "%001 %101", Address: "R5 + R1"},
+				{Encoding: "%001 %110", Address: "R6 + R1"},
+				{Encoding: "%001 %111", Address: "R7 + R1"},
+				{Encoding: "%010 %000", Address: "R0 + R2"},
+				{Encoding: "%010 %001", Address: "R1 + R2"},
+				{Encoding: "%010 %010", Address: "R2 + R2"},
+				{Encoding: "%010 %011", Address: "R3 + R2"},
+				{Encoding: "%010 %100", Address: "R4 + R2"},
+				{Encoding: "%010 %101", Address: "R5 + R2"},
+				{Encoding: "%010 %110", Address: "R6 + R2"},
+				{Encoding: "%010 %111", Address: "R7 + R2"},
+				{Encoding: "%011 %000", Address: "R0 + R3"},
+				{Encoding: "%011 %001", Address: "R1 + R3"},
+				{Encoding: "%011 %010", Address: "R2 + R3"},
+				{Encoding: "%011 %011", Address: "R3 + R3"},
+				{Encoding: "%011 %100", Address: "R4 + R3"},
+				{Encoding: "%011 %101", Address: "R5 + R3"},
+				{Encoding: "%011 %110", Address: "R6 + R3"},
+				{Encoding: "%011 %111", Address: "R7 + R3"},
+				{Encoding: "%100 %000", Address: "R0 + R4"},
+				{Encoding: "%100 %001", Address: "R1 + R4"},
+				{Encoding: "%100 %010", Address: "R2 + R4"},
+				{Encoding: "%100 %011", Address: "R3 + R4"},
+				{Encoding: "%100 %100", Address: "R4 + R4"},
+				{Encoding: "%100 %101", Address: "R5 + R4"},
+				{Encoding: "%100 %110", Address: "R6 + R4"},
+				{Encoding: "%100 %111", Address: "R7 + R4"},
+				{Encoding: "%101 %000", Address: "R0 + R5"},
+				{Encoding: "%101 %001", Address: "R1 + R5"},
+				{Encoding: "%101 %010", Address: "R2 + R5"},
+				{Encoding: "%101 %011", Address: "R3 + R5"},
+				{Encoding: "%101 %100", Address: "R4 + R5"},
+				{Encoding: "%101 %101", Address: "R5 + R5"},
+				{Encoding: "%101 %110", Address: "R6 + R5"},
+				{Encoding: "%101 %111", Address: "R7 + R5"},
+				{Encoding: "%110 %000", Address: "R0 + R6"},
+				{Encoding: "%110 %001", Address: "R1 + R6"},
+				{Encoding: "%110 %010", Address: "R2 + R6"},
+				{Encoding: "%110 %011", Address: "R3 + R6"},
+				{Encoding: "%110 %100", Address: "R4 + R6"},
+				{Encoding: "%110 %101", Address: "R5 + R6"},
+				{Encoding: "%110 %110", Address: "R6 + R6"},
+				{Encoding: "%110 %111", Address: "R7 + R6"},
+				{Encoding: "%111 %000", Address: "R0 + R7"},
+				{Encoding: "%111 %001", Address: "R1 + R7"},
+				{Encoding: "%111 %010", Address: "R2 + R7"},
+				{Encoding: "%111 %011", Address: "R3 + R7"},
+				{Encoding: "%111 %100", Address: "R4 + R7"},
+				{Encoding: "%111 %101", Address: "R5 + R7"},
+				{Encoding: "%111 %110", Address: "R6 + R7"},
+				{Encoding: "%111 %111", Address: "R7 + R7"},
+			},
+		},
+		{
+			Name: "sp8",
+			Alternatives: []Alternative{
+				{Encoding: "imm:8", Address: "SP + zx(imm, 32) * 4"},
+			},
+		},
+		{
+			Name: "pc8",
+			Alternatives: []Alternative{
+				{Encoding: "imm:8", Address: "(PC & 0xFFFFFFFC) + zx(imm, 32) * 4"},
+			},
+		},
+		{
+			Name: "i12l",
+			Alternatives: []Alternative{
+				{Encoding: "%0000 rt:4 imm:12", Address: "R0 + zx(imm, 32)"},
+				{Encoding: "%0001 rt:4 imm:12", Address: "R1 + zx(imm, 32)"},
+				{Encoding: "%0010 rt:4 imm:12", Address: "R2 + zx(imm, 32)"},
+				{Encoding: "%0011 rt:4 imm:12", Address: "R3 + zx(imm, 32)"},
+				{Encoding: "%0100 rt:4 imm:12", Address: "R4 + zx(imm, 32)"},
+				{Encoding: "%0101 rt:4 imm:12", Address: "R5 + zx(imm, 32)"},
+				{Encoding: "%0110 rt:4 imm:12", Address: "R6 + zx(imm, 32)"},
+				{Encoding: "%0111 rt:4 imm:12", Address: "R7 + zx(imm, 32)"},
+				{Encoding: "%1000 rt:4 imm:12", Address: "R8 + zx(imm, 32)"},
+				{Encoding: "%1001 rt:4 imm:12", Address: "R9 + zx(imm, 32)"},
+				{Encoding: "%1010 rt:4 imm:12", Address: "R10 + zx(imm, 32)"},
+				{Encoding: "%1011 rt:4 imm:12", Address: "R11 + zx(imm, 32)"},
+				{Encoding: "%1100 rt:4 imm:12", Address: "R12 + zx(imm, 32)"},
+				{Encoding: "%1101 rt:4 imm:12", Address: "SP + zx(imm, 32)"},
+				{Encoding: "%1110 rt:4 imm:12", Address: "LR + zx(imm, 32)"},
+				{Encoding: "%1111 rt:4 imm:12", Address: "(PC & 0xFFFFFFFC) + zx(imm, 32)"},
+			},
+		},
+		{
+			Name: "i12s",
+			Alternatives: []Alternative{
+				{Encoding: "%0000 rt:4 imm:12", Address: "R0 + zx(imm, 32)"},
+				{Encoding: "%0001 rt:4 imm:12", Address: "R1 + zx(imm, 32)"},
+				{Encoding: "%0010 rt:4 imm:12", Address: "R2 + zx(imm, 32)"},
+				{Encoding: "%0011 rt:4 imm:12", Address: "R3 + zx(imm, 32)"},
+				{Encoding: "%0100 rt:4 imm:12", Address: "R4 + zx(imm, 32)"},
+				{Encoding: "%0101 rt:4 imm:12", Address: "R5 + zx(imm, 32)"},
+				{Encoding: "%0110 rt:4 imm:12", Address: "R6 + zx(imm, 32)"},
+				{Encoding: "%0111 rt:4 imm:12", Address: "R7 + zx(imm, 32)"},
+				{Encoding: "%1000 rt:4 imm:12", Address: "R8 + zx(imm, 32)"},
+				{Encoding: "%1001 rt:4 imm:12", Address: "R9 + zx(imm, 32)"},
+				{Encoding: "%1010 rt:4 imm:12", Address: "R10 + zx(imm, 32)"},
+				{Encoding: "%1011 rt:4 imm:12", Address: "R11 + zx(imm, 32)"},
+				{Encoding: "%1100 rt:4 imm:12", Address: "R12 + zx(imm, 32)"},
+				{Encoding: "%1101 rt:4 imm:12", Address: "SP + zx(imm, 32)"},
+				{Encoding: "%1110 rt:4 imm:12", Address: "LR + zx(imm, 32)"},
+			},
+		},
+		{
+			Name: "n8",
+			Alternatives: []Alternative{
+				{Encoding: "%0000 rt:4 %1100 imm:8", Address: "R0 - zx(imm, 32)"},
+				{Encoding: "%0001 rt:4 %1100 imm:8", Address: "R1 - zx(imm, 32)"},
+				{Encoding: "%0010 rt:4 %1100 imm:8", Address: "R2 - zx(imm, 32)"},
+				{Encoding: "%0011 rt:4 %1100 imm:8", Address: "R3 - zx(imm, 32)"},
+				{Encoding: "%0100 rt:4 %1100 imm:8", Address: "R4 - zx(imm, 32)"},
+				{Encoding: "%0101 rt:4 %1100 imm:8", Address: "R5 - zx(imm, 32)"},
+				{Encoding: "%0110 rt:4 %1100 imm:8", Address: "R6 - zx(imm, 32)"},
+				{Encoding: "%0111 rt:4 %1100 imm:8", Address: "R7 - zx(imm, 32)"},
+				{Encoding: "%1000 rt:4 %1100 imm:8", Address: "R8 - zx(imm, 32)"},
+				{Encoding: "%1001 rt:4 %1100 imm:8", Address: "R9 - zx(imm, 32)"},
+				{Encoding: "%1010 rt:4 %1100 imm:8", Address: "R10 - zx(imm, 32)"},
+				{Encoding: "%1011 rt:4 %1100 imm:8", Address: "R11 - zx(imm, 32)"},
+				{Encoding: "%1100 rt:4 %1100 imm:8", Address: "R12 - zx(imm, 32)"},
+				{Encoding: "%1101 rt:4 %1100 imm:8", Address: "SP - zx(imm, 32)"},
+				{Encoding: "%1110 rt:4 %1100 imm:8", Address: "LR - zx(imm, 32)"},
+			},
+		},
+		{
+			Name: "litm",
+			Alternatives: []Alternative{
+				{Encoding: "rt:4 imm:12", Address: "(PC & 0xFFFFFFFC) - zx(imm, 32)"},
+			},
+		},
+		{
+			Name: "rr32",
+			Alternatives: []Alternative{
+				{Encoding: "%0000 rt:4 %000000 %00 %0000", Address: "R0 + R0"},
+				{Encoding: "%0000 rt:4 %000000 %00 %0001", Address: "R0 + R1"},
+				{Encoding: "%0000 rt:4 %000000 %00 %0010", Address: "R0 + R2"},
+				{Encoding: "%0000 rt:4 %000000 %00 %0011", Address: "R0 + R3"},
+				{Encoding: "%0000 rt:4 %000000 %00 %0100", Address: "R0 + R4"},
+				{Encoding: "%0000 rt:4 %000000 %00 %0101", Address: "R0 + R5"},
+				{Encoding: "%0000 rt:4 %000000 %00 %0110", Address: "R0 + R6"},
+				{Encoding: "%0000 rt:4 %000000 %00 %0111", Address: "R0 + R7"},
+				{Encoding: "%0000 rt:4 %000000 %00 %1000", Address: "R0 + R8"},
+				{Encoding: "%0000 rt:4 %000000 %00 %1001", Address: "R0 + R9"},
+				{Encoding: "%0000 rt:4 %000000 %00 %1010", Address: "R0 + R10"},
+				{Encoding: "%0000 rt:4 %000000 %00 %1011", Address: "R0 + R11"},
+				{Encoding: "%0000 rt:4 %000000 %00 %1100", Address: "R0 + R12"},
+				{Encoding: "%0000 rt:4 %000000 %00 %1110", Address: "R0 + LR"},
+				{Encoding: "%0001 rt:4 %000000 %00 %0000", Address: "R1 + R0"},
+				{Encoding: "%0001 rt:4 %000000 %00 %0001", Address: "R1 + R1"},
+				{Encoding: "%0001 rt:4 %000000 %00 %0010", Address: "R1 + R2"},
+				{Encoding: "%0001 rt:4 %000000 %00 %0011", Address: "R1 + R3"},
+				{Encoding: "%0001 rt:4 %000000 %00 %0100", Address: "R1 + R4"},
+				{Encoding: "%0001 rt:4 %000000 %00 %0101", Address: "R1 + R5"},
+				{Encoding: "%0001 rt:4 %000000 %00 %0110", Address: "R1 + R6"},
+				{Encoding: "%0001 rt:4 %000000 %00 %0111", Address: "R1 + R7"},
+				{Encoding: "%0001 rt:4 %000000 %00 %1000", Address: "R1 + R8"},
+				{Encoding: "%0001 rt:4 %000000 %00 %1001", Address: "R1 + R9"},
+				{Encoding: "%0001 rt:4 %000000 %00 %1010", Address: "R1 + R10"},
+				{Encoding: "%0001 rt:4 %000000 %00 %1011", Address: "R1 + R11"},
+				{Encoding: "%0001 rt:4 %000000 %00 %1100", Address: "R1 + R12"},
+				{Encoding: "%0001 rt:4 %000000 %00 %1110", Address: "R1 + LR"},
+				{Encoding: "%0010 rt:4 %000000 %00 %0000", Address: "R2 + R0"},
+				{Encoding: "%0010 rt:4 %000000 %00 %0001", Address: "R2 + R1"},
+				{Encoding: "%0010 rt:4 %000000 %00 %0010", Address: "R2 + R2"},
+				{Encoding: "%0010 rt:4 %000000 %00 %0011", Address: "R2 + R3"},
+				{Encoding: "%0010 rt:4 %000000 %00 %0100", Address: "R2 + R4"},
+				{Encoding: "%0010 rt:4 %000000 %00 %0101", Address: "R2 + R5"},
+				{Encoding: "%0010 rt:4 %000000 %00 %0110", Address: "R2 + R6"},
+				{Encoding: "%0010 rt:4 %000000 %00 %0111", Address: "R2 + R7"},
+				{Encoding: "%0010 rt:4 %000000 %00 %1000", Address: "R2 + R8"},
+				{Encoding: "%0010 rt:4 %000000 %00 %1001", Address: "R2 + R9"},
+				{Encoding: "%0010 rt:4 %000000 %00 %1010", Address: "R2 + R10"},
+				{Encoding: "%0010 rt:4 %000000 %00 %1011", Address: "R2 + R11"},
+				{Encoding: "%0010 rt:4 %000000 %00 %1100", Address: "R2 + R12"},
+				{Encoding: "%0010 rt:4 %000000 %00 %1110", Address: "R2 + LR"},
+				{Encoding: "%0011 rt:4 %000000 %00 %0000", Address: "R3 + R0"},
+				{Encoding: "%0011 rt:4 %000000 %00 %0001", Address: "R3 + R1"},
+				{Encoding: "%0011 rt:4 %000000 %00 %0010", Address: "R3 + R2"},
+				{Encoding: "%0011 rt:4 %000000 %00 %0011", Address: "R3 + R3"},
+				{Encoding: "%0011 rt:4 %000000 %00 %0100", Address: "R3 + R4"},
+				{Encoding: "%0011 rt:4 %000000 %00 %0101", Address: "R3 + R5"},
+				{Encoding: "%0011 rt:4 %000000 %00 %0110", Address: "R3 + R6"},
+				{Encoding: "%0011 rt:4 %000000 %00 %0111", Address: "R3 + R7"},
+				{Encoding: "%0011 rt:4 %000000 %00 %1000", Address: "R3 + R8"},
+				{Encoding: "%0011 rt:4 %000000 %00 %1001", Address: "R3 + R9"},
+				{Encoding: "%0011 rt:4 %000000 %00 %1010", Address: "R3 + R10"},
+				{Encoding: "%0011 rt:4 %000000 %00 %1011", Address: "R3 + R11"},
+				{Encoding: "%0011 rt:4 %000000 %00 %1100", Address: "R3 + R12"},
+				{Encoding: "%0011 rt:4 %000000 %00 %1110", Address: "R3 + LR"},
+				{Encoding: "%0100 rt:4 %000000 %00 %0000", Address: "R4 + R0"},
+				{Encoding: "%0100 rt:4 %000000 %00 %0001", Address: "R4 + R1"},
+				{Encoding: "%0100 rt:4 %000000 %00 %0010", Address: "R4 + R2"},
+				{Encoding: "%0100 rt:4 %000000 %00 %0011", Address: "R4 + R3"},
+				{Encoding: "%0100 rt:4 %000000 %00 %0100", Address: "R4 + R4"},
+				{Encoding: "%0100 rt:4 %000000 %00 %0101", Address: "R4 + R5"},
+				{Encoding: "%0100 rt:4 %000000 %00 %0110", Address: "R4 + R6"},
+				{Encoding: "%0100 rt:4 %000000 %00 %0111", Address: "R4 + R7"},
+				{Encoding: "%0100 rt:4 %000000 %00 %1000", Address: "R4 + R8"},
+				{Encoding: "%0100 rt:4 %000000 %00 %1001", Address: "R4 + R9"},
+				{Encoding: "%0100 rt:4 %000000 %00 %1010", Address: "R4 + R10"},
+				{Encoding: "%0100 rt:4 %000000 %00 %1011", Address: "R4 + R11"},
+				{Encoding: "%0100 rt:4 %000000 %00 %1100", Address: "R4 + R12"},
+				{Encoding: "%0100 rt:4 %000000 %00 %1110", Address: "R4 + LR"},
+				{Encoding: "%0101 rt:4 %000000 %00 %0000", Address: "R5 + R0"},
+				{Encoding: "%0101 rt:4 %000000 %00 %0001", Address: "R5 + R1"},
+				{Encoding: "%0101 rt:4 %000000 %00 %0010", Address: "R5 + R2"},
+				{Encoding: "%0101 rt:4 %000000 %00 %0011", Address: "R5 + R3"},
+				{Encoding: "%0101 rt:4 %000000 %00 %0100", Address: "R5 + R4"},
+				{Encoding: "%0101 rt:4 %000000 %00 %0101", Address: "R5 + R5"},
+				{Encoding: "%0101 rt:4 %000000 %00 %0110", Address: "R5 + R6"},
+				{Encoding: "%0101 rt:4 %000000 %00 %0111", Address: "R5 + R7"},
+				{Encoding: "%0101 rt:4 %000000 %00 %1000", Address: "R5 + R8"},
+				{Encoding: "%0101 rt:4 %000000 %00 %1001", Address: "R5 + R9"},
+				{Encoding: "%0101 rt:4 %000000 %00 %1010", Address: "R5 + R10"},
+				{Encoding: "%0101 rt:4 %000000 %00 %1011", Address: "R5 + R11"},
+				{Encoding: "%0101 rt:4 %000000 %00 %1100", Address: "R5 + R12"},
+				{Encoding: "%0101 rt:4 %000000 %00 %1110", Address: "R5 + LR"},
+				{Encoding: "%0110 rt:4 %000000 %00 %0000", Address: "R6 + R0"},
+				{Encoding: "%0110 rt:4 %000000 %00 %0001", Address: "R6 + R1"},
+				{Encoding: "%0110 rt:4 %000000 %00 %0010", Address: "R6 + R2"},
+				{Encoding: "%0110 rt:4 %000000 %00 %0011", Address: "R6 + R3"},
+				{Encoding: "%0110 rt:4 %000000 %00 %0100", Address: "R6 + R4"},
+				{Encoding: "%0110 rt:4 %000000 %00 %0101", Address: "R6 + R5"},
+				{Encoding: "%0110 rt:4 %000000 %00 %0110", Address: "R6 + R6"},
+				{Encoding: "%0110 rt:4 %000000 %00 %0111", Address: "R6 + R7"},
+				{Encoding: "%0110 rt:4 %000000 %00 %1000", Address: "R6 + R8"},
+				{Encoding: "%0110 rt:4 %000000 %00 %1001", Address: "R6 + R9"},
+				{Encoding: "%0110 rt:4 %000000 %00 %1010", Address: "R6 + R10"},
+				{Encoding: "%0110 rt:4 %000000 %00 %1011", Address: "R6 + R11"},
+				{Encoding: "%0110 rt:4 %000000 %00 %1100", Address: "R6 + R12"},
+				{Encoding: "%0110 rt:4 %000000 %00 %1110", Address: "R6 + LR"},
+				{Encoding: "%0111 rt:4 %000000 %00 %0000", Address: "R7 + R0"},
+				{Encoding: "%0111 rt:4 %000000 %00 %0001", Address: "R7 + R1"},
+				{Encoding: "%0111 rt:4 %000000 %00 %0010", Address: "R7 + R2"},
+				{Encoding: "%0111 rt:4 %000000 %00 %0011", Address: "R7 + R3"},
+				{Encoding: "%0111 rt:4 %000000 %00 %0100", Address: "R7 + R4"},
+				{Encoding: "%0111 rt:4 %000000 %00 %0101", Address: "R7 + R5"},
+				{Encoding: "%0111 rt:4 %000000 %00 %0110", Address: "R7 + R6"},
+				{Encoding: "%0111 rt:4 %000000 %00 %0111", Address: "R7 + R7"},
+				{Encoding: "%0111 rt:4 %000000 %00 %1000", Address: "R7 + R8"},
+				{Encoding: "%0111 rt:4 %000000 %00 %1001", Address: "R7 + R9"},
+				{Encoding: "%0111 rt:4 %000000 %00 %1010", Address: "R7 + R10"},
+				{Encoding: "%0111 rt:4 %000000 %00 %1011", Address: "R7 + R11"},
+				{Encoding: "%0111 rt:4 %000000 %00 %1100", Address: "R7 + R12"},
+				{Encoding: "%0111 rt:4 %000000 %00 %1110", Address: "R7 + LR"},
+				{Encoding: "%1000 rt:4 %000000 %00 %0000", Address: "R8 + R0"},
+				{Encoding: "%1000 rt:4 %000000 %00 %0001", Address: "R8 + R1"},
+				{Encoding: "%1000 rt:4 %000000 %00 %0010", Address: "R8 + R2"},
+				{Encoding: "%1000 rt:4 %000000 %00 %0011", Address: "R8 + R3"},
+				{Encoding: "%1000 rt:4 %000000 %00 %0100", Address: "R8 + R4"},
+				{Encoding: "%1000 rt:4 %000000 %00 %0101", Address: "R8 + R5"},
+				{Encoding: "%1000 rt:4 %000000 %00 %0110", Address: "R8 + R6"},
+				{Encoding: "%1000 rt:4 %000000 %00 %0111", Address: "R8 + R7"},
+				{Encoding: "%1000 rt:4 %000000 %00 %1000", Address: "R8 + R8"},
+				{Encoding: "%1000 rt:4 %000000 %00 %1001", Address: "R8 + R9"},
+				{Encoding: "%1000 rt:4 %000000 %00 %1010", Address: "R8 + R10"},
+				{Encoding: "%1000 rt:4 %000000 %00 %1011", Address: "R8 + R11"},
+				{Encoding: "%1000 rt:4 %000000 %00 %1100", Address: "R8 + R12"},
+				{Encoding: "%1000 rt:4 %000000 %00 %1110", Address: "R8 + LR"},
+				{Encoding: "%1001 rt:4 %000000 %00 %0000", Address: "R9 + R0"},
+				{Encoding: "%1001 rt:4 %000000 %00 %0001", Address: "R9 + R1"},
+				{Encoding: "%1001 rt:4 %000000 %00 %0010", Address: "R9 + R2"},
+				{Encoding: "%1001 rt:4 %000000 %00 %0011", Address: "R9 + R3"},
+				{Encoding: "%1001 rt:4 %000000 %00 %0100", Address: "R9 + R4"},
+				{Encoding: "%1001 rt:4 %000000 %00 %0101", Address: "R9 + R5"},
+				{Encoding: "%1001 rt:4 %000000 %00 %0110", Address: "R9 + R6"},
+				{Encoding: "%1001 rt:4 %000000 %00 %0111", Address: "R9 + R7"},
+				{Encoding: "%1001 rt:4 %000000 %00 %1000", Address: "R9 + R8"},
+				{Encoding: "%1001 rt:4 %000000 %00 %1001", Address: "R9 + R9"},
+				{Encoding: "%1001 rt:4 %000000 %00 %1010", Address: "R9 + R10"},
+				{Encoding: "%1001 rt:4 %000000 %00 %1011", Address: "R9 + R11"},
+				{Encoding: "%1001 rt:4 %000000 %00 %1100", Address: "R9 + R12"},
+				{Encoding: "%1001 rt:4 %000000 %00 %1110", Address: "R9 + LR"},
+				{Encoding: "%1010 rt:4 %000000 %00 %0000", Address: "R10 + R0"},
+				{Encoding: "%1010 rt:4 %000000 %00 %0001", Address: "R10 + R1"},
+				{Encoding: "%1010 rt:4 %000000 %00 %0010", Address: "R10 + R2"},
+				{Encoding: "%1010 rt:4 %000000 %00 %0011", Address: "R10 + R3"},
+				{Encoding: "%1010 rt:4 %000000 %00 %0100", Address: "R10 + R4"},
+				{Encoding: "%1010 rt:4 %000000 %00 %0101", Address: "R10 + R5"},
+				{Encoding: "%1010 rt:4 %000000 %00 %0110", Address: "R10 + R6"},
+				{Encoding: "%1010 rt:4 %000000 %00 %0111", Address: "R10 + R7"},
+				{Encoding: "%1010 rt:4 %000000 %00 %1000", Address: "R10 + R8"},
+				{Encoding: "%1010 rt:4 %000000 %00 %1001", Address: "R10 + R9"},
+				{Encoding: "%1010 rt:4 %000000 %00 %1010", Address: "R10 + R10"},
+				{Encoding: "%1010 rt:4 %000000 %00 %1011", Address: "R10 + R11"},
+				{Encoding: "%1010 rt:4 %000000 %00 %1100", Address: "R10 + R12"},
+				{Encoding: "%1010 rt:4 %000000 %00 %1110", Address: "R10 + LR"},
+				{Encoding: "%1011 rt:4 %000000 %00 %0000", Address: "R11 + R0"},
+				{Encoding: "%1011 rt:4 %000000 %00 %0001", Address: "R11 + R1"},
+				{Encoding: "%1011 rt:4 %000000 %00 %0010", Address: "R11 + R2"},
+				{Encoding: "%1011 rt:4 %000000 %00 %0011", Address: "R11 + R3"},
+				{Encoding: "%1011 rt:4 %000000 %00 %0100", Address: "R11 + R4"},
+				{Encoding: "%1011 rt:4 %000000 %00 %0101", Address: "R11 + R5"},
+				{Encoding: "%1011 rt:4 %000000 %00 %0110", Address: "R11 + R6"},
+				{Encoding: "%1011 rt:4 %000000 %00 %0111", Address: "R11 + R7"},
+				{Encoding: "%1011 rt:4 %000000 %00 %1000", Address: "R11 + R8"},
+				{Encoding: "%1011 rt:4 %000000 %00 %1001", Address: "R11 + R9"},
+				{Encoding: "%1011 rt:4 %000000 %00 %1010", Address: "R11 + R10"},
+				{Encoding: "%1011 rt:4 %000000 %00 %1011", Address: "R11 + R11"},
+				{Encoding: "%1011 rt:4 %000000 %00 %1100", Address: "R11 + R12"},
+				{Encoding: "%1011 rt:4 %000000 %00 %1110", Address: "R11 + LR"},
+				{Encoding: "%1100 rt:4 %000000 %00 %0000", Address: "R12 + R0"},
+				{Encoding: "%1100 rt:4 %000000 %00 %0001", Address: "R12 + R1"},
+				{Encoding: "%1100 rt:4 %000000 %00 %0010", Address: "R12 + R2"},
+				{Encoding: "%1100 rt:4 %000000 %00 %0011", Address: "R12 + R3"},
+				{Encoding: "%1100 rt:4 %000000 %00 %0100", Address: "R12 + R4"},
+				{Encoding: "%1100 rt:4 %000000 %00 %0101", Address: "R12 + R5"},
+				{Encoding: "%1100 rt:4 %000000 %00 %0110", Address: "R12 + R6"},
+				{Encoding: "%1100 rt:4 %000000 %00 %0111", Address: "R12 + R7"},
+				{Encoding: "%1100 rt:4 %000000 %00 %1000", Address: "R12 + R8"},
+				{Encoding: "%1100 rt:4 %000000 %00 %1001", Address: "R12 + R9"},
+				{Encoding: "%1100 rt:4 %000000 %00 %1010", Address: "R12 + R10"},
+				{Encoding: "%1100 rt:4 %000000 %00 %1011", Address: "R12 + R11"},
+				{Encoding: "%1100 rt:4 %000000 %00 %1100", Address: "R12 + R12"},
+				{Encoding: "%1100 rt:4 %000000 %00 %1110", Address: "R12 + LR"},
+				{Encoding: "%1101 rt:4 %000000 %00 %0000", Address: "SP + R0"},
+				{Encoding: "%1101 rt:4 %000000 %00 %0001", Address: "SP + R1"},
+				{Encoding: "%1101 rt:4 %000000 %00 %0010", Address: "SP + R2"},
+				{Encoding: "%1101 rt:4 %000000 %00 %0011", Address: "SP + R3"},
+				{Encoding: "%1101 rt:4 %000000 %00 %0100", Address: "SP + R4"},
+				{Encoding: "%1101 rt:4 %000000 %00 %0101", Address: "SP + R5"},
+				{Encoding: "%1101 rt:4 %000000 %00 %0110", Address: "SP + R6"},
+				{Encoding: "%1101 rt:4 %000000 %00 %0111", Address: "SP + R7"},
+				{Encoding: "%1101 rt:4 %000000 %00 %1000", Address: "SP + R8"},
+				{Encoding: "%1101 rt:4 %000000 %00 %1001", Address: "SP + R9"},
+				{Encoding: "%1101 rt:4 %000000 %00 %1010", Address: "SP + R10"},
+				{Encoding: "%1101 rt:4 %000000 %00 %1011", Address: "SP + R11"},
+				{Encoding: "%1101 rt:4 %000000 %00 %1100", Address: "SP + R12"},
+				{Encoding: "%1101 rt:4 %000000 %00 %1110", Address: "SP + LR"},
+				{Encoding: "%1110 rt:4 %000000 %00 %0000", Address: "LR + R0"},
+				{Encoding: "%1110 rt:4 %000000 %00 %0001", Address: "LR + R1"},
+				{Encoding: "%1110 rt:4 %000000 %00 %0010", Address: "LR + R2"},
+				{Encoding: "%1110 rt:4 %000000 %00 %0011", Address: "LR + R3"},
+				{Encoding: "%1110 rt:4 %000000 %00 %0100", Address: "LR + R4"},
+				{Encoding: "%1110 rt:4 %000000 %00 %0101", Address: "LR + R5"},
+				{Encoding: "%1110 rt:4 %000000 %00 %0110", Address: "LR + R6"},
+				{Encoding: "%1110 rt:4 %000000 %00 %0111", Address: "LR + R7"},
+				{Encoding: "%1110 rt:4 %000000 %00 %1000", Address: "LR + R8"},
+				{Encoding: "%1110 rt:4 %000000 %00 %1001", Address: "LR + R9"},
+				{Encoding: "%1110 rt:4 %000000 %00 %1010", Address: "LR + R10"},
+				{Encoding: "%1110 rt:4 %000000 %00 %1011", Address: "LR + R11"},
+				{Encoding: "%1110 rt:4 %000000 %00 %1100", Address: "LR + R12"},
+				{Encoding: "%1110 rt:4 %000000 %00 %1110", Address: "LR + LR"},
+			},
+		},
+		{
+			Name: "d8p",
+			Alternatives: []Alternative{
+				{Encoding: "%0000 rt:4 rt2:4 imm:8", Address: "R0 + zx(imm, 32) * 4"},
+				{Encoding: "%0001 rt:4 rt2:4 imm:8", Address: "R1 + zx(imm, 32) * 4"},
+				{Encoding: "%0010 rt:4 rt2:4 imm:8", Address: "R2 + zx(imm, 32) * 4"},
+				{Encoding: "%0011 rt:4 rt2:4 imm:8", Address: "R3 + zx(imm, 32) * 4"},
+				{Encoding: "%0100 rt:4 rt2:4 imm:8", Address: "R4 + zx(imm, 32) * 4"},
+				{Encoding: "%0101 rt:4 rt2:4 imm:8", Address: "R5 + zx(imm, 32) * 4"},
+				{Encoding: "%0110 rt:4 rt2:4 imm:8", Address: "R6 + zx(imm, 32) * 4"},
+				{Encoding: "%0111 rt:4 rt2:4 imm:8", Address: "R7 + zx(imm, 32) * 4"},
+				{Encoding: "%1000 rt:4 rt2:4 imm:8", Address: "R8 + zx(imm, 32) * 4"},
+				{Encoding: "%1001 rt:4 rt2:4 imm:8", Address: "R9 + zx(imm, 32) * 4"},
+				{Encoding: "%1010 rt:4 rt2:4 imm:8", Address: "R10 + zx(imm, 32) * 4"},
+				{Encoding: "%1011 rt:4 rt2:4 imm:8", Address: "R11 + zx(imm, 32) * 4"},
+				{Encoding: "%1100 rt:4 rt2:4 imm:8", Address: "R12 + zx(imm, 32) * 4"},
+				{Encoding: "%1101 rt:4 rt2:4 imm:8", Address: "SP + zx(imm, 32) * 4"},
+				{Encoding: "%1110 rt:4 rt2:4 imm:8", Address: "LR + zx(imm, 32) * 4"},
+			},
+		},
+		{
+			Name: "d8m",
+			Alternatives: []Alternative{
+				{Encoding: "%0000 rt:4 rt2:4 imm:8", Address: "R0 - zx(imm, 32) * 4"},
+				{Encoding: "%0001 rt:4 rt2:4 imm:8", Address: "R1 - zx(imm, 32) * 4"},
+				{Encoding: "%0010 rt:4 rt2:4 imm:8", Address: "R2 - zx(imm, 32) * 4"},
+				{Encoding: "%0011 rt:4 rt2:4 imm:8", Address: "R3 - zx(imm, 32) * 4"},
+				{Encoding: "%0100 rt:4 rt2:4 imm:8", Address: "R4 - zx(imm, 32) * 4"},
+				{Encoding: "%0101 rt:4 rt2:4 imm:8", Address: "R5 - zx(imm, 32) * 4"},
+				{Encoding: "%0110 rt:4 rt2:4 imm:8", Address: "R6 - zx(imm, 32) * 4"},
+				{Encoding: "%0111 rt:4 rt2:4 imm:8", Address: "R7 - zx(imm, 32) * 4"},
+				{Encoding: "%1000 rt:4 rt2:4 imm:8", Address: "R8 - zx(imm, 32) * 4"},
+				{Encoding: "%1001 rt:4 rt2:4 imm:8", Address: "R9 - zx(imm, 32) * 4"},
+				{Encoding: "%1010 rt:4 rt2:4 imm:8", Address: "R10 - zx(imm, 32) * 4"},
+				{Encoding: "%1011 rt:4 rt2:4 imm:8", Address: "R11 - zx(imm, 32) * 4"},
+				{Encoding: "%1100 rt:4 rt2:4 imm:8", Address: "R12 - zx(imm, 32) * 4"},
+				{Encoding: "%1101 rt:4 rt2:4 imm:8", Address: "SP - zx(imm, 32) * 4"},
+				{Encoding: "%1110 rt:4 rt2:4 imm:8", Address: "LR - zx(imm, 32) * 4"},
+			},
+		},
+	},
+	Instructions: []Instruction{
+		{
+			Mnemonic: "MOVS",
+			Operands: []string{"lo", "lo"},
+			Encoding: "%0000000000 b:3 a:3",
+			Semantics: `a = b;
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic: "LSLS",
+			Operands: []string{"lo", "lo", "imm5"},
+			Encoding: "%00000 c:5 b:3 a:3",
+			Semantics: `a = lslc(b, c);
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic: "LSRS",
+			Operands: []string{"lo", "lo", "shift"},
+			Encoding: "%00001 c:5 b:3 a:3",
+			Semantics: `a = lsrc(b, count(c));
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic: "ASRS",
+			Operands: []string{"lo", "lo", "shift"},
+			Encoding: "%00010 c:5 b:3 a:3",
+			Semantics: `a = asrc(b, count(c));
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic:  "ADDS",
+			Operands:  []string{"lo", "lo", "lo"},
+			Encoding:  "%0001100 c:3 b:3 a:3",
+			Semantics: "a = adds(b, c, 0);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "SUBS",
+			Operands:  []string{"lo", "lo", "lo"},
+			Encoding:  "%0001101 c:3 b:3 a:3",
+			Semantics: "a = adds(b, ~c, 1);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "ADDS",
+			Operands:  []string{"lo", "lo", "imm3"},
+			Encoding:  "%0001110 c:3 b:3 a:3",
+			Semantics: "a = adds(b, c, 0);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "SUBS",
+			Operands:  []string{"lo", "lo", "imm3"},
+			Encoding:  "%0001111 c:3 b:3 a:3",
+			Semantics: "a = adds(b, ~c, 1);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic: "MOVS",
+			Operands: []string{"lo", "imm8"},
+			Encoding: "%00100 a:3 b:8",
+			Semantics: `a = b;
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic:  "CMP",
+			Operands:  []string{"lo", "imm8"},
+			Encoding:  "%00101 a:3 b:8",
+			Semantics: "let r = adds(a, ~b, 1);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "ADDS",
+			Operands:  []string{"lo", "imm8"},
+			Encoding:  "%00110 a:3 b:8",
+			Semantics: "a = adds(a, b, 0);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "SUBS",
+			Operands:  []string{"lo", "imm8"},
+			Encoding:  "%00111 a:3 b:8",
+			Semantics: "a = adds(a, ~b, 1);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic: "ANDS",
+			Operands: []string{"lo", "lo"},
+			Encoding: "%0100000000 b:3 a:3",
+			Semantics: `a = a & b;
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic: "EORS",
+			Operands: []string{"lo", "lo"},
+			Encoding: "%0100000001 b:3 a:3",
+			Semantics: `a = a ^ b;
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic: "LSLS",
+			Operands: []string{"lo", "lo"},
+			Encoding: "%0100000010 b:3 a:3",
+			Semantics: `a = lslc(a, b[7:0]);
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic: "LSRS",
+			Operands: []string{"lo", "lo"},
+			Encoding: "%0100000011 b:3 a:3",
+			Semantics: `a = lsrc(a, b[7:0]);
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic: "ASRS",
+			Operands: []string{"lo", "lo"},
+			Encoding: "%0100000100 b:3 a:3",
+			Semantics: `a = asrc(a, b[7:0]);
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic:  "ADCS",
+			Operands:  []string{"lo", "lo"},
+			Encoding:  "%0100000101 b:3 a:3",
+			Semantics: "a = adds(a, b, C);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "SBCS",
+			Operands:  []string{"lo", "lo"},
+			Encoding:  "%0100000110 b:3 a:3",
+			Semantics: "a = adds(a, ~b, C);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic: "RORS",
+			Operands: []string{"lo", "lo"},
+			Encoding: "%0100000111 b:3 a:3",
+			Semantics: `a = rorc(a, b[7:0]);
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic:  "TST",
+			Operands:  []string{"lo", "lo"},
+			Encoding:  "%0100001000 b:3 a:3",
+			Semantics: "nz(a & b);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "RSBS",
+			Operands:  []string{"lo", "lo", "0"},
+			Encoding:  "%0100001001 b:3 a:3",
+			Semantics: "a = adds(~b, zx(0, 32), 1);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "CMP",
+			Operands:  []string{"lo", "lo"},
+			Encoding:  "%0100001010 b:3 a:3",
+			Semantics: "let r = adds(a, ~b, 1);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "CMN",
+			Operands:  []string{"lo", "lo"},
+			Encoding:  "%0100001011 b:3 a:3",
+			Semantics: "let r = adds(a, b, 0);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic: "ORRS",
+			Operands: []string{"lo", "lo"},
+			Encoding: "%0100001100 b:3 a:3",
+			Semantics: `a = a | b;
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic: "MULS",
+			Operands: []string{"lo", "lo"},
+			Encoding: "%0100001101 b:3 a:3",
+			Semantics: `a = b * a;
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic: "BICS",
+			Operands: []string{"lo", "lo"},
+			Encoding: "%0100001110 b:3 a:3",
+			Semantics: `a = a & ~b;
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic: "MVNS",
+			Operands: []string{"lo", "lo"},
+			Encoding: "%0100001111 b:3 a:3",
+			Semantics: `a = ~b;
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic:  "ADD",
+			Operands:  []string{"r", "r"},
+			Encoding:  "%01000100 a[3] b:4 a[2:0]",
+			Semantics: "a = a + b;",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "CMP",
+			Operands:  []string{"r", "r"},
+			Encoding:  "%01000101 a[3] b:4 a[2:0]",
+			Semantics: "let r = adds(a, ~b, 1);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "MOV",
+			Operands:  []string{"r", "r"},
+			Encoding:  "%01000110 a[3] b:4 a[2:0]",
+			Semantics: "a = b;",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "BX",
+			Operands:  []string{"r"},
+			Encoding:  "%010001110 a:4 %000",
+			Semantics: "PC = a;",
+			Cycles:    3,
+		},
+		{
+			Mnemonic: "BLX",
+			Operands: []string{"r"},
+			Encoding: "%010001111 a:4 %000",
+			Semantics: `let t = a;
+LR = (PC - 2) | 1;
+PC = t;`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic:  "LDR",
+			Operands:  []string{"lo", "m32pc8"},
+			Encoding:  "%01001 a:3 <pc8 b>",
+			Semantics: "a = b;",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "STR",
+			Operands:  []string{"lo", "m32rr"},
+			Encoding:  "%0101000 <rr b> a:3",
+			Semantics: "b = a;",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "STRH",
+			Operands:  []string{"lo", "m16rr"},
+			Encoding:  "%0101001 <rr b> a:3",
+			Semantics: "b = a[15:0];",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "STRB",
+			Operands:  []string{"lo", "m8rr"},
+			Encoding:  "%0101010 <rr b> a:3",
+			Semantics: "b = a[7:0];",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "LDRSB",
+			Operands:  []string{"lo", "m8rr"},
+			Encoding:  "%0101011 <rr b> a:3",
+			Semantics: "a = sx(b, 32);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "LDR",
+			Operands:  []string{"lo", "m32rr"},
+			Encoding:  "%0101100 <rr b> a:3",
+			Semantics: "a = b;",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "LDRH",
+			Operands:  []string{"lo", "m16rr"},
+			Encoding:  "%0101101 <rr b> a:3",
+			Semantics: "a = zx(b, 32);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "LDRB",
+			Operands:  []string{"lo", "m8rr"},
+			Encoding:  "%0101110 <rr b> a:3",
+			Semantics: "a = zx(b, 32);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "LDRSH",
+			Operands:  []string{"lo", "m16rr"},
+			Encoding:  "%0101111 <rr b> a:3",
+			Semantics: "a = sx(b, 32);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "STR",
+			Operands:  []string{"lo", "m32i5w"},
+			Encoding:  "%01100 <i5w b> a:3",
+			Semantics: "b = a;",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "LDR",
+			Operands:  []string{"lo", "m32i5w"},
+			Encoding:  "%01101 <i5w b> a:3",
+			Semantics: "a = b;",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "STRB",
+			Operands:  []string{"lo", "m8i5b"},
+			Encoding:  "%01110 <i5b b> a:3",
+			Semantics: "b = a[7:0];",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "LDRB",
+			Operands:  []string{"lo", "m8i5b"},
+			Encoding:  "%01111 <i5b b> a:3",
+			Semantics: "a = zx(b, 32);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "STRH",
+			Operands:  []string{"lo", "m16i5h"},
+			Encoding:  "%10000 <i5h b> a:3",
+			Semantics: "b = a[15:0];",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "LDRH",
+			Operands:  []string{"lo", "m16i5h"},
+			Encoding:  "%10001 <i5h b> a:3",
+			Semantics: "a = zx(b, 32);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "STR",
+			Operands:  []string{"lo", "m32sp8"},
+			Encoding:  "%10010 a:3 <sp8 b>",
+			Semantics: "b = a;",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "LDR",
+			Operands:  []string{"lo", "m32sp8"},
+			Encoding:  "%10011 a:3 <sp8 b>",
+			Semantics: "a = b;",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "ADD",
+			Operands:  []string{"lo", "PC", "imm8x4"},
+			Encoding:  "%10100 a:3 c:8",
+			Semantics: "a = (b & 0xFFFFFFFC) + c;",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "ADD",
+			Operands:  []string{"lo", "SP", "imm8x4"},
+			Encoding:  "%10101 a:3 c:8",
+			Semantics: "a = b + c;",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "ADD",
+			Operands:  []string{"SP", "SP", "imm7x4"},
+			Encoding:  "%101100000 c:7",
+			Semantics: "a = b + c;",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "SUB",
+			Operands:  []string{"SP", "SP", "imm7x4"},
+			Encoding:  "%101100001 c:7",
+			Semantics: "a = b - c;",
+			Cycles:    1,
+		},
+		{
+			Mnemonic: "CBZ",
+			Operands: []string{"lo", "rel6"},
+			Encoding: "%101100 b[5] %1 b[4:0] a:3",
+			Semantics: `if a == 0 {
+	PC = b;
+}`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic: "CBNZ",
+			Operands: []string{"lo", "rel6"},
+			Encoding: "%101110 b[5] %1 b[4:0] a:3",
+			Semantics: `if a != 0 {
+	PC = b;
+}`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic:  "SXTH",
+			Operands:  []string{"lo", "lo"},
+			Encoding:  "%1011001000 b:3 a:3",
+			Semantics: "a = sx(b[15:0], 32);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "SXTB",
+			Operands:  []string{"lo", "lo"},
+			Encoding:  "%1011001001 b:3 a:3",
+			Semantics: "a = sx(b[7:0], 32);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "UXTH",
+			Operands:  []string{"lo", "lo"},
+			Encoding:  "%1011001010 b:3 a:3",
+			Semantics: "a = zx(b[15:0], 32);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "UXTB",
+			Operands:  []string{"lo", "lo"},
+			Encoding:  "%1011001011 b:3 a:3",
+			Semantics: "a = zx(b[7:0], 32);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "REV",
+			Operands:  []string{"lo", "lo"},
+			Encoding:  "%1011101000 b:3 a:3",
+			Semantics: "a = rev(b);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "REV16",
+			Operands:  []string{"lo", "lo"},
+			Encoding:  "%1011101001 b:3 a:3",
+			Semantics: "a = rev16(b);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "REVSH",
+			Operands:  []string{"lo", "lo"},
+			Encoding:  "%1011101011 b:3 a:3",
+			Semantics: "a = revsh(b);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic: "PUSH",
+			Operands: []string{"list"},
+			Encoding: "%1011010 a[14] a[7:0]",
+			Semantics: `let addr = SP - popcount(a) * 4;
+SP = addr;
+if a[0] {
+	mem32[addr] = R0;
+	addr = addr + 4;
+}
+if a[1] {
+	mem32[addr] = R1;
+	addr = addr + 4;
+}
+if a[2] {
+	mem32[addr] = R2;
+	addr = addr + 4;
+}
+if a[3] {
+	mem32[addr] = R3;
+	addr = addr + 4;
+}
+if a[4] {
+	mem32[addr] = R4;
+	addr = addr + 4;
+}
+if a[5] {
+	mem32[addr] = R5;
+	addr = addr + 4;
+}
+if a[6] {
+	mem32[addr] = R6;
+	addr = addr + 4;
+}
+if a[7] {
+	mem32[addr] = R7;
+	addr = addr + 4;
+}
+if a[14] {
+	mem32[addr] = LR;
+	addr = addr + 4;
+}`,
+			Cycles: 2,
+		},
+		{
+			Mnemonic: "POP",
+			Operands: []string{"list"},
+			Encoding: "%1011110 a[15] a[7:0]",
+			Semantics: `let addr = SP;
+SP = SP + popcount(a) * 4;
+if a[0] {
+	R0 = mem32[addr];
+	addr = addr + 4;
+}
+if a[1] {
+	R1 = mem32[addr];
+	addr = addr + 4;
+}
+if a[2] {
+	R2 = mem32[addr];
+	addr = addr + 4;
+}
+if a[3] {
+	R3 = mem32[addr];
+	addr = addr + 4;
+}
+if a[4] {
+	R4 = mem32[addr];
+	addr = addr + 4;
+}
+if a[5] {
+	R5 = mem32[addr];
+	addr = addr + 4;
+}
+if a[6] {
+	R6 = mem32[addr];
+	addr = addr + 4;
+}
+if a[7] {
+	R7 = mem32[addr];
+	addr = addr + 4;
+}
+if a[15] {
+	PC = mem32[addr];
+	addr = addr + 4;
+}`,
+			Cycles: 2,
+		},
+		{
+			Mnemonic:  "CPSIE",
+			Encoding:  "B6 62",
+			Semantics: "PRIMASK = 0;",
+			Cycles:    1,
+			Effects:   []string{"Interrupts"},
+		},
+		{
+			Mnemonic:  "CPSID",
+			Encoding:  "B6 72",
+			Semantics: "PRIMASK = 1;",
+			Cycles:    1,
+			Effects:   []string{"Interrupts"},
+		},
+		{
+			Mnemonic:  "BKPT",
+			Operands:  []string{"code8"},
+			Encoding:  "BE a:8",
+			Semantics: "halt();",
+			Cycles:    1,
+		},
+		{
+			Mnemonic: "NOP",
+			Encoding: "BF 00",
+			Cycles:   1,
+		},
+		{
+			Mnemonic: "YIELD",
+			Encoding: "BF 10",
+			Cycles:   1,
+		},
+		{
+			Mnemonic: "WFE",
+			Encoding: "BF 20",
+			Cycles:   1,
+		},
+		{
+			Mnemonic: "WFI",
+			Encoding: "BF 30",
+			Cycles:   1,
+		},
+		{
+			Mnemonic: "SEV",
+			Encoding: "BF 40",
+			Cycles:   1,
+		},
+		{
+			Mnemonic: "STMIA",
+			Operands: []string{"lo", "list"},
+			Encoding: "%11000 a:3 b[7:0]",
+			Semantics: `let addr = a;
+if b[0] {
+	mem32[addr] = R0;
+	addr = addr + 4;
+}
+if b[1] {
+	mem32[addr] = R1;
+	addr = addr + 4;
+}
+if b[2] {
+	mem32[addr] = R2;
+	addr = addr + 4;
+}
+if b[3] {
+	mem32[addr] = R3;
+	addr = addr + 4;
+}
+if b[4] {
+	mem32[addr] = R4;
+	addr = addr + 4;
+}
+if b[5] {
+	mem32[addr] = R5;
+	addr = addr + 4;
+}
+if b[6] {
+	mem32[addr] = R6;
+	addr = addr + 4;
+}
+if b[7] {
+	mem32[addr] = R7;
+	addr = addr + 4;
+}
+a = addr;`,
+			Cycles: 2,
+		},
+		{
+			Mnemonic: "LDMIA",
+			Operands: []string{"R0", "list"},
+			Encoding: "%11001 %000 b[7:1] %0",
+			Semantics: `let addr = a;
+a = a + popcount(b) * 4;
+if b[1] {
+	R1 = mem32[addr];
+	addr = addr + 4;
+}
+if b[2] {
+	R2 = mem32[addr];
+	addr = addr + 4;
+}
+if b[3] {
+	R3 = mem32[addr];
+	addr = addr + 4;
+}
+if b[4] {
+	R4 = mem32[addr];
+	addr = addr + 4;
+}
+if b[5] {
+	R5 = mem32[addr];
+	addr = addr + 4;
+}
+if b[6] {
+	R6 = mem32[addr];
+	addr = addr + 4;
+}
+if b[7] {
+	R7 = mem32[addr];
+	addr = addr + 4;
+}`,
+			Cycles: 2,
+		},
+		{
+			Mnemonic: "LDMIA",
+			Operands: []string{"R1", "list"},
+			Encoding: "%11001 %001 b[7:2] %0 b[0]",
+			Semantics: `let addr = a;
+a = a + popcount(b) * 4;
+if b[0] {
+	R0 = mem32[addr];
+	addr = addr + 4;
+}
+if b[2] {
+	R2 = mem32[addr];
+	addr = addr + 4;
+}
+if b[3] {
+	R3 = mem32[addr];
+	addr = addr + 4;
+}
+if b[4] {
+	R4 = mem32[addr];
+	addr = addr + 4;
+}
+if b[5] {
+	R5 = mem32[addr];
+	addr = addr + 4;
+}
+if b[6] {
+	R6 = mem32[addr];
+	addr = addr + 4;
+}
+if b[7] {
+	R7 = mem32[addr];
+	addr = addr + 4;
+}`,
+			Cycles: 2,
+		},
+		{
+			Mnemonic: "LDMIA",
+			Operands: []string{"R2", "list"},
+			Encoding: "%11001 %010 b[7:3] %0 b[1:0]",
+			Semantics: `let addr = a;
+a = a + popcount(b) * 4;
+if b[0] {
+	R0 = mem32[addr];
+	addr = addr + 4;
+}
+if b[1] {
+	R1 = mem32[addr];
+	addr = addr + 4;
+}
+if b[3] {
+	R3 = mem32[addr];
+	addr = addr + 4;
+}
+if b[4] {
+	R4 = mem32[addr];
+	addr = addr + 4;
+}
+if b[5] {
+	R5 = mem32[addr];
+	addr = addr + 4;
+}
+if b[6] {
+	R6 = mem32[addr];
+	addr = addr + 4;
+}
+if b[7] {
+	R7 = mem32[addr];
+	addr = addr + 4;
+}`,
+			Cycles: 2,
+		},
+		{
+			Mnemonic: "LDMIA",
+			Operands: []string{"R3", "list"},
+			Encoding: "%11001 %011 b[7:4] %0 b[2:0]",
+			Semantics: `let addr = a;
+a = a + popcount(b) * 4;
+if b[0] {
+	R0 = mem32[addr];
+	addr = addr + 4;
+}
+if b[1] {
+	R1 = mem32[addr];
+	addr = addr + 4;
+}
+if b[2] {
+	R2 = mem32[addr];
+	addr = addr + 4;
+}
+if b[4] {
+	R4 = mem32[addr];
+	addr = addr + 4;
+}
+if b[5] {
+	R5 = mem32[addr];
+	addr = addr + 4;
+}
+if b[6] {
+	R6 = mem32[addr];
+	addr = addr + 4;
+}
+if b[7] {
+	R7 = mem32[addr];
+	addr = addr + 4;
+}`,
+			Cycles: 2,
+		},
+		{
+			Mnemonic: "LDMIA",
+			Operands: []string{"R4", "list"},
+			Encoding: "%11001 %100 b[7:5] %0 b[3:0]",
+			Semantics: `let addr = a;
+a = a + popcount(b) * 4;
+if b[0] {
+	R0 = mem32[addr];
+	addr = addr + 4;
+}
+if b[1] {
+	R1 = mem32[addr];
+	addr = addr + 4;
+}
+if b[2] {
+	R2 = mem32[addr];
+	addr = addr + 4;
+}
+if b[3] {
+	R3 = mem32[addr];
+	addr = addr + 4;
+}
+if b[5] {
+	R5 = mem32[addr];
+	addr = addr + 4;
+}
+if b[6] {
+	R6 = mem32[addr];
+	addr = addr + 4;
+}
+if b[7] {
+	R7 = mem32[addr];
+	addr = addr + 4;
+}`,
+			Cycles: 2,
+		},
+		{
+			Mnemonic: "LDMIA",
+			Operands: []string{"R5", "list"},
+			Encoding: "%11001 %101 b[7:6] %0 b[4:0]",
+			Semantics: `let addr = a;
+a = a + popcount(b) * 4;
+if b[0] {
+	R0 = mem32[addr];
+	addr = addr + 4;
+}
+if b[1] {
+	R1 = mem32[addr];
+	addr = addr + 4;
+}
+if b[2] {
+	R2 = mem32[addr];
+	addr = addr + 4;
+}
+if b[3] {
+	R3 = mem32[addr];
+	addr = addr + 4;
+}
+if b[4] {
+	R4 = mem32[addr];
+	addr = addr + 4;
+}
+if b[6] {
+	R6 = mem32[addr];
+	addr = addr + 4;
+}
+if b[7] {
+	R7 = mem32[addr];
+	addr = addr + 4;
+}`,
+			Cycles: 2,
+		},
+		{
+			Mnemonic: "LDMIA",
+			Operands: []string{"R6", "list"},
+			Encoding: "%11001 %110 b[7] %0 b[5:0]",
+			Semantics: `let addr = a;
+a = a + popcount(b) * 4;
+if b[0] {
+	R0 = mem32[addr];
+	addr = addr + 4;
+}
+if b[1] {
+	R1 = mem32[addr];
+	addr = addr + 4;
+}
+if b[2] {
+	R2 = mem32[addr];
+	addr = addr + 4;
+}
+if b[3] {
+	R3 = mem32[addr];
+	addr = addr + 4;
+}
+if b[4] {
+	R4 = mem32[addr];
+	addr = addr + 4;
+}
+if b[5] {
+	R5 = mem32[addr];
+	addr = addr + 4;
+}
+if b[7] {
+	R7 = mem32[addr];
+	addr = addr + 4;
+}`,
+			Cycles: 2,
+		},
+		{
+			Mnemonic: "LDMIA",
+			Operands: []string{"R7", "list"},
+			Encoding: "%11001 %111 %0 b[6:0]",
+			Semantics: `let addr = a;
+a = a + popcount(b) * 4;
+if b[0] {
+	R0 = mem32[addr];
+	addr = addr + 4;
+}
+if b[1] {
+	R1 = mem32[addr];
+	addr = addr + 4;
+}
+if b[2] {
+	R2 = mem32[addr];
+	addr = addr + 4;
+}
+if b[3] {
+	R3 = mem32[addr];
+	addr = addr + 4;
+}
+if b[4] {
+	R4 = mem32[addr];
+	addr = addr + 4;
+}
+if b[5] {
+	R5 = mem32[addr];
+	addr = addr + 4;
+}
+if b[6] {
+	R6 = mem32[addr];
+	addr = addr + 4;
+}`,
+			Cycles: 2,
+		},
+		{
+			Mnemonic: "BEQ",
+			Operands: []string{"rel8"},
+			Encoding: "%11010000 a:8",
+			Semantics: `if Z {
+	PC = a;
+}`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic: "BNE",
+			Operands: []string{"rel8"},
+			Encoding: "%11010001 a:8",
+			Semantics: `if !Z {
+	PC = a;
+}`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic: "BHS",
+			Operands: []string{"rel8"},
+			Encoding: "%11010010 a:8",
+			Semantics: `if C {
+	PC = a;
+}`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic: "BLO",
+			Operands: []string{"rel8"},
+			Encoding: "%11010011 a:8",
+			Semantics: `if !C {
+	PC = a;
+}`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic: "BMI",
+			Operands: []string{"rel8"},
+			Encoding: "%11010100 a:8",
+			Semantics: `if N {
+	PC = a;
+}`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic: "BPL",
+			Operands: []string{"rel8"},
+			Encoding: "%11010101 a:8",
+			Semantics: `if !N {
+	PC = a;
+}`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic: "BVS",
+			Operands: []string{"rel8"},
+			Encoding: "%11010110 a:8",
+			Semantics: `if V {
+	PC = a;
+}`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic: "BVC",
+			Operands: []string{"rel8"},
+			Encoding: "%11010111 a:8",
+			Semantics: `if !V {
+	PC = a;
+}`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic: "BHI",
+			Operands: []string{"rel8"},
+			Encoding: "%11011000 a:8",
+			Semantics: `if C && !Z {
+	PC = a;
+}`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic: "BLS",
+			Operands: []string{"rel8"},
+			Encoding: "%11011001 a:8",
+			Semantics: `if !C || Z {
+	PC = a;
+}`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic: "BGE",
+			Operands: []string{"rel8"},
+			Encoding: "%11011010 a:8",
+			Semantics: `if N == V {
+	PC = a;
+}`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic: "BLT",
+			Operands: []string{"rel8"},
+			Encoding: "%11011011 a:8",
+			Semantics: `if N != V {
+	PC = a;
+}`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic: "BGT",
+			Operands: []string{"rel8"},
+			Encoding: "%11011100 a:8",
+			Semantics: `if !Z && N == V {
+	PC = a;
+}`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic: "BLE",
+			Operands: []string{"rel8"},
+			Encoding: "%11011101 a:8",
+			Semantics: `if Z || N != V {
+	PC = a;
+}`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic:  "UDF",
+			Operands:  []string{"code8"},
+			Encoding:  "DE a:8",
+			Semantics: "halt();",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "SVC",
+			Operands:  []string{"code8"},
+			Encoding:  "DF a:8",
+			Semantics: "halt();",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "B",
+			Operands:  []string{"rel11"},
+			Encoding:  "%11100 a:11",
+			Semantics: "PC = a;",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "AND",
+			Operands:  []string{"r", "r", "const"},
+			Encoding:  "%11110 c[11] %0 %0000 %0 b:4 %0 c[10:8] a:4 c[7:0]",
+			Semantics: "a = b & expand(c);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "AND",
+			Operands:  []string{"r", "r", "r"},
+			Encoding:  "%1110101 %0000 %0 b:4 %0000 a:4 %0000 c:4",
+			Semantics: "a = b & c;",
+			Cycles:    1,
+		},
+		{
+			Mnemonic: "ANDS",
+			Operands: []string{"r", "r", "const"},
+			Encoding: "%11110 c[11] %0 %0000 %1 b:4 %0 c[10:8] a:4 c[7:0]",
+			Semantics: `a = b & expandc(c);
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic: "ANDS",
+			Operands: []string{"r", "r", "r"},
+			Encoding: "%1110101 %0000 %1 b:4 %0000 a:4 %0000 c:4",
+			Semantics: `a = b & c;
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic:  "BIC",
+			Operands:  []string{"r", "r", "const"},
+			Encoding:  "%11110 c[11] %0 %0001 %0 b:4 %0 c[10:8] a:4 c[7:0]",
+			Semantics: "a = b & ~expand(c);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "BIC",
+			Operands:  []string{"r", "r", "r"},
+			Encoding:  "%1110101 %0001 %0 b:4 %0000 a:4 %0000 c:4",
+			Semantics: "a = b & ~c;",
+			Cycles:    1,
+		},
+		{
+			Mnemonic: "BICS",
+			Operands: []string{"r", "r", "const"},
+			Encoding: "%11110 c[11] %0 %0001 %1 b:4 %0 c[10:8] a:4 c[7:0]",
+			Semantics: `a = b & ~expandc(c);
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic: "BICS",
+			Operands: []string{"r", "r", "r"},
+			Encoding: "%1110101 %0001 %1 b:4 %0000 a:4 %0000 c:4",
+			Semantics: `a = b & ~c;
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic:  "ORR",
+			Operands:  []string{"r", "r", "const"},
+			Encoding:  "%11110 c[11] %0 %0010 %0 b:4 %0 c[10:8] a:4 c[7:0]",
+			Semantics: "a = b | expand(c);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "ORR",
+			Operands:  []string{"r", "r", "r"},
+			Encoding:  "%1110101 %0010 %0 b:4 %0000 a:4 %0000 c:4",
+			Semantics: "a = b | c;",
+			Cycles:    1,
+		},
+		{
+			Mnemonic: "ORRS",
+			Operands: []string{"r", "r", "const"},
+			Encoding: "%11110 c[11] %0 %0010 %1 b:4 %0 c[10:8] a:4 c[7:0]",
+			Semantics: `a = b | expandc(c);
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic: "ORRS",
+			Operands: []string{"r", "r", "r"},
+			Encoding: "%1110101 %0010 %1 b:4 %0000 a:4 %0000 c:4",
+			Semantics: `a = b | c;
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic:  "ORN",
+			Operands:  []string{"r", "r", "const"},
+			Encoding:  "%11110 c[11] %0 %0011 %0 b:4 %0 c[10:8] a:4 c[7:0]",
+			Semantics: "a = b | ~expand(c);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "ORN",
+			Operands:  []string{"r", "r", "r"},
+			Encoding:  "%1110101 %0011 %0 b:4 %0000 a:4 %0000 c:4",
+			Semantics: "a = b | ~c;",
+			Cycles:    1,
+		},
+		{
+			Mnemonic: "ORNS",
+			Operands: []string{"r", "r", "const"},
+			Encoding: "%11110 c[11] %0 %0011 %1 b:4 %0 c[10:8] a:4 c[7:0]",
+			Semantics: `a = b | ~expandc(c);
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic: "ORNS",
+			Operands: []string{"r", "r", "r"},
+			Encoding: "%1110101 %0011 %1 b:4 %0000 a:4 %0000 c:4",
+			Semantics: `a = b | ~c;
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic:  "EOR",
+			Operands:  []string{"r", "r", "const"},
+			Encoding:  "%11110 c[11] %0 %0100 %0 b:4 %0 c[10:8] a:4 c[7:0]",
+			Semantics: "a = b ^ expand(c);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "EOR",
+			Operands:  []string{"r", "r", "r"},
+			Encoding:  "%1110101 %0100 %0 b:4 %0000 a:4 %0000 c:4",
+			Semantics: "a = b ^ c;",
+			Cycles:    1,
+		},
+		{
+			Mnemonic: "EORS",
+			Operands: []string{"r", "r", "const"},
+			Encoding: "%11110 c[11] %0 %0100 %1 b:4 %0 c[10:8] a:4 c[7:0]",
+			Semantics: `a = b ^ expandc(c);
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic: "EORS",
+			Operands: []string{"r", "r", "r"},
+			Encoding: "%1110101 %0100 %1 b:4 %0000 a:4 %0000 c:4",
+			Semantics: `a = b ^ c;
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic:  "ADD",
+			Operands:  []string{"r", "r", "const"},
+			Encoding:  "%11110 c[11] %0 %1000 %0 b:4 %0 c[10:8] a:4 c[7:0]",
+			Semantics: "a = b + expand(c);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "ADD",
+			Operands:  []string{"r", "r", "r"},
+			Encoding:  "%1110101 %1000 %0 b:4 %0000 a:4 %0000 c:4",
+			Semantics: "a = b + c;",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "ADDS",
+			Operands:  []string{"r", "r", "const"},
+			Encoding:  "%11110 c[11] %0 %1000 %1 b:4 %0 c[10:8] a:4 c[7:0]",
+			Semantics: "a = adds(b, expand(c), 0);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "ADDS",
+			Operands:  []string{"r", "r", "r"},
+			Encoding:  "%1110101 %1000 %1 b:4 %0000 a:4 %0000 c:4",
+			Semantics: "a = adds(b, c, 0);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "ADC",
+			Operands:  []string{"r", "r", "const"},
+			Encoding:  "%11110 c[11] %0 %1010 %0 b:4 %0 c[10:8] a:4 c[7:0]",
+			Semantics: "a = b + expand(c) + zx(C, 32);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "ADC",
+			Operands:  []string{"r", "r", "r"},
+			Encoding:  "%1110101 %1010 %0 b:4 %0000 a:4 %0000 c:4",
+			Semantics: "a = b + c + zx(C, 32);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "ADCS",
+			Operands:  []string{"r", "r", "const"},
+			Encoding:  "%11110 c[11] %0 %1010 %1 b:4 %0 c[10:8] a:4 c[7:0]",
+			Semantics: "a = adds(b, expand(c), C);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "ADCS",
+			Operands:  []string{"r", "r", "r"},
+			Encoding:  "%1110101 %1010 %1 b:4 %0000 a:4 %0000 c:4",
+			Semantics: "a = adds(b, c, C);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "SBC",
+			Operands:  []string{"r", "r", "const"},
+			Encoding:  "%11110 c[11] %0 %1011 %0 b:4 %0 c[10:8] a:4 c[7:0]",
+			Semantics: "a = b + ~expand(c) + zx(C, 32);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "SBC",
+			Operands:  []string{"r", "r", "r"},
+			Encoding:  "%1110101 %1011 %0 b:4 %0000 a:4 %0000 c:4",
+			Semantics: "a = b + ~c + zx(C, 32);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "SBCS",
+			Operands:  []string{"r", "r", "const"},
+			Encoding:  "%11110 c[11] %0 %1011 %1 b:4 %0 c[10:8] a:4 c[7:0]",
+			Semantics: "a = adds(b, ~expand(c), C);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "SBCS",
+			Operands:  []string{"r", "r", "r"},
+			Encoding:  "%1110101 %1011 %1 b:4 %0000 a:4 %0000 c:4",
+			Semantics: "a = adds(b, ~c, C);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "SUB",
+			Operands:  []string{"r", "r", "const"},
+			Encoding:  "%11110 c[11] %0 %1101 %0 b:4 %0 c[10:8] a:4 c[7:0]",
+			Semantics: "a = b - expand(c);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "SUB",
+			Operands:  []string{"r", "r", "r"},
+			Encoding:  "%1110101 %1101 %0 b:4 %0000 a:4 %0000 c:4",
+			Semantics: "a = b - c;",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "SUBS",
+			Operands:  []string{"r", "r", "const"},
+			Encoding:  "%11110 c[11] %0 %1101 %1 b:4 %0 c[10:8] a:4 c[7:0]",
+			Semantics: "a = adds(b, ~expand(c), 1);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "SUBS",
+			Operands:  []string{"r", "r", "r"},
+			Encoding:  "%1110101 %1101 %1 b:4 %0000 a:4 %0000 c:4",
+			Semantics: "a = adds(b, ~c, 1);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "RSB",
+			Operands:  []string{"r", "r", "const"},
+			Encoding:  "%11110 c[11] %0 %1110 %0 b:4 %0 c[10:8] a:4 c[7:0]",
+			Semantics: "a = expand(c) - b;",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "RSB",
+			Operands:  []string{"r", "r", "r"},
+			Encoding:  "%1110101 %1110 %0 b:4 %0000 a:4 %0000 c:4",
+			Semantics: "a = c - b;",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "RSBS",
+			Operands:  []string{"r", "r", "const"},
+			Encoding:  "%11110 c[11] %0 %1110 %1 b:4 %0 c[10:8] a:4 c[7:0]",
+			Semantics: "a = adds(~b, expand(c), 1);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "RSBS",
+			Operands:  []string{"r", "r", "r"},
+			Encoding:  "%1110101 %1110 %1 b:4 %0000 a:4 %0000 c:4",
+			Semantics: "a = adds(~b, c, 1);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "TST",
+			Operands:  []string{"r", "const"},
+			Encoding:  "%11110 b[11] %0 %0000 %1 a:4 %0 b[10:8] %1111 b[7:0]",
+			Semantics: "nz(a & expandc(b));",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "TST",
+			Operands:  []string{"r", "r"},
+			Encoding:  "%1110101 %0000 %1 a:4 %0000 %1111 %0000 b:4",
+			Semantics: "nz(a & b);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "TEQ",
+			Operands:  []string{"r", "const"},
+			Encoding:  "%11110 b[11] %0 %0100 %1 a:4 %0 b[10:8] %1111 b[7:0]",
+			Semantics: "nz(a ^ expandc(b));",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "TEQ",
+			Operands:  []string{"r", "r"},
+			Encoding:  "%1110101 %0100 %1 a:4 %0000 %1111 %0000 b:4",
+			Semantics: "nz(a ^ b);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "CMN",
+			Operands:  []string{"r", "const"},
+			Encoding:  "%11110 b[11] %0 %1000 %1 a:4 %0 b[10:8] %1111 b[7:0]",
+			Semantics: "let r = adds(a, expand(b), 0);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "CMN",
+			Operands:  []string{"r", "r"},
+			Encoding:  "%1110101 %1000 %1 a:4 %0000 %1111 %0000 b:4",
+			Semantics: "let r = adds(a, b, 0);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "CMP",
+			Operands:  []string{"r", "const"},
+			Encoding:  "%11110 b[11] %0 %1101 %1 a:4 %0 b[10:8] %1111 b[7:0]",
+			Semantics: "let r = adds(a, ~expand(b), 1);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "CMP",
+			Operands:  []string{"r", "r"},
+			Encoding:  "%1110101 %1101 %1 a:4 %0000 %1111 %0000 b:4",
+			Semantics: "let r = adds(a, ~b, 1);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "MOV",
+			Operands:  []string{"r", "const"},
+			Encoding:  "%11110 b[11] %00010 %0 %1111 %0 b[10:8] a:4 b[7:0]",
+			Semantics: "a = expand(b);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "MVN",
+			Operands:  []string{"r", "const"},
+			Encoding:  "%11110 b[11] %00011 %0 %1111 %0 b[10:8] a:4 b[7:0]",
+			Semantics: "a = ~expand(b);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "MOV",
+			Operands:  []string{"r", "r"},
+			Encoding:  "%11101010010 %0 %1111 %0000 a:4 %0000 b:4",
+			Semantics: "a = b;",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "MVN",
+			Operands:  []string{"r", "r"},
+			Encoding:  "%11101010011 %0 %1111 %0000 a:4 %0000 b:4",
+			Semantics: "a = ~b;",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "LSL",
+			Operands:  []string{"r", "r", "imm5"},
+			Encoding:  "%11101010010 %0 %1111 %0 c[4:2] a:4 c[1:0] %00 b:4",
+			Semantics: "a = b << c;",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "LSR",
+			Operands:  []string{"r", "r", "shift"},
+			Encoding:  "%11101010010 %0 %1111 %0 c[4:2] a:4 c[1:0] %01 b:4",
+			Semantics: "a = b >> count(c);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "ASR",
+			Operands:  []string{"r", "r", "shift"},
+			Encoding:  "%11101010010 %0 %1111 %0 c[4:2] a:4 c[1:0] %10 b:4",
+			Semantics: "a = b >>> count(c);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "ROR",
+			Operands:  []string{"r", "r", "imm5"},
+			Encoding:  "%11101010010 %0 %1111 %0 c[4:2] a:4 c[1:0] %11 b:4",
+			Semantics: "a = ror(b, c);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "RRX",
+			Operands:  []string{"r", "r"},
+			Encoding:  "%11101010010 %0 %1111 %0000 a:4 %0011 b:4",
+			Semantics: "a = (b >> 1) | (zx(C, 32) << 31);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "LSL",
+			Operands:  []string{"r", "r", "r"},
+			Encoding:  "%111110100 %00 %0 b:4 %1111 a:4 %0000 c:4",
+			Semantics: "a = b << c[7:0];",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "LSR",
+			Operands:  []string{"r", "r", "r"},
+			Encoding:  "%111110100 %01 %0 b:4 %1111 a:4 %0000 c:4",
+			Semantics: "a = b >> c[7:0];",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "ASR",
+			Operands:  []string{"r", "r", "r"},
+			Encoding:  "%111110100 %10 %0 b:4 %1111 a:4 %0000 c:4",
+			Semantics: "a = b >>> c[7:0];",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "ROR",
+			Operands:  []string{"r", "r", "r"},
+			Encoding:  "%111110100 %11 %0 b:4 %1111 a:4 %0000 c:4",
+			Semantics: "a = ror(b, c[4:0]);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic: "MOVS",
+			Operands: []string{"r", "const"},
+			Encoding: "%11110 b[11] %00010 %1 %1111 %0 b[10:8] a:4 b[7:0]",
+			Semantics: `a = expandc(b);
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic: "MVNS",
+			Operands: []string{"r", "const"},
+			Encoding: "%11110 b[11] %00011 %1 %1111 %0 b[10:8] a:4 b[7:0]",
+			Semantics: `a = ~expandc(b);
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic: "MOVS",
+			Operands: []string{"r", "r"},
+			Encoding: "%11101010010 %1 %1111 %0000 a:4 %0000 b:4",
+			Semantics: `a = b;
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic: "MVNS",
+			Operands: []string{"r", "r"},
+			Encoding: "%11101010011 %1 %1111 %0000 a:4 %0000 b:4",
+			Semantics: `a = ~b;
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic: "LSLS",
+			Operands: []string{"r", "r", "imm5"},
+			Encoding: "%11101010010 %1 %1111 %0 c[4:2] a:4 c[1:0] %00 b:4",
+			Semantics: `a = lslc(b, c);
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic: "LSRS",
+			Operands: []string{"r", "r", "shift"},
+			Encoding: "%11101010010 %1 %1111 %0 c[4:2] a:4 c[1:0] %01 b:4",
+			Semantics: `a = lsrc(b, count(c));
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic: "ASRS",
+			Operands: []string{"r", "r", "shift"},
+			Encoding: "%11101010010 %1 %1111 %0 c[4:2] a:4 c[1:0] %10 b:4",
+			Semantics: `a = asrc(b, count(c));
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic: "RORS",
+			Operands: []string{"r", "r", "imm5"},
+			Encoding: "%11101010010 %1 %1111 %0 c[4:2] a:4 c[1:0] %11 b:4",
+			Semantics: `a = rorc(b, c);
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic: "RRXS",
+			Operands: []string{"r", "r"},
+			Encoding: "%11101010010 %1 %1111 %0000 a:4 %0011 b:4",
+			Semantics: `a = rrxc(b);
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic: "LSLS",
+			Operands: []string{"r", "r", "r"},
+			Encoding: "%111110100 %00 %1 b:4 %1111 a:4 %0000 c:4",
+			Semantics: `a = lslc(b, c[7:0]);
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic: "LSRS",
+			Operands: []string{"r", "r", "r"},
+			Encoding: "%111110100 %01 %1 b:4 %1111 a:4 %0000 c:4",
+			Semantics: `a = lsrc(b, c[7:0]);
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic: "ASRS",
+			Operands: []string{"r", "r", "r"},
+			Encoding: "%111110100 %10 %1 b:4 %1111 a:4 %0000 c:4",
+			Semantics: `a = asrc(b, c[7:0]);
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic: "RORS",
+			Operands: []string{"r", "r", "r"},
+			Encoding: "%111110100 %11 %1 b:4 %1111 a:4 %0000 c:4",
+			Semantics: `a = rorc(b, c[7:0]);
+nz(a);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic:  "ADD",
+			Operands:  []string{"r", "r", "imm12"},
+			Encoding:  "%11110 c[11] %100000 b:4 %0 c[10:8] a:4 c[7:0]",
+			Semantics: "a = b + c;",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "SUB",
+			Operands:  []string{"r", "r", "imm12"},
+			Encoding:  "%11110 c[11] %101010 b:4 %0 c[10:8] a:4 c[7:0]",
+			Semantics: "a = b - c;",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "ADD",
+			Operands:  []string{"r", "PC", "imm12"},
+			Encoding:  "%11110 c[11] %100000 %1111 %0 c[10:8] a:4 c[7:0]",
+			Semantics: "a = (b & 0xFFFFFFFC) + c;",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "SUB",
+			Operands:  []string{"r", "PC", "imm12"},
+			Encoding:  "%11110 c[11] %101010 %1111 %0 c[10:8] a:4 c[7:0]",
+			Semantics: "a = (b & 0xFFFFFFFC) - c;",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "MOVW",
+			Operands:  []string{"r", "imm16"},
+			Encoding:  "%11110 b[11] %100100 b[15:12] %0 b[10:8] a:4 b[7:0]",
+			Semantics: "a = b;",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "MOVT",
+			Operands:  []string{"r", "imm16"},
+			Encoding:  "%11110 b[11] %101100 b[15:12] %0 b[10:8] a:4 b[7:0]",
+			Semantics: "a = (a & 0xFFFF) | (b << 16);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "UBFX",
+			Operands:  []string{"r", "r", "imm5", "width"},
+			Encoding:  "%111100111100 b:4 %0 c[4:2] a:4 c[1:0] %0 d:5",
+			Semantics: "a = (b >> c) & ~(~zx(0, 32) << zx(d, 8) << 1);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic: "SBFX",
+			Operands: []string{"r", "r", "imm5", "width"},
+			Encoding: "%111100110100 b:4 %0 c[4:2] a:4 c[1:0] %0 d:5",
+			Semantics: `let top = zx(c, 8) + zx(d, 8);
+a = (b << (31 - top)) >>> (31 - zx(d, 8));`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic: "BFI",
+			Operands: []string{"r", "r", "imm5", "imm5"},
+			Encoding: "%111100110110 b:4 %0 c[4:2] a:4 c[1:0] %0 d:5",
+			Semantics: `let m = (~zx(0, 32) >> (31 - zx(d, 8))) & (~zx(0, 32) << c);
+a = (a & ~m) | ((b << c) & m);`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic: "BFC",
+			Operands: []string{"r", "imm5", "imm5"},
+			Encoding: "%111100110110 %1111 %0 b[4:2] a:4 b[1:0] %0 c:5",
+			Semantics: `let m = (~zx(0, 32) >> (31 - zx(c, 8))) & (~zx(0, 32) << b);
+a = a & ~m;`,
+			Cycles: 1,
+		},
+		{
+			Mnemonic:  "MUL",
+			Operands:  []string{"r", "r", "r"},
+			Encoding:  "%111110110000 b:4 %1111 a:4 %0000 c:4",
+			Semantics: "a = b * c;",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "MLA",
+			Operands:  []string{"r", "r", "r", "r"},
+			Encoding:  "%111110110000 b:4 d:4 a:4 %0000 c:4",
+			Semantics: "a = b * c + d;",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "MLS",
+			Operands:  []string{"r", "r", "r", "r"},
+			Encoding:  "%111110110000 b:4 d:4 a:4 %0001 c:4",
+			Semantics: "a = d - b * c;",
+			Cycles:    2,
+		},
+		{
+			Mnemonic: "SMULL",
+			Operands: []string{"r", "r", "r", "r"},
+			Encoding: "%11111011 %1000 c:4 a:4 b:4 %0000 d:4",
+			Semantics: `let p = sx(c, 64) * sx(d, 64);
+a = p[31:0];
+b = p[63:32];`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic: "UMULL",
+			Operands: []string{"r", "r", "r", "r"},
+			Encoding: "%11111011 %1010 c:4 a:4 b:4 %0000 d:4",
+			Semantics: `let p = zx(c, 64) * zx(d, 64);
+a = p[31:0];
+b = p[63:32];`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic: "SMLAL",
+			Operands: []string{"r", "r", "r", "r"},
+			Encoding: "%11111011 %1100 c:4 a:4 b:4 %0000 d:4",
+			Semantics: `let p = sx(c, 64) * sx(d, 64) + (zx(b, 64) << 32 | zx(a, 64));
+a = p[31:0];
+b = p[63:32];`,
+			Cycles: 5,
+		},
+		{
+			Mnemonic: "UMLAL",
+			Operands: []string{"r", "r", "r", "r"},
+			Encoding: "%11111011 %1110 c:4 a:4 b:4 %0000 d:4",
+			Semantics: `let p = zx(c, 64) * zx(d, 64) + (zx(b, 64) << 32 | zx(a, 64));
+a = p[31:0];
+b = p[63:32];`,
+			Cycles: 5,
+		},
+		{
+			Mnemonic: "SDIV",
+			Operands: []string{"r", "r", "r"},
+			Encoding: "%111110111001 b:4 %1111 a:4 %1111 c:4",
+			Semantics: `if c == 0 {
+	a = 0;
+} else {
+	a = divs(b, c);
+}`,
+			Cycles: 12,
+		},
+		{
+			Mnemonic: "UDIV",
+			Operands: []string{"r", "r", "r"},
+			Encoding: "%111110111011 b:4 %1111 a:4 %1111 c:4",
+			Semantics: `if c == 0 {
+	a = 0;
+} else {
+	a = divu(b, c);
+}`,
+			Cycles: 12,
+		},
+		{
+			Mnemonic:  "CLZ",
+			Operands:  []string{"r", "r"},
+			Encoding:  "%111110101011 b:4 %1111 a:4 %1000 b:4",
+			Semantics: "a = clz(b);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "RBIT",
+			Operands:  []string{"r", "r"},
+			Encoding:  "%111110101001 b:4 %1111 a:4 %1010 b:4",
+			Semantics: "a = rbit(b);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "REV",
+			Operands:  []string{"r", "r"},
+			Encoding:  "%111110101001 b:4 %1111 a:4 %1000 b:4",
+			Semantics: "a = rev(b);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "REV16",
+			Operands:  []string{"r", "r"},
+			Encoding:  "%111110101001 b:4 %1111 a:4 %1001 b:4",
+			Semantics: "a = rev16(b);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "REVSH",
+			Operands:  []string{"r", "r"},
+			Encoding:  "%111110101001 b:4 %1111 a:4 %1011 b:4",
+			Semantics: "a = revsh(b);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "SXTH",
+			Operands:  []string{"r", "r"},
+			Encoding:  "%11111010 %0000 %1111 %1111 a:4 %1000 b:4",
+			Semantics: "a = sx(b[15:0], 32);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "UXTH",
+			Operands:  []string{"r", "r"},
+			Encoding:  "%11111010 %0001 %1111 %1111 a:4 %1000 b:4",
+			Semantics: "a = zx(b[15:0], 32);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "SXTB",
+			Operands:  []string{"r", "r"},
+			Encoding:  "%11111010 %0100 %1111 %1111 a:4 %1000 b:4",
+			Semantics: "a = sx(b[7:0], 32);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "UXTB",
+			Operands:  []string{"r", "r"},
+			Encoding:  "%11111010 %0101 %1111 %1111 a:4 %1000 b:4",
+			Semantics: "a = zx(b[7:0], 32);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "STRB",
+			Operands:  []string{"r", "m8i12s"},
+			Encoding:  "%1111100 %0 %1 %000 <i12s b rt=a>",
+			Semantics: "b = a[7:0];",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "STRB",
+			Operands:  []string{"r", "m8n8"},
+			Encoding:  "%1111100 %0 %0 %000 <n8 b rt=a>",
+			Semantics: "b = a[7:0];",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "STRB",
+			Operands:  []string{"r", "m8rr32"},
+			Encoding:  "%1111100 %0 %0 %000 <rr32 b rt=a>",
+			Semantics: "b = a[7:0];",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "STRH",
+			Operands:  []string{"r", "m16i12s"},
+			Encoding:  "%1111100 %0 %1 %010 <i12s b rt=a>",
+			Semantics: "b = a[15:0];",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "STRH",
+			Operands:  []string{"r", "m16n8"},
+			Encoding:  "%1111100 %0 %0 %010 <n8 b rt=a>",
+			Semantics: "b = a[15:0];",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "STRH",
+			Operands:  []string{"r", "m16rr32"},
+			Encoding:  "%1111100 %0 %0 %010 <rr32 b rt=a>",
+			Semantics: "b = a[15:0];",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "STR",
+			Operands:  []string{"r", "m32i12s"},
+			Encoding:  "%1111100 %0 %1 %100 <i12s b rt=a>",
+			Semantics: "b = a;",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "STR",
+			Operands:  []string{"r", "m32n8"},
+			Encoding:  "%1111100 %0 %0 %100 <n8 b rt=a>",
+			Semantics: "b = a;",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "STR",
+			Operands:  []string{"r", "m32rr32"},
+			Encoding:  "%1111100 %0 %0 %100 <rr32 b rt=a>",
+			Semantics: "b = a;",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "LDRB",
+			Operands:  []string{"r", "m8i12l"},
+			Encoding:  "%1111100 %0 %1 %001 <i12l b rt=a>",
+			Semantics: "a = zx(b, 32);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "LDRB",
+			Operands:  []string{"r", "m8n8"},
+			Encoding:  "%1111100 %0 %0 %001 <n8 b rt=a>",
+			Semantics: "a = zx(b, 32);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "LDRB",
+			Operands:  []string{"r", "m8rr32"},
+			Encoding:  "%1111100 %0 %0 %001 <rr32 b rt=a>",
+			Semantics: "a = zx(b, 32);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "LDRB",
+			Operands:  []string{"r", "m8litm"},
+			Encoding:  "%1111100 %0 %0 %001 %1111 <litm b rt=a>",
+			Semantics: "a = zx(b, 32);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "LDRH",
+			Operands:  []string{"r", "m16i12l"},
+			Encoding:  "%1111100 %0 %1 %011 <i12l b rt=a>",
+			Semantics: "a = zx(b, 32);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "LDRH",
+			Operands:  []string{"r", "m16n8"},
+			Encoding:  "%1111100 %0 %0 %011 <n8 b rt=a>",
+			Semantics: "a = zx(b, 32);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "LDRH",
+			Operands:  []string{"r", "m16rr32"},
+			Encoding:  "%1111100 %0 %0 %011 <rr32 b rt=a>",
+			Semantics: "a = zx(b, 32);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "LDRH",
+			Operands:  []string{"r", "m16litm"},
+			Encoding:  "%1111100 %0 %0 %011 %1111 <litm b rt=a>",
+			Semantics: "a = zx(b, 32);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "LDR",
+			Operands:  []string{"r", "m32i12l"},
+			Encoding:  "%1111100 %0 %1 %101 <i12l b rt=a>",
+			Semantics: "a = b;",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "LDR",
+			Operands:  []string{"r", "m32n8"},
+			Encoding:  "%1111100 %0 %0 %101 <n8 b rt=a>",
+			Semantics: "a = b;",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "LDR",
+			Operands:  []string{"r", "m32rr32"},
+			Encoding:  "%1111100 %0 %0 %101 <rr32 b rt=a>",
+			Semantics: "a = b;",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "LDR",
+			Operands:  []string{"r", "m32litm"},
+			Encoding:  "%1111100 %0 %0 %101 %1111 <litm b rt=a>",
+			Semantics: "a = b;",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "LDRSB",
+			Operands:  []string{"r", "m8i12l"},
+			Encoding:  "%1111100 %1 %1 %001 <i12l b rt=a>",
+			Semantics: "a = sx(b, 32);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "LDRSB",
+			Operands:  []string{"r", "m8n8"},
+			Encoding:  "%1111100 %1 %0 %001 <n8 b rt=a>",
+			Semantics: "a = sx(b, 32);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "LDRSB",
+			Operands:  []string{"r", "m8rr32"},
+			Encoding:  "%1111100 %1 %0 %001 <rr32 b rt=a>",
+			Semantics: "a = sx(b, 32);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "LDRSB",
+			Operands:  []string{"r", "m8litm"},
+			Encoding:  "%1111100 %1 %0 %001 %1111 <litm b rt=a>",
+			Semantics: "a = sx(b, 32);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "LDRSH",
+			Operands:  []string{"r", "m16i12l"},
+			Encoding:  "%1111100 %1 %1 %011 <i12l b rt=a>",
+			Semantics: "a = sx(b, 32);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "LDRSH",
+			Operands:  []string{"r", "m16n8"},
+			Encoding:  "%1111100 %1 %0 %011 <n8 b rt=a>",
+			Semantics: "a = sx(b, 32);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "LDRSH",
+			Operands:  []string{"r", "m16rr32"},
+			Encoding:  "%1111100 %1 %0 %011 <rr32 b rt=a>",
+			Semantics: "a = sx(b, 32);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "LDRSH",
+			Operands:  []string{"r", "m16litm"},
+			Encoding:  "%1111100 %1 %0 %011 %1111 <litm b rt=a>",
+			Semantics: "a = sx(b, 32);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "STRD",
+			Operands:  []string{"r", "r", "m64d8p"},
+			Encoding:  "%1110100 %1 %1 %1 %0 %0 <d8p c rt=a rt2=b>",
+			Semantics: "c = zx(b, 64) << 32 | zx(a, 64);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic: "LDRD",
+			Operands: []string{"r", "r", "m64d8p"},
+			Encoding: "%1110100 %1 %1 %1 %0 %1 <d8p c rt=a rt2=b>",
+			Semantics: `a = c[31:0];
+b = c[63:32];`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic:  "STRD",
+			Operands:  []string{"r", "r", "m64d8m"},
+			Encoding:  "%1110100 %1 %0 %1 %0 %0 <d8m c rt=a rt2=b>",
+			Semantics: "c = zx(b, 64) << 32 | zx(a, 64);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic: "LDRD",
+			Operands: []string{"r", "r", "m64d8m"},
+			Encoding: "%1110100 %1 %0 %1 %0 %1 <d8m c rt=a rt2=b>",
+			Semantics: `a = c[31:0];
+b = c[63:32];`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic: "STM",
+			Operands: []string{"r", "list"},
+			Encoding: "%1110100010 %0 %0 a:4 %0 b[14] %0 b[12:0]",
+			Semantics: `let addr = a;
+if b[0] {
+	mem32[addr] = R0;
+	addr = addr + 4;
+}
+if b[1] {
+	mem32[addr] = R1;
+	addr = addr + 4;
+}
+if b[2] {
+	mem32[addr] = R2;
+	addr = addr + 4;
+}
+if b[3] {
+	mem32[addr] = R3;
+	addr = addr + 4;
+}
+if b[4] {
+	mem32[addr] = R4;
+	addr = addr + 4;
+}
+if b[5] {
+	mem32[addr] = R5;
+	addr = addr + 4;
+}
+if b[6] {
+	mem32[addr] = R6;
+	addr = addr + 4;
+}
+if b[7] {
+	mem32[addr] = R7;
+	addr = addr + 4;
+}
+if b[8] {
+	mem32[addr] = R8;
+	addr = addr + 4;
+}
+if b[9] {
+	mem32[addr] = R9;
+	addr = addr + 4;
+}
+if b[10] {
+	mem32[addr] = R10;
+	addr = addr + 4;
+}
+if b[11] {
+	mem32[addr] = R11;
+	addr = addr + 4;
+}
+if b[12] {
+	mem32[addr] = R12;
+	addr = addr + 4;
+}
+if b[14] {
+	mem32[addr] = LR;
+	addr = addr + 4;
+}`,
+			Cycles: 2,
+		},
+		{
+			Mnemonic: "STMIA",
+			Operands: []string{"r", "list"},
+			Encoding: "%1110100010 %1 %0 a:4 %0 b[14] %0 b[12:0]",
+			Semantics: `let addr = a;
+if b[0] {
+	mem32[addr] = R0;
+	addr = addr + 4;
+}
+if b[1] {
+	mem32[addr] = R1;
+	addr = addr + 4;
+}
+if b[2] {
+	mem32[addr] = R2;
+	addr = addr + 4;
+}
+if b[3] {
+	mem32[addr] = R3;
+	addr = addr + 4;
+}
+if b[4] {
+	mem32[addr] = R4;
+	addr = addr + 4;
+}
+if b[5] {
+	mem32[addr] = R5;
+	addr = addr + 4;
+}
+if b[6] {
+	mem32[addr] = R6;
+	addr = addr + 4;
+}
+if b[7] {
+	mem32[addr] = R7;
+	addr = addr + 4;
+}
+if b[8] {
+	mem32[addr] = R8;
+	addr = addr + 4;
+}
+if b[9] {
+	mem32[addr] = R9;
+	addr = addr + 4;
+}
+if b[10] {
+	mem32[addr] = R10;
+	addr = addr + 4;
+}
+if b[11] {
+	mem32[addr] = R11;
+	addr = addr + 4;
+}
+if b[12] {
+	mem32[addr] = R12;
+	addr = addr + 4;
+}
+if b[14] {
+	mem32[addr] = LR;
+	addr = addr + 4;
+}
+a = addr;`,
+			Cycles: 2,
+		},
+		{
+			Mnemonic: "LDM",
+			Operands: []string{"r", "list"},
+			Encoding: "%1110100010 %0 %1 a:4 b[15] b[14] %0 b[12:0]",
+			Semantics: `let addr = a;
+if b[0] {
+	R0 = mem32[addr];
+	addr = addr + 4;
+}
+if b[1] {
+	R1 = mem32[addr];
+	addr = addr + 4;
+}
+if b[2] {
+	R2 = mem32[addr];
+	addr = addr + 4;
+}
+if b[3] {
+	R3 = mem32[addr];
+	addr = addr + 4;
+}
+if b[4] {
+	R4 = mem32[addr];
+	addr = addr + 4;
+}
+if b[5] {
+	R5 = mem32[addr];
+	addr = addr + 4;
+}
+if b[6] {
+	R6 = mem32[addr];
+	addr = addr + 4;
+}
+if b[7] {
+	R7 = mem32[addr];
+	addr = addr + 4;
+}
+if b[8] {
+	R8 = mem32[addr];
+	addr = addr + 4;
+}
+if b[9] {
+	R9 = mem32[addr];
+	addr = addr + 4;
+}
+if b[10] {
+	R10 = mem32[addr];
+	addr = addr + 4;
+}
+if b[11] {
+	R11 = mem32[addr];
+	addr = addr + 4;
+}
+if b[12] {
+	R12 = mem32[addr];
+	addr = addr + 4;
+}
+if b[14] {
+	LR = mem32[addr];
+	addr = addr + 4;
+}
+if b[15] {
+	PC = mem32[addr];
+	addr = addr + 4;
+}`,
+			Cycles: 2,
+		},
+		{
+			Mnemonic: "LDMIA",
+			Operands: []string{"r", "list"},
+			Encoding: "%1110100010 %1 %1 a:4 b[15] b[14] %0 b[12:0]",
+			Semantics: `let addr = a;
+a = a + popcount(b) * 4;
+if b[0] {
+	R0 = mem32[addr];
+	addr = addr + 4;
+}
+if b[1] {
+	R1 = mem32[addr];
+	addr = addr + 4;
+}
+if b[2] {
+	R2 = mem32[addr];
+	addr = addr + 4;
+}
+if b[3] {
+	R3 = mem32[addr];
+	addr = addr + 4;
+}
+if b[4] {
+	R4 = mem32[addr];
+	addr = addr + 4;
+}
+if b[5] {
+	R5 = mem32[addr];
+	addr = addr + 4;
+}
+if b[6] {
+	R6 = mem32[addr];
+	addr = addr + 4;
+}
+if b[7] {
+	R7 = mem32[addr];
+	addr = addr + 4;
+}
+if b[8] {
+	R8 = mem32[addr];
+	addr = addr + 4;
+}
+if b[9] {
+	R9 = mem32[addr];
+	addr = addr + 4;
+}
+if b[10] {
+	R10 = mem32[addr];
+	addr = addr + 4;
+}
+if b[11] {
+	R11 = mem32[addr];
+	addr = addr + 4;
+}
+if b[12] {
+	R12 = mem32[addr];
+	addr = addr + 4;
+}
+if b[14] {
+	LR = mem32[addr];
+	addr = addr + 4;
+}
+if b[15] {
+	PC = mem32[addr];
+	addr = addr + 4;
+}`,
+			Cycles: 2,
+		},
+		{
+			Mnemonic: "STMDB",
+			Operands: []string{"r", "list"},
+			Encoding: "%1110100100 %1 %0 a:4 %0 b[14] %0 b[12:0]",
+			Semantics: `let addr = a - popcount(b) * 4;
+let start = addr;
+if b[0] {
+	mem32[addr] = R0;
+	addr = addr + 4;
+}
+if b[1] {
+	mem32[addr] = R1;
+	addr = addr + 4;
+}
+if b[2] {
+	mem32[addr] = R2;
+	addr = addr + 4;
+}
+if b[3] {
+	mem32[addr] = R3;
+	addr = addr + 4;
+}
+if b[4] {
+	mem32[addr] = R4;
+	addr = addr + 4;
+}
+if b[5] {
+	mem32[addr] = R5;
+	addr = addr + 4;
+}
+if b[6] {
+	mem32[addr] = R6;
+	addr = addr + 4;
+}
+if b[7] {
+	mem32[addr] = R7;
+	addr = addr + 4;
+}
+if b[8] {
+	mem32[addr] = R8;
+	addr = addr + 4;
+}
+if b[9] {
+	mem32[addr] = R9;
+	addr = addr + 4;
+}
+if b[10] {
+	mem32[addr] = R10;
+	addr = addr + 4;
+}
+if b[11] {
+	mem32[addr] = R11;
+	addr = addr + 4;
+}
+if b[12] {
+	mem32[addr] = R12;
+	addr = addr + 4;
+}
+if b[14] {
+	mem32[addr] = LR;
+	addr = addr + 4;
+}
+a = start;`,
+			Cycles: 2,
+		},
+		{
+			Mnemonic: "LDMDB",
+			Operands: []string{"r", "list"},
+			Encoding: "%1110100100 %1 %1 a:4 b[15] b[14] %0 b[12:0]",
+			Semantics: `let addr = a - popcount(b) * 4;
+let start = addr;
+a = start;
+if b[0] {
+	R0 = mem32[addr];
+	addr = addr + 4;
+}
+if b[1] {
+	R1 = mem32[addr];
+	addr = addr + 4;
+}
+if b[2] {
+	R2 = mem32[addr];
+	addr = addr + 4;
+}
+if b[3] {
+	R3 = mem32[addr];
+	addr = addr + 4;
+}
+if b[4] {
+	R4 = mem32[addr];
+	addr = addr + 4;
+}
+if b[5] {
+	R5 = mem32[addr];
+	addr = addr + 4;
+}
+if b[6] {
+	R6 = mem32[addr];
+	addr = addr + 4;
+}
+if b[7] {
+	R7 = mem32[addr];
+	addr = addr + 4;
+}
+if b[8] {
+	R8 = mem32[addr];
+	addr = addr + 4;
+}
+if b[9] {
+	R9 = mem32[addr];
+	addr = addr + 4;
+}
+if b[10] {
+	R10 = mem32[addr];
+	addr = addr + 4;
+}
+if b[11] {
+	R11 = mem32[addr];
+	addr = addr + 4;
+}
+if b[12] {
+	R12 = mem32[addr];
+	addr = addr + 4;
+}
+if b[14] {
+	LR = mem32[addr];
+	addr = addr + 4;
+}
+if b[15] {
+	PC = mem32[addr];
+	addr = addr + 4;
+}`,
+			Cycles: 2,
+		},
+		{
+			Mnemonic: "PUSH",
+			Operands: []string{"list"},
+			Encoding: "%1110100100 %1 %0 %1101 %0 a[14] %0 a[12:0]",
+			Semantics: `let addr = SP - popcount(a) * 4;
+SP = addr;
+if a[0] {
+	mem32[addr] = R0;
+	addr = addr + 4;
+}
+if a[1] {
+	mem32[addr] = R1;
+	addr = addr + 4;
+}
+if a[2] {
+	mem32[addr] = R2;
+	addr = addr + 4;
+}
+if a[3] {
+	mem32[addr] = R3;
+	addr = addr + 4;
+}
+if a[4] {
+	mem32[addr] = R4;
+	addr = addr + 4;
+}
+if a[5] {
+	mem32[addr] = R5;
+	addr = addr + 4;
+}
+if a[6] {
+	mem32[addr] = R6;
+	addr = addr + 4;
+}
+if a[7] {
+	mem32[addr] = R7;
+	addr = addr + 4;
+}
+if a[8] {
+	mem32[addr] = R8;
+	addr = addr + 4;
+}
+if a[9] {
+	mem32[addr] = R9;
+	addr = addr + 4;
+}
+if a[10] {
+	mem32[addr] = R10;
+	addr = addr + 4;
+}
+if a[11] {
+	mem32[addr] = R11;
+	addr = addr + 4;
+}
+if a[12] {
+	mem32[addr] = R12;
+	addr = addr + 4;
+}
+if a[14] {
+	mem32[addr] = LR;
+	addr = addr + 4;
+}`,
+			Cycles: 2,
+		},
+		{
+			Mnemonic: "POP",
+			Operands: []string{"list"},
+			Encoding: "%1110100010 %1 %1 %1101 a[15] a[14] %0 a[12:0]",
+			Semantics: `let addr = SP;
+SP = SP + popcount(a) * 4;
+if a[0] {
+	R0 = mem32[addr];
+	addr = addr + 4;
+}
+if a[1] {
+	R1 = mem32[addr];
+	addr = addr + 4;
+}
+if a[2] {
+	R2 = mem32[addr];
+	addr = addr + 4;
+}
+if a[3] {
+	R3 = mem32[addr];
+	addr = addr + 4;
+}
+if a[4] {
+	R4 = mem32[addr];
+	addr = addr + 4;
+}
+if a[5] {
+	R5 = mem32[addr];
+	addr = addr + 4;
+}
+if a[6] {
+	R6 = mem32[addr];
+	addr = addr + 4;
+}
+if a[7] {
+	R7 = mem32[addr];
+	addr = addr + 4;
+}
+if a[8] {
+	R8 = mem32[addr];
+	addr = addr + 4;
+}
+if a[9] {
+	R9 = mem32[addr];
+	addr = addr + 4;
+}
+if a[10] {
+	R10 = mem32[addr];
+	addr = addr + 4;
+}
+if a[11] {
+	R11 = mem32[addr];
+	addr = addr + 4;
+}
+if a[12] {
+	R12 = mem32[addr];
+	addr = addr + 4;
+}
+if a[14] {
+	LR = mem32[addr];
+	addr = addr + 4;
+}
+if a[15] {
+	PC = mem32[addr];
+	addr = addr + 4;
+}`,
+			Cycles: 2,
+		},
+		{
+			Mnemonic:  "TBB",
+			Operands:  []string{"r", "r"},
+			Encoding:  "%111010001101 a:4 %1111 %0000 %0000 b:4",
+			Semantics: "PC = PC + zx(mem8[a + b], 32) * 2;",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "TBH",
+			Operands:  []string{"r", "r"},
+			Encoding:  "%111010001101 a:4 %1111 %0000 %0001 b:4",
+			Semantics: "PC = PC + zx(mem16[a + (b << 1)], 32) * 2;",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "MRS",
+			Operands:  []string{"r", "APSR"},
+			Encoding:  "F3 EF %1000 a:4 %00000000",
+			Semantics: "a = b;",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "MRS",
+			Operands:  []string{"r", "IPSR"},
+			Encoding:  "F3 EF %1000 a:4 %00000101",
+			Semantics: "a = zx(b, 32);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "MRS",
+			Operands:  []string{"r", "PSP"},
+			Encoding:  "F3 EF %1000 a:4 %00001001",
+			Semantics: "a = b;",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "MRS",
+			Operands:  []string{"r", "PRIMASK"},
+			Encoding:  "F3 EF %1000 a:4 %00010000",
+			Semantics: "a = zx(b, 32);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "MRS",
+			Operands:  []string{"r", "BASEPRI"},
+			Encoding:  "F3 EF %1000 a:4 %00010001",
+			Semantics: "a = zx(b, 32);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "MRS",
+			Operands:  []string{"r", "FAULTMASK"},
+			Encoding:  "F3 EF %1000 a:4 %00010011",
+			Semantics: "a = zx(b, 32);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "MRS",
+			Operands:  []string{"r", "CONTROL"},
+			Encoding:  "F3 EF %1000 a:4 %00010100",
+			Semantics: "a = zx(b, 32);",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "MRS",
+			Operands:  []string{"r", "SP"},
+			Encoding:  "F3 EF %1000 a:4 %00001000",
+			Semantics: "a = b;",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "MSR",
+			Operands:  []string{"APSR", "r"},
+			Encoding:  "%111100111000 b:4 %10001000 %00000000",
+			Semantics: "a = b;",
+			Cycles:    1,
+		},
+		{
+			Mnemonic:  "MSR",
+			Operands:  []string{"PSP", "r"},
+			Encoding:  "%111100111000 b:4 %10001000 %00001001",
+			Semantics: "a = b;",
+			Cycles:    1,
+			Effects:   []string{"Privileged"},
+		},
+		{
+			Mnemonic:  "MSR",
+			Operands:  []string{"PRIMASK", "r"},
+			Encoding:  "%111100111000 b:4 %10001000 %00010000",
+			Semantics: "a = b[0];",
+			Cycles:    1,
+			Effects:   []string{"Interrupts"},
+		},
+		{
+			Mnemonic:  "MSR",
+			Operands:  []string{"BASEPRI", "r"},
+			Encoding:  "%111100111000 b:4 %10001000 %00010001",
+			Semantics: "a = b[7:0];",
+			Cycles:    1,
+			Effects:   []string{"Interrupts"},
+		},
+		{
+			Mnemonic:  "MSR",
+			Operands:  []string{"FAULTMASK", "r"},
+			Encoding:  "%111100111000 b:4 %10001000 %00010011",
+			Semantics: "a = b[0];",
+			Cycles:    1,
+			Effects:   []string{"Interrupts"},
+		},
+		{
+			Mnemonic:  "MSR",
+			Operands:  []string{"CONTROL", "r"},
+			Encoding:  "%111100111000 b:4 %10001000 %00010100",
+			Semantics: "a = b[1:0];",
+			Cycles:    1,
+			Effects:   []string{"Privileged"},
+		},
+		{
+			Mnemonic:  "MSR",
+			Operands:  []string{"SP", "r"},
+			Encoding:  "%111100111000 b:4 %10001000 %00001000",
+			Semantics: "a = b;",
+			Cycles:    1,
+			Effects:   []string{"Privileged"},
+		},
+		{
+			Mnemonic: "DSB",
+			Encoding: "F3 BF 8F 4F",
+			Cycles:   1,
+		},
+		{
+			Mnemonic: "DMB",
+			Encoding: "F3 BF 8F 5F",
+			Cycles:   1,
+		},
+		{
+			Mnemonic: "ISB",
+			Encoding: "F3 BF 8F 6F",
+			Cycles:   1,
+		},
+		{
+			Mnemonic: "BEQ",
+			Operands: []string{"rel20"},
+			Encoding: "%11110 a[19] %0000 a[16:11] %10 a[17] %0 a[18] a[10:0]",
+			Semantics: `if Z {
+	PC = a;
+}`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic: "BNE",
+			Operands: []string{"rel20"},
+			Encoding: "%11110 a[19] %0001 a[16:11] %10 a[17] %0 a[18] a[10:0]",
+			Semantics: `if !Z {
+	PC = a;
+}`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic: "BHS",
+			Operands: []string{"rel20"},
+			Encoding: "%11110 a[19] %0010 a[16:11] %10 a[17] %0 a[18] a[10:0]",
+			Semantics: `if C {
+	PC = a;
+}`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic: "BLO",
+			Operands: []string{"rel20"},
+			Encoding: "%11110 a[19] %0011 a[16:11] %10 a[17] %0 a[18] a[10:0]",
+			Semantics: `if !C {
+	PC = a;
+}`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic: "BMI",
+			Operands: []string{"rel20"},
+			Encoding: "%11110 a[19] %0100 a[16:11] %10 a[17] %0 a[18] a[10:0]",
+			Semantics: `if N {
+	PC = a;
+}`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic: "BPL",
+			Operands: []string{"rel20"},
+			Encoding: "%11110 a[19] %0101 a[16:11] %10 a[17] %0 a[18] a[10:0]",
+			Semantics: `if !N {
+	PC = a;
+}`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic: "BVS",
+			Operands: []string{"rel20"},
+			Encoding: "%11110 a[19] %0110 a[16:11] %10 a[17] %0 a[18] a[10:0]",
+			Semantics: `if V {
+	PC = a;
+}`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic: "BVC",
+			Operands: []string{"rel20"},
+			Encoding: "%11110 a[19] %0111 a[16:11] %10 a[17] %0 a[18] a[10:0]",
+			Semantics: `if !V {
+	PC = a;
+}`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic: "BHI",
+			Operands: []string{"rel20"},
+			Encoding: "%11110 a[19] %1000 a[16:11] %10 a[17] %0 a[18] a[10:0]",
+			Semantics: `if C && !Z {
+	PC = a;
+}`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic: "BLS",
+			Operands: []string{"rel20"},
+			Encoding: "%11110 a[19] %1001 a[16:11] %10 a[17] %0 a[18] a[10:0]",
+			Semantics: `if !C || Z {
+	PC = a;
+}`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic: "BGE",
+			Operands: []string{"rel20"},
+			Encoding: "%11110 a[19] %1010 a[16:11] %10 a[17] %0 a[18] a[10:0]",
+			Semantics: `if N == V {
+	PC = a;
+}`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic: "BLT",
+			Operands: []string{"rel20"},
+			Encoding: "%11110 a[19] %1011 a[16:11] %10 a[17] %0 a[18] a[10:0]",
+			Semantics: `if N != V {
+	PC = a;
+}`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic: "BGT",
+			Operands: []string{"rel20"},
+			Encoding: "%11110 a[19] %1100 a[16:11] %10 a[17] %0 a[18] a[10:0]",
+			Semantics: `if !Z && N == V {
+	PC = a;
+}`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic: "BLE",
+			Operands: []string{"rel20"},
+			Encoding: "%11110 a[19] %1101 a[16:11] %10 a[17] %0 a[18] a[10:0]",
+			Semantics: `if Z || N != V {
+	PC = a;
+}`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic:  "B",
+			Operands:  []string{"rel24"},
+			Encoding:  "%11110 a[23] a[20:11] %10 a[22] %1 a[21] a[10:0]",
+			Semantics: "PC = a;",
+			Cycles:    3,
+		},
+		{
+			Mnemonic: "BL",
+			Operands: []string{"rel24"},
+			Encoding: "%11110 a[23] a[20:11] %11 a[22] %1 a[21] a[10:0]",
+			Semantics: `LR = PC | 1;
+PC = a;`,
+			Cycles: 3,
+		},
+	},
+	Semantics: `// The negative and zero flags of a result.
+fn nz(r) {
+	N = msb(r);
+	Z = r == 0;
+}
+
+// x + y + c with the flags: AddWithCarry of the ARM manual.
+fn adds(x, y, c) {
+	let wide = zx(x, 33) + zx(y, 33) + zx(c, 33);
+	let r = tr(wide, 32);
+	C = wide[32];
+	V = msb((x ^ r) & (y ^ r));
+	nz(r);
+	return r;
+}
+
+// The count of a shift by an immediate: 0 encodes 32.
+fn count(v) {
+	return zx(v, 6) | zx(v == 0, 6) << 5;
+}
+
+// x rotated right by n bits, n below 32.
+fn ror(x, n) {
+	return (x >> n) | (x << (32 - zx(n, 8)));
+}
+
+// Shifts with the carry out, by n of any width; a count of 0 keeps C.
+fn lslc(x, n) {
+	let k = zx(n, 8);
+	if k == 0 {
+		return x;
+	}
+	if k <= 32 {
+		C = (x >> (32 - k))[0];
+	} else {
+		C = 0;
+	}
+	return x << k;
+}
+
+fn lsrc(x, n) {
+	let k = zx(n, 8);
+	if k == 0 {
+		return x;
+	}
+	if k <= 32 {
+		C = (x >> (k - 1))[0];
+	} else {
+		C = 0;
+	}
+	return x >> k;
+}
+
+fn asrc(x, n) {
+	let k = zx(n, 8);
+	if k == 0 {
+		return x;
+	}
+	if k <= 32 {
+		C = (x >> (k - 1))[0];
+	} else {
+		C = msb(x);
+	}
+	return x >>> k;
+}
+
+fn rorc(x, n) {
+	let k = zx(n, 8);
+	if k == 0 {
+		return x;
+	}
+	let r = ror(x, k[4:0]);
+	C = msb(r);
+	return r;
+}
+
+fn rrxc(x) {
+	let r = (x >> 1) | (zx(C, 32) << 31);
+	C = x[0];
+	return r;
+}
+
+// The value of a modified immediate: ThumbExpandImm of the ARM manual.
+fn expand(v) {
+	let k = zx(v[7:0], 32);
+	if v[11:10] == 0 {
+		if v[9:8] == 0 {
+			return k;
+		}
+		if v[9:8] == 1 {
+			return k | k << 16;
+		}
+		if v[9:8] == 2 {
+			return k << 8 | k << 24;
+		}
+		return k | k << 8 | k << 16 | k << 24;
+	}
+	return ror(zx(v[6:0], 32) | 0x80, v[11:7]);
+}
+
+// The value of a modified immediate with the carry out of a rotation.
+fn expandc(v) {
+	let r = expand(v);
+	if v[11:10] != 0 {
+		C = msb(r);
+	}
+	return r;
+}
+
+fn popcount(x) {
+	let n = zx(0, 32);
+	let k = x;
+	while k != 0 {
+		n = n + zx(k[0], 32);
+		k = k >> 1;
+	}
+	return n;
+}
+
+fn clz(x) {
+	let n = zx(0, 32);
+	let k = x;
+	while k != 0 {
+		n = n + 1;
+		k = k >> 1;
+	}
+	return 32 - n;
+}
+
+fn rbit(x) {
+	let r = zx(0, 32);
+	let k = x;
+	let i = zx(0, 6);
+	while i != 32 {
+		r = r << 1 | zx(k[0], 32);
+		k = k >> 1;
+		i = i + 1;
+	}
+	return r;
+}
+
+fn rev(x) {
+	return zx(x[7:0], 32) << 24 | zx(x[15:8], 32) << 16 | zx(x[23:16], 32) << 8 | zx(x[31:24], 32);
+}
+
+fn rev16(x) {
+	return zx(x[23:16], 32) << 24 | zx(x[31:24], 32) << 16 | zx(x[7:0], 32) << 8 | zx(x[15:8], 32);
+}
+
+fn revsh(x) {
+	return sx(zx(x[7:0], 16) << 8 | zx(x[15:8], 16), 32);
+}
+`,
+	ABI:   ABI{Frame: "SP", FrameBottom: true, Params: 4, Align: 4, Reserved: []string{"SP", "PC"}, Flags: "APSR", InterruptFrame: 72},
+	Rules: armv7mRules,
+}

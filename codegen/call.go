@@ -46,6 +46,7 @@ func (fn *fnGen) call(target string, ind *loc, args []*loc, results []types.Type
 		// the address of the code; the record is passed after the
 		// results, for the free variables of a closure.
 		fn.args = max(fn.args, size+g.ptr)
+		fn.indKey = sigKey(pts, results)
 		rec := fn.scalar(ind)
 		fn.writeWord(mref{kind: mArg, off: size}, rec, g.ptr)
 		code := fn.readWord(mref{kind: mPtr, ptr: rec}, g.ptr)
@@ -91,7 +92,7 @@ func (fn *fnGen) callInstr(i *ir.Call) {
 		fn.builtin(i, c)
 		return
 	case *ir.FuncValue:
-		if name, ok := strings.CutPrefix(c.Func.Name, build.RuntimePath+"."); ok && fn.primitive(name, i.Args) {
+		if name, ok := strings.CutPrefix(c.Func.Name, build.RuntimePath+"."); ok && fn.primitive(i, name) {
 			return
 		}
 		if name, ok := strings.CutPrefix(c.Func.Name, "an/arch/"+fn.g.arch.Name+"."); ok && name != "Far" {
@@ -207,14 +208,35 @@ func (fn *fnGen) instrCall(i *ir.Call, name string) {
 
 // primitive generates a call of a primitive of the runtime package with
 // the platform operations (comp.gen.runtime).
-func (fn *fnGen) primitive(name string, args []ir.Value) bool {
+func (fn *fnGen) primitive(i *ir.Call, name string) bool {
+	g := fn.g
+	args := i.Args
 	switch name {
+	case "DisableInterrupts":
+		// The state of the interrupts, from irq.save; 0 on targets
+		// without interrupts.
+		r := fn.result(i)
+		w := g.word * 8
+		if g.hasRule("irq.save", w, 0) {
+			fn.op("irq.save", w, 0, map[string]operand{"r": slotOperand(*r.at, g.word)}, nil)
+		} else {
+			fn.writeWord(*r.at, imm(0, w), g.word)
+		}
+	case "RestoreInterrupts":
+		w := g.word * 8
+		if g.hasRule("irq.restore", w, 0) {
+			fn.op("irq.restore", w, 0, map[string]operand{"x": fn.value(args[0])}, nil)
+		}
 	case "write", "writeString":
 		p := fn.loc(args[1])
 		n := fn.sub(types.Typ[types.Int], p, fn.g.ptr)
 		fn.op("write", 0, 0, map[string]operand{"x": fn.value(args[0]), "p": fn.part(p, 0), "y": fn.scalar(n)}, nil)
 	case "exit":
 		fn.op("exit", 0, 0, map[string]operand{"x": fn.value(args[0])}, nil)
+	case "read":
+		// The address of the inout byte, and a count of 1.
+		r := fn.result(i)
+		fn.op("read", 0, 0, map[string]operand{"r": slotOperand(*r.at, g.word), "x": fn.value(args[0]), "p": fn.value(args[1]), "y": imm(1, g.word*8)}, nil)
 	case "runDefers":
 		fn.g.usesDefer = true
 		fn.op("call", 0, 0, nil, map[string]string{"f": fn.g.runDefersLabel()})
@@ -246,7 +268,7 @@ func (fn *fnGen) ret(results []ir.Value) {
 	if fn.deferAt != 0 {
 		fn.runDefers(operand{kind: opSlot, off: fn.deferAt, width: g.ptr * 8})
 	}
-	fn.op("leave", 0, 0, nil, nil)
+	fn.op(fn.leaveOp(), 0, 0, map[string]operand{"n": {kind: opFrame}}, nil)
 }
 
 // ---------------------------------------------------------------------
@@ -294,6 +316,7 @@ func (fn *fnGen) deferCall(c *ir.Call) {
 	head := mref{kind: mStatic, sym: "Ldefers"}
 	fn.writeWord(rec, fn.readWord(head, g.ptr), g.ptr)
 	thunk := g.label()
+	g.addressTaken(thunk, sigKey([]types.Type{types.Typ[types.Usize]}, nil))
 	fn.writeWord(rec.plus(g.ptr), operand{kind: opSym, sym: g.funcRecord(thunk), width: g.ptr * 8}, g.ptr)
 	fn.writeWord(head, fn.addrOf(rec), g.ptr)
 	pos := fn.f.Pos
@@ -327,6 +350,7 @@ func (g *gen) thunk(label string, c *ir.Call, ts []types.Type, indirect bool, fr
 	f := ir.NewFunc(from+"$defer", &types.Signature{Params: types.NewTuple(types.Typ[types.Usize]), Results: types.NewTuple()}, pos)
 	fn := &fnGen{g: g, f: f, name: f.Name, vals: map[ir.Value]*loc{}, free: map[int][]int{}, blocks: map[*ir.Block]string{}, traps: map[string]string{}}
 	fn.defLabel(label)
+	fn.label = label
 	fn.op("enter", 0, 0, map[string]operand{"n": {kind: opFrame}}, nil)
 	recPtr := operand{kind: opSlot, off: g.arch.ABI.Params, width: g.ptr * 8}
 	offs, _, _ := g.argLayout(ts, nil)
@@ -336,7 +360,7 @@ func (g *gen) thunk(label string, c *ir.Call, ts []types.Type, indirect bool, fr
 	}
 	fn.makeCall(c, args, indirect)
 	fn.releaseTemps()
-	fn.op("leave", 0, 0, nil, nil)
+	fn.op("leave", 0, 0, map[string]operand{"n": {kind: opFrame}}, nil)
 	fn.finish()
 }
 
@@ -392,10 +416,11 @@ func (g *gen) runDefersLabel() string {
 		f := ir.NewFunc("runtime.runDefers", &types.Signature{Params: types.NewTuple(), Results: types.NewTuple()}, g.prog.Main.Pos)
 		fn := &fnGen{g: g, f: f, name: f.Name, vals: map[ir.Value]*loc{}, free: map[int][]int{}, blocks: map[*ir.Block]string{}, traps: map[string]string{}}
 		fn.defLabel(label)
+		fn.label = label
 		fn.op("enter", 0, 0, map[string]operand{"n": {kind: opFrame}}, nil)
 		fn.runDefers(imm(0, g.ptr*8))
 		fn.releaseTemps()
-		fn.op("leave", 0, 0, nil, nil)
+		fn.op("leave", 0, 0, map[string]operand{"n": {kind: opFrame}}, nil)
 		fn.finish()
 	})
 	return label
@@ -406,12 +431,99 @@ func (g *gen) entry() {
 	f := ir.NewFunc("entry", &types.Signature{Params: types.NewTuple(), Results: types.NewTuple()}, g.prog.Main.Pos)
 	fn := &fnGen{g: g, f: f, name: "entry", vals: map[ir.Value]*loc{}, free: map[int][]int{}, blocks: map[*ir.Block]string{}, traps: map[string]string{}}
 	fn.defLabel("entry")
+	fn.label = "entry"
+	if g.hasRule("vectors", 0, 0) {
+		g.vectors(fn)
+	}
 	if g.hasRule("start", 0, 0) {
-		fn.op("start", 0, 0, nil, nil)
+		fn.op("start", 0, 0, g.startOps(), nil)
+	}
+	// The frame of the entry code, which does not return.
+	fn.op("enter", 0, 0, map[string]operand{"n": {kind: opFrame}}, nil)
+	if n := g.writableSize(); n > 0 && g.desc.Memory != nil {
+		// Writable data in RAM starts as zero bytes.
+		first := ""
+		for _, d := range g.data {
+			if d.writable {
+				first = d.label
+				break
+			}
+		}
+		fn.zeroMem(mref{kind: mStatic, sym: first}, n)
+		fn.releaseTemps()
 	}
 	fn.op("call", 0, 0, nil, map[string]string{"f": g.funcLabel(g.prog.Main)})
 	fn.op("exit", 0, 0, map[string]operand{"x": imm(0, g.word*8)}, nil)
 	fn.finish()
+}
+
+// startOps returns the operands of the platform operations vectors and
+// start: the initial stack pointer {sp}, the end of the writable region or
+// of the stack after the writable data, and the lowest address of the
+// stack {sb}.
+func (g *gen) startOps() map[string]operand {
+	ops := map[string]operand{}
+	if _, data, ok := g.desc.Regions(); ok {
+		top := data.At + data.Size
+		ops["sp"] = imm(uint64(top), g.ptr*8)
+		ops["sb"] = imm(uint64(top-g.desc.Stack), g.ptr*8)
+	} else if g.desc.Stack > 0 {
+		ops["sp"] = operand{kind: opSym, sym: "Lstack", add: g.desc.Stack, width: g.ptr * 8}
+		ops["sb"] = operand{kind: opSym, sym: "Lstack", width: g.ptr * 8}
+	}
+	return ops
+}
+
+// vectors generates the vector table at the start of the image
+// (emb.irq.vectors): the platform operation vectors with the reset vector
+// and the default handler, then the operation vector for each interrupt
+// of the device, in the order of their numbers, with its handler or the
+// default handler, which panics.
+func (g *gen) vectors(fn *fnGen) {
+	reset, def := g.label(), g.defaultHandler()
+	fn.op("vectors", 0, 0, g.startOps(), map[string]string{"f": reset, "d": def})
+	byName := map[string]string{}
+	for h := range g.handlers {
+		byName[h.Handler] = g.funcs[h]
+	}
+	n := 0
+	for _, irq := range g.desc.Device.Interrupts {
+		n = max(n, irq.Number+1)
+	}
+	names := make([]string, n)
+	for _, irq := range g.desc.Device.Interrupts {
+		names[irq.Number] = irq.Name
+	}
+	for _, name := range names {
+		f := def
+		if l, ok := byName[name]; ok && name != "" {
+			f = l
+		}
+		fn.op("vector", 0, 0, nil, map[string]string{"f": f})
+	}
+	fn.defLabel(reset)
+}
+
+// defaultHandler returns the label of the handler of the vectors without
+// a handler: a panic (emb.irq.vectors).
+func (g *gen) defaultHandler() string {
+	const label = "LdefaultHandler"
+	if g.funcsByLabel[label] {
+		return label
+	}
+	g.funcsByLabel[label] = true
+	g.thunks = append(g.thunks, func() {
+		f := ir.NewFunc("runtime.defaultHandler", &types.Signature{Params: types.NewTuple(), Results: types.NewTuple()}, g.prog.Main.Pos)
+		fn := &fnGen{g: g, f: f, name: f.Name, vals: map[ir.Value]*loc{}, free: map[int][]int{}, blocks: map[*ir.Block]string{}, traps: map[string]string{}}
+		fn.defLabel(label)
+		fn.label = label
+		fn.op("enter", 0, 0, map[string]operand{"n": {kind: opFrame}}, nil)
+		fn.callRuntime("PanicInterrupt", nil)
+		fn.releaseTemps()
+		fn.op("leave", 0, 0, map[string]operand{"n": {kind: opFrame}}, nil)
+		fn.finish()
+	})
+	return label
 }
 
 // asmInstr generates an asm statement (stmt.asm.syntax): the registers

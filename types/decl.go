@@ -49,7 +49,16 @@ func (c *checker) objDecl(obj Object) {
 			c.mappingDecl(obj, di.typ, di.init)
 			break
 		}
-		c.errorf(obj.pos, "decl.var.package-kinds", "package-level variable %s: only atomic, sync and hardware mapping types are allowed at package level", obj.name)
+		if di.vars == nil && di.init == nil && di.typ != nil {
+			// A variable of an atomic type with static storage, zero at
+			// the start.
+			c.varDecl([]*Var{obj}, di.typ, nil)
+			if IsAtomic(obj.typ) {
+				obj.Static = true
+				break
+			}
+		}
+		c.errorf(obj.pos, "decl.var.package-kinds", "package-level variable %s: only atomic, sync and hardware mapping types are allowed at package level, without an initializer", obj.name)
 		vars := di.vars
 		if vars == nil {
 			vars = []*Var{obj}
@@ -132,6 +141,12 @@ func (c *checker) isMapCall(e syntax.Expr) bool {
 	_, obj := c.scope.LookupParent(id.Name)
 	b, ok := obj.(*Builtin)
 	return ok && b.id == _UnsafeMap
+}
+
+// IsAtomic reports whether t is a type of package an/atomic.
+func IsAtomic(t Type) bool {
+	n, ok := t.(*Named)
+	return ok && n.Obj.pkg != nil && n.Obj.pkg.Path == "an/atomic"
 }
 
 // mappingDecl checks a package-level variable initialized by unsafe.Map:

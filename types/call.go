@@ -339,10 +339,23 @@ func (c *checker) conversion(x *operand, t Type) {
 			return
 		}
 	}
-	if rule, ok := c.convertible(x.typ, t); !ok && !(rule == "type.conv.int-narrow" && c.provenFits(x.expr, t)) {
+	rule, ok := c.convertible(x.typ, t)
+	why := ""
+	if !ok && rule == "type.conv.int-narrow" {
+		ok, why = c.provenFits(x.expr, t)
+		if !ok && c.conf.DeferNarrowing && c.fn != nil {
+			// The facts of the program point may prove it.
+			c.info.Narrowings[x.expr] = t
+			ok = true
+		}
+	}
+	if !ok {
 		switch rule {
 		case "type.conv.int-narrow":
-			c.errorf(x.expr.Pos(), rule, "cannot convert %s to type %s: the value may not fit and it is not proven to (use conv.Narrow[%s] to get (%s, bool))", x, t, t, t)
+			if why != "" {
+				why = ", for example when " + why
+			}
+			c.errorf(x.expr.Pos(), rule, "cannot convert %s to type %s: the value may not fit%s, and it is not proven to (use conv.Narrow[%s] to get (%s, bool))", x, t, why, t, t)
 		default:
 			c.errorf(x.expr.Pos(), rule, "cannot convert %s to type %s", x, t)
 		}
@@ -469,22 +482,6 @@ func (c *checker) convertible(v, t Type) (string, bool) {
 	return "type.conv.go", false
 }
 
-// provenFits reports whether the value of integer expression e is proven
-// to be representable in integer type t (type.conv.int-narrow-facts).
-func (c *checker) provenFits(e syntax.Expr, t Type) bool {
-	tb, ok := core(t).(*Basic)
-	if !ok || tb.info&IsInteger == 0 {
-		return false
-	}
-	lo, hi, ok := c.interval(e)
-	if !ok {
-		return false
-	}
-	_, fitsLo := c.representable(lo, tb)
-	_, fitsHi := c.representable(hi, tb)
-	return fitsLo && fitsHi
-}
-
 // isByteOrRune reports whether t is u8 or i32, the element types of the
 // slices that convert to and from strings.
 func isByteOrRune(t Type) bool {
@@ -547,7 +544,13 @@ func (c *checker) builtinCall(x *operand, e *syntax.CallExpr, id builtinID) {
 		return
 	}
 	c.tupleOK = id == _Len
+	if id == _Assert {
+		c.inContract++
+	}
 	args := c.args(e.Args, nil)
+	if id == _Assert {
+		c.inContract--
+	}
 	c.tupleOK = false
 	args = append(args, spread...)
 	for _, a := range args {
@@ -791,6 +794,80 @@ func (c *checker) builtinCall(x *operand, e *syntax.CallExpr, id builtinID) {
 		c.errorf(e.Pos(), "mem.unsafe.map", "unsafe.Map takes a type argument: unsafe.Map[T](addr)")
 		x.invalidate()
 
+	case _ConsoleReadByte:
+		if !nargs(0, 0) {
+			return
+		}
+		x.mode, x.typ, x.expr = value, NewTuple(Typ[U8], Typ[Bool]), e
+
+	case _MathSum:
+		// The sum of the elements as a mathematical integer, which takes
+		// the type of the other operand (std.math.contract).
+		if !nargs(1, 1) {
+			return
+		}
+		if c.inContract == 0 {
+			c.errorf(e.Pos(), "std.math.contract", "%s may appear only in contract expressions and assertions", name)
+			x.invalidate()
+			return
+		}
+		a := args[0]
+		var elem Type
+		switch t := core(a.typ).(type) {
+		case *Slice:
+			elem = t.Elem
+		case *Array:
+			elem = t.Elem
+		}
+		if elem == nil || !isInteger(elem) {
+			c.errorf(a.expr.Pos(), "std.math.contract", "%s takes a slice or an array of integers, not %s", name, a)
+			x.invalidate()
+			return
+		}
+		x.mode, x.typ, x.expr = value, Typ[UntypedInt], e
+
+	case _MathForAll, _MathExists:
+		// A bounded quantifier over the integers of [lo, hi): a predicate
+		// literal with one integer parameter (std.math.quantifier).
+		if !nargs(3, 3) {
+			return
+		}
+		if c.inContract == 0 {
+			c.errorf(e.Pos(), "std.math.contract", "%s may appear only in contract expressions and assertions", name)
+			x.invalidate()
+			return
+		}
+		pred := args[2]
+		lit, isLit := unparen(e.Args[2]).(*syntax.FuncLit)
+		sig, _ := core(pred.typ).(*Signature)
+		ok := isLit && sig != nil && sig.Params.Len() == 1 && isInteger(sig.Params.Vars[0].typ) &&
+			sig.Results.Len() == 1 && isBoolean(sig.Results.Vars[0].typ) &&
+			len(lit.Body.List) == 1
+		if ok {
+			_, ok = lit.Body.List[0].(*syntax.ReturnStmt)
+		}
+		if !ok {
+			c.errorf(e.Args[2].Pos(), "std.math.quantifier", "the predicate of %s must be a function literal func(i T) bool { return … } with an integer type T", name)
+			x.invalidate()
+			return
+		}
+		it := sig.Params.Vars[0].typ
+		for _, a := range args[:2] {
+			c.assignment(a, it, "argument to "+name)
+		}
+		x.mode, x.typ, x.expr = value, Typ[Bool], e
+
+	case _GenReadFile:
+		if !nargs(1, 1) {
+			return
+		}
+		if a := args[0]; !isString(a.typ) {
+			c.errorf(a.expr.Pos(), "ct.eval.read-input", "gen.ReadFile takes the name of a file, not %s", a)
+			x.invalidate()
+			return
+		}
+		x.mode, x.typ, x.expr = value, NewSlice(Typ[U8]), e
+
 	case _EncodingCP866:
 		if !nargs(1, 1) {
 			return
@@ -847,6 +924,17 @@ func (c *checker) builtinCall(x *operand, e *syntax.CallExpr, id builtinID) {
 	case _Print, _Println, _FmtPrint, _FmtPrintln:
 		for _, a := range args {
 			c.defaultUntyped(a)
+		}
+
+	case _Assert:
+		// A proof obligation at compile time (contract.assert.form).
+		if !nargs(1, 1) {
+			return
+		}
+		a := args[0]
+		c.defaultUntyped(a)
+		if !isBoolean(a.typ) {
+			c.errorf(a.expr.Pos(), "contract.assert.form", "the argument of assert must be a boolean, not %s", a)
 		}
 
 	case _FmtSprint, _FmtSprintln:

@@ -1,0 +1,495 @@
+package runtime
+
+import "an/wrap"
+
+// Floating-point arithmetic in software (target.floats.soft): IEEE 754
+// binary64 and binary32 with rounding to nearest, ties to even. A value is
+// passed as its bits: f64 as u64, f32 as u32. A NaN result is the quiet
+// NaN with an empty payload.
+//
+// A finite nonzero value is unpacked into its sign, an exponent e and a
+// significand m with its leading 1 at bit 62: the value is m * 2^(e-62).
+// The 10 bits below the 53 bits of a binary64 significand (39 below the
+// 24 of binary32) and a sticky bit 0 round the result.
+
+const (
+	signBit64 u64 = 0x8000_0000_0000_0000
+	inf64     u64 = 0x7FF0_0000_0000_0000
+	nan64     u64 = 0x7FF8_0000_0000_0000
+	frac64    u64 = 0x000F_FFFF_FFFF_FFFF
+	lead      u64 = 0x4000_0000_0000_0000 // bit 62
+	signBit32 u32 = 0x8000_0000
+	inf32     u32 = 0x7F80_0000
+	nan32     u32 = 0x7FC0_0000
+)
+
+func isNaN64(x u64) bool  { return x&^signBit64 > inf64 }
+func isInf64(x u64) bool  { return x&^signBit64 == inf64 }
+func isZero64(x u64) bool { return x&^signBit64 == 0 }
+
+// shiftSticky shifts m right by n bits and sets bit 0 if a 1 is shifted
+// out.
+func shiftSticky(m u64, n int) u64 {
+	if n <= 0 {
+		return m
+	}
+	if n >= 64 {
+		if m != 0 {
+			return 1
+		}
+		return 0
+	}
+	r := m >> n
+	if m<<(64-n) != 0 {
+		r |= 1
+	}
+	return r
+}
+
+// normalize shifts a nonzero m left until its leading 1 is at bit 62 and
+// adjusts the exponent.
+func normalize(e int, m u64) (int, u64) {
+	for _, n := range [...]int{32, 16, 8, 4, 2, 1} {
+		if m < lead>>(n-1) {
+			m <<= n
+			e -= n
+		}
+	}
+	return e, m
+}
+
+// unpack64 returns the sign bit, the exponent and the normalized
+// significand of a finite nonzero x.
+func unpack64(x u64) (u64, int, u64) {
+	field := int(x >> 52 & 0x7FF)
+	m := (x & frac64) << 10
+	if field == 0 {
+		e, n := normalize(-1022, m)
+		return x & signBit64, e, n
+	}
+	return x & signBit64, field - 1023, m | lead
+}
+
+// roundPack64 returns the binary64 nearest to m * 2^(e-62) with sign s,
+// for an m with its leading 1 at bit 62.
+func roundPack64(s u64, e int, m u64) u64 {
+	be := e + 1023 // the biased exponent
+	if be >= 2047 {
+		return s | inf64
+	}
+	if be <= 0 {
+		// A subnormal result, or zero.
+		m = shiftSticky(m, 1-be)
+		be = 1
+	}
+	rest := m & 0x3FF
+	r := m >> 10
+	if rest > 0x200 || rest == 0x200 && r&1 != 0 {
+		r++ // a carry into bit 53 increments the exponent
+	}
+	return s | u64(wrap.U64(be-1)<<52+wrap.U64(r))
+}
+
+// AddF64 implements + of f64.
+func AddF64(x, y u64) u64 {
+	switch {
+	case isNaN64(x) || isNaN64(y):
+		return nan64
+	case isInf64(x):
+		if isInf64(y) && x != y {
+			return nan64
+		}
+		return x
+	case isInf64(y):
+		return y
+	case isZero64(x) && isZero64(y):
+		return x & y // -0 only if both are -0
+	case isZero64(x):
+		return y
+	case isZero64(y):
+		return x
+	}
+	sx, ex, mx := unpack64(x)
+	sy, ey, my := unpack64(y)
+	if ex < ey || ex == ey && mx < my {
+		sx, ex, mx, sy, ey, my = sy, ey, my, sx, ex, mx
+	}
+	my = shiftSticky(my, ex-ey)
+	if sx == sy {
+		m := mx + my // below 2^64: both are below 2^63
+		if m >= 0x8000_0000_0000_0000 {
+			m = shiftSticky(m, 1)
+			ex++
+		}
+		return roundPack64(sx, ex, m)
+	}
+	m := mx - my
+	if m == 0 {
+		return 0
+	}
+	e, n := normalize(ex, m)
+	return roundPack64(sx, e, n)
+}
+
+// SubF64 implements - of f64.
+func SubF64(x, y u64) u64 {
+	return AddF64(x, y^signBit64)
+}
+
+// NegF64 implements unary - of f64.
+func NegF64(x u64) u64 {
+	return x ^ signBit64
+}
+
+// mul64 returns the 128-bit product of x and y as its high and low words.
+func mul64(x, y u64) (u64, u64) {
+	x0, x1 := x&0xFFFF_FFFF, x>>32
+	y0, y1 := y&0xFFFF_FFFF, y>>32
+	// Products of 32-bit halves, which do not overflow: wrapping
+	// multiplication skips the check.
+	p00 := wrap.U64(x0) * wrap.U64(y0)
+	p01 := wrap.U64(x0) * wrap.U64(y1)
+	p10 := wrap.U64(x1) * wrap.U64(y0)
+	p11 := wrap.U64(x1) * wrap.U64(y1)
+	mid := p00>>32 + p01&0xFFFF_FFFF + p10&0xFFFF_FFFF
+	lo := u64(p00&0xFFFF_FFFF | mid<<32)
+	hi := u64(p11 + p01>>32 + p10>>32 + mid>>32)
+	return hi, lo
+}
+
+// MulF64 implements * of f64.
+func MulF64(x, y u64) u64 {
+	s := (x ^ y) & signBit64
+	switch {
+	case isNaN64(x) || isNaN64(y):
+		return nan64
+	case isInf64(x) || isInf64(y):
+		if isZero64(x) || isZero64(y) {
+			return nan64
+		}
+		return s | inf64
+	case isZero64(x) || isZero64(y):
+		return s
+	}
+	_, ex, mx := unpack64(x)
+	_, ey, my := unpack64(y)
+	hi, lo := mul64(mx, my) // in [2^124, 2^126)
+	m := hi<<2 | lo>>62
+	if lo&(lead-1) != 0 {
+		m |= 1
+	}
+	e := ex + ey
+	if m >= 0x8000_0000_0000_0000 {
+		m = shiftSticky(m, 1)
+		e++
+	}
+	return roundPack64(s, e, m)
+}
+
+// DivF64 implements / of f64.
+func DivF64(x, y u64) u64 {
+	s := (x ^ y) & signBit64
+	switch {
+	case isNaN64(x) || isNaN64(y):
+		return nan64
+	case isInf64(x):
+		if isInf64(y) {
+			return nan64
+		}
+		return s | inf64
+	case isInf64(y):
+		return s
+	case isZero64(y):
+		if isZero64(x) {
+			return nan64
+		}
+		return s | inf64
+	case isZero64(x):
+		return s
+	}
+	_, ex, mx := unpack64(x)
+	_, ey, my := unpack64(y)
+	e := ex - ey
+	if mx < my {
+		mx <<= 1
+		e--
+	}
+	// The quotient mx * 2^62 / my, one bit at a time: 63 bits with the
+	// leading 1 at bit 62.
+	r := mx
+	var q u64
+	for range 63 {
+		q <<= 1
+		if r >= my {
+			r -= my
+			q |= 1
+		}
+		r <<= 1
+	}
+	if r != 0 {
+		q |= 1
+	}
+	return roundPack64(s, e, q)
+}
+
+// EqF64 implements == of f64: NaN equals nothing, and -0 equals +0.
+func EqF64(x, y u64) bool {
+	if isNaN64(x) || isNaN64(y) {
+		return false
+	}
+	return x == y || isZero64(x) && isZero64(y)
+}
+
+// LtF64 implements < of f64.
+func LtF64(x, y u64) bool {
+	if isNaN64(x) || isNaN64(y) || isZero64(x) && isZero64(y) {
+		return false
+	}
+	switch {
+	case x&signBit64 != y&signBit64:
+		return x&signBit64 != 0
+	case x&signBit64 != 0:
+		return x > y
+	}
+	return x < y
+}
+
+// LeF64 implements <= of f64.
+func LeF64(x, y u64) bool {
+	return LtF64(x, y) || EqF64(x, y)
+}
+
+// MinF64 implements min of f64: NaN if either is NaN, and -0 is less
+// than +0.
+func MinF64(x, y u64) u64 {
+	switch {
+	case isNaN64(x) || isNaN64(y):
+		return nan64
+	case isZero64(x) && isZero64(y):
+		return x | y
+	case LtF64(y, x):
+		return y
+	}
+	return x
+}
+
+// MaxF64 implements max of f64.
+func MaxF64(x, y u64) u64 {
+	switch {
+	case isNaN64(x) || isNaN64(y):
+		return nan64
+	case isZero64(x) && isZero64(y):
+		return x & y
+	case LtF64(x, y):
+		return y
+	}
+	return x
+}
+
+// fromMagnitude64 returns the binary64 nearest to the integer m with sign
+// s.
+func fromMagnitude64(s u64, m u64) u64 {
+	if m == 0 {
+		return 0
+	}
+	e := 62
+	if m >= 0x8000_0000_0000_0000 {
+		m = shiftSticky(m, 1)
+		e = 63
+	}
+	e, m = normalize(e, m)
+	return roundPack64(s, e, m)
+}
+
+// F64FromI64 converts an integer to f64.
+func F64FromI64(x i64) u64 {
+	if x < 0 {
+		return fromMagnitude64(signBit64, u64(-wrap.U64(x)))
+	}
+	return fromMagnitude64(0, u64(wrap.U64(x)))
+}
+
+// F64FromU64 converts an unsigned integer to f64.
+func F64FromU64(x u64) u64 {
+	return fromMagnitude64(0, x)
+}
+
+// truncate64 returns the magnitude of x truncated toward zero, and
+// whether it is below 2^64.
+func truncate64(x u64) (u64, bool) {
+	if isNaN64(x) || isInf64(x) {
+		return 0, false
+	}
+	if isZero64(x) {
+		return 0, true
+	}
+	_, e, m := unpack64(x)
+	switch {
+	case e < 0:
+		return 0, true
+	case e > 63:
+		return 0, false
+	case e == 63:
+		return m << 1, true
+	}
+	return m >> (62 - e), true
+}
+
+// I64FromF64 converts an f64 to a signed integer of the given width, and
+// reports whether its truncated value fits (type.conv.float-int).
+func I64FromF64(x u64, bits int) (i64, bool) {
+	m, ok := truncate64(x)
+	limit := u64(1) << (bits - 1) // the magnitude of the minimum
+	if !ok || m > limit || m == limit && x&signBit64 == 0 {
+		return 0, false
+	}
+	if x&signBit64 != 0 {
+		return i64(wrap.I64(-wrap.U64(m))), true
+	}
+	return i64(wrap.I64(m)), true
+}
+
+// U64FromF64 converts an f64 to an unsigned integer of the given width,
+// and reports whether its truncated value fits.
+func U64FromF64(x u64, bits int) (u64, bool) {
+	m, ok := truncate64(x)
+	if !ok || x&signBit64 != 0 && m != 0 {
+		return 0, false
+	}
+	if bits < 64 && m >= u64(1)<<bits {
+		return 0, false
+	}
+	return m, true
+}
+
+// The binary32 operations convert to binary64, which holds every
+// binary32 exactly, compute there and round once to binary32: rounding
+// twice does not change sums, differences, products and quotients, whose
+// binary64 results have more than twice the precision of binary32.
+
+// F64FromF32 converts an f32 to f64 exactly.
+func F64FromF32(x u32) u64 {
+	s := u64(x&signBit32) << 32
+	field := int(x >> 23 & 0xFF)
+	frac := u64(x & 0x7F_FFFF)
+	switch {
+	case field == 0xFF && frac != 0:
+		return nan64
+	case field == 0xFF:
+		return s | inf64
+	case field == 0 && frac == 0:
+		return s
+	case field == 0:
+		e, m := normalize(-126, frac<<39)
+		return roundPack64(s, e, m)
+	}
+	return s | u64(wrap.U64(field-127+1023))<<52 | frac<<29
+}
+
+// roundPack32 returns the binary32 nearest to m * 2^(e-62) with sign s,
+// for an m with its leading 1 at bit 62.
+func roundPack32(s u32, e int, m u64) u32 {
+	be := e + 127
+	if be >= 255 {
+		return s | inf32
+	}
+	if be <= 0 {
+		m = shiftSticky(m, 1-be)
+		be = 1
+	}
+	rest := m & 0x7F_FFFF_FFFF
+	r := u32(m >> 39)
+	if rest > 0x40_0000_0000 || rest == 0x40_0000_0000 && r&1 != 0 {
+		r++
+	}
+	return s | u32(wrap.U32(be-1)<<23+wrap.U32(r))
+}
+
+// F32FromF64 converts an f64 to the nearest f32.
+func F32FromF64(x u64) u32 {
+	s := u32(x >> 32 & 0x8000_0000)
+	switch {
+	case isNaN64(x):
+		return nan32
+	case isInf64(x):
+		return s | inf32
+	case isZero64(x):
+		return s
+	}
+	_, e, m := unpack64(x)
+	return roundPack32(s, e, m)
+}
+
+// fromMagnitude32 returns the binary32 nearest to the integer m with sign
+// s.
+func fromMagnitude32(s u32, m u64) u32 {
+	if m == 0 {
+		return 0
+	}
+	e := 62
+	if m >= 0x8000_0000_0000_0000 {
+		m = shiftSticky(m, 1)
+		e = 63
+	}
+	e, m = normalize(e, m)
+	return roundPack32(s, e, m)
+}
+
+// F32FromI64 converts an integer to f32, rounding once.
+func F32FromI64(x i64) u32 {
+	if x < 0 {
+		return fromMagnitude32(signBit32, u64(-wrap.U64(x)))
+	}
+	return fromMagnitude32(0, u64(wrap.U64(x)))
+}
+
+// F32FromU64 converts an unsigned integer to f32.
+func F32FromU64(x u64) u32 {
+	return fromMagnitude32(0, x)
+}
+
+// AddF32 implements + of f32.
+func AddF32(x, y u32) u32 {
+	return F32FromF64(AddF64(F64FromF32(x), F64FromF32(y)))
+}
+
+// SubF32 implements - of f32.
+func SubF32(x, y u32) u32 {
+	return F32FromF64(SubF64(F64FromF32(x), F64FromF32(y)))
+}
+
+// MulF32 implements * of f32.
+func MulF32(x, y u32) u32 {
+	return F32FromF64(MulF64(F64FromF32(x), F64FromF32(y)))
+}
+
+// DivF32 implements / of f32.
+func DivF32(x, y u32) u32 {
+	return F32FromF64(DivF64(F64FromF32(x), F64FromF32(y)))
+}
+
+// NegF32 implements unary - of f32.
+func NegF32(x u32) u32 {
+	return x ^ signBit32
+}
+
+// EqF32 implements == of f32.
+func EqF32(x, y u32) bool { return EqF64(F64FromF32(x), F64FromF32(y)) }
+
+// LtF32 implements < of f32.
+func LtF32(x, y u32) bool { return LtF64(F64FromF32(x), F64FromF32(y)) }
+
+// LeF32 implements <= of f32.
+func LeF32(x, y u32) bool { return LeF64(F64FromF32(x), F64FromF32(y)) }
+
+// MinF32 implements min of f32.
+func MinF32(x, y u32) u32 { return F32FromF64(MinF64(F64FromF32(x), F64FromF32(y))) }
+
+// MaxF32 implements max of f32.
+func MaxF32(x, y u32) u32 { return F32FromF64(MaxF64(F64FromF32(x), F64FromF32(y))) }
+
+// I64FromF32 converts an f32 to a signed integer of the given width.
+func I64FromF32(x u32, bits int) (i64, bool) { return I64FromF64(F64FromF32(x), bits) }
+
+// U64FromF32 converts an f32 to an unsigned integer of the given width.
+func U64FromF32(x u32, bits int) (u64, bool) { return U64FromF64(F64FromF32(x), bits) }

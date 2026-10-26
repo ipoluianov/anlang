@@ -25,6 +25,10 @@ type Desc struct {
 	Floats  FloatSupport
 	// Memory are the memory regions of a bare target.
 	Memory []Region
+	// Device is the description of the peripherals, registers and
+	// interrupts of a microcontroller, usually svd.Load of a file
+	// (spec/14-embedded.md).
+	Device Device
 	// Stack is the stack size of main in bytes.
 	Stack int
 	// Provides and Lacks are the environment effects that the target
@@ -91,5 +95,115 @@ type BootSector struct{}
 
 func (BootSector) Kind() string { return "boot" }
 
+// ELFFormat is an ELF executable; on a bare target, its segments are at
+// the addresses of the memory regions, for debuggers and flashing tools.
+type ELFFormat struct{}
+
+func (ELFFormat) Kind() string { return "elf" }
+
+// BINFormat is the raw contents of the Exec region from its start.
+type BINFormat struct{}
+
+func (BINFormat) Kind() string { return "bin" }
+
+// HEXFormat is Intel HEX records of the contents of BIN.
+type HEXFormat struct{}
+
+func (HEXFormat) Kind() string { return "hex" }
+
+// Wasm is a WebAssembly module (target.format.wasm) whose memory holds
+// the constant and the writable data from Origin.
+type Wasm struct {
+	Origin int
+}
+
+func (Wasm) Kind() string { return "wasm" }
+
+// HTML is an HTML page that runs the WebAssembly module of the image in a
+// browser, with a console for its standard input and output
+// (target.format.html).
+type HTML struct{}
+
+func (HTML) Kind() string { return "html" }
+
+// The formats without parameters.
+const (
+	ELF  = ELFFormat{}
+	BIN  = BINFormat{}
+	HEX  = HEXFormat{}
+	Page = HTML{}
+)
+
 // KiB is 1024 bytes, for sizes of regions and stacks.
 const KiB = 1024
+
+// Device is a device description (spec/14-embedded.md §1), read from an
+// SVD file by svd.Load.
+type Device struct {
+	Name        string
+	Description string
+	Peripherals []Peripheral
+	// Interrupts are the interrupts of all peripherals, by number.
+	Interrupts []Interrupt
+}
+
+// Peripheral is a peripheral instance at a base address.
+type Peripheral struct {
+	Name        string
+	Description string
+	// Group names the kind of the peripheral, such as "GPIO"; derived
+	// peripherals share the group of their original.
+	Group string
+	// DerivedFrom is the peripheral whose registers this one has.
+	DerivedFrom string
+	Base        u64
+	Registers   []Register
+}
+
+// Register is a register at an offset from the base of its peripheral.
+type Register struct {
+	Name        string
+	Description string
+	Offset      u64
+	// Size is the width in bits.
+	Size   int
+	Access Access
+	Reset  u64
+	Fields []Field
+}
+
+// Field is a bit field of a register.
+type Field struct {
+	Name        string
+	Description string
+	// Lsb is the number of the least significant bit; Width the number
+	// of bits.
+	Lsb, Width int
+	Access     Access
+	// Values are the allowed values of the field, if the description
+	// lists them.
+	Values []Value
+}
+
+// Value is an allowed value of a field.
+type Value struct {
+	Name        string
+	Description string
+	Value       u64
+}
+
+// Interrupt is an interrupt of the device.
+type Interrupt struct {
+	Name        string
+	Description string
+	Number      int
+}
+
+// Access is the access of a register or a field.
+type Access enum {
+	ReadWrite
+	ReadOnly
+	WriteOnly
+	WriteOnce
+	ReadWriteOnce
+}

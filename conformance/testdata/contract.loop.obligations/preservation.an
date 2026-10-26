@@ -1,0 +1,24 @@
+// want: contract.obligation.unproven
+// checks: contract.loop.obligations
+
+// The body adds one more than the element, so the invariant does not
+// hold after an iteration.
+package main
+
+profile core
+
+import "an/math"
+
+func Sum(xs []i32) i64 {
+	var s i64
+	for i := range xs {
+		invariant s == math.Sum(xs[:i])
+		s += i64(xs[i]) + 1
+	}
+	return s
+}
+
+func main() {
+	var xs [3]i32
+	_ = Sum(xs[:])
+}

@@ -324,14 +324,46 @@ func (c *checker) stmt(ctxt stmtContext, s syntax.Stmt) {
 			}
 			return
 		}
-		step := 21
-		if s.Word == "invariant" {
-			step = 23
-		}
-		c.notSupported(s.Pos(), step, s.Word+" clauses")
+		c.contract(s)
 
 	default:
 		c.errorf(s.Pos(), "stmt.go", "invalid statement")
+	}
+}
+
+// contract checks a requires or ensures clause: a boolean expression; in
+// an ensures clause of a function with one unnamed result, result denotes
+// it (contract.syntax.bool, contract.expr.result).
+func (c *checker) contract(s *syntax.ContractStmt) {
+	if c.fn == nil {
+		return
+	}
+	saved := c.scope
+	c.scope = NewScope(saved)
+	defer func() { c.scope = saved }()
+	if s.Word == "ensures" {
+		if r := c.fn.sig.Results; r.Len() == 1 && r.Vars[0].name == "" {
+			v := &Var{object: object{name: "result", typ: r.Vars[0].typ, pos: s.Pos()}}
+			v.used = true
+			c.scope.Insert(v)
+			c.info.ContractResults[s] = v
+		}
+	}
+	c.contractExpr(s.X, s.Word)
+}
+
+// contractExpr checks the boolean expression of a contract clause.
+func (c *checker) contractExpr(e syntax.Expr, word string) {
+	var x operand
+	c.inContract++
+	c.expr(&x, e)
+	c.inContract--
+	if x.mode == invalid {
+		return
+	}
+	c.defaultUntyped(&x)
+	if !isBoolean(x.typ) {
+		c.errorf(e.Pos(), "contract.syntax.bool", "the expression of a %s clause must be a boolean, not %s", word, &x)
 	}
 }
 
@@ -1186,82 +1218,6 @@ func (c *checker) readsArgs(fun syntax.Expr) bool {
 		return true
 	}
 	return false
-}
-
-// interval returns bounds of the values of integer expression e from the
-// facts of type.conv.int-narrow-facts.
-func (c *checker) interval(e syntax.Expr) (lo, hi constant.Value, ok bool) {
-	if tv, ok := c.info.Types[e]; ok && tv.Value != nil {
-		v := constant.ToInt(tv.Value)
-		return v, v, v.Kind() == constant.Int
-	}
-	typeRange := func() (constant.Value, constant.Value, bool) {
-		b, ok := core(c.info.Types[e].Type).(*Basic)
-		if !ok || b.info&IsInteger == 0 || isUntyped(b) {
-			return nil, nil, false
-		}
-		bits, signed := c.intRange(b)
-		one := constant.MakeInt64(1)
-		if signed {
-			lo := constant.UnaryOp(tokenSub, constant.Shift(one, tokenShl, uint(bits-1)), 0)
-			return lo, constant.BinaryOp(constant.UnaryOp(tokenSub, lo, 0), tokenSub, one), true
-		}
-		return constant.MakeInt64(0), constant.BinaryOp(constant.Shift(one, tokenShl, uint(bits)), tokenSub, one), true
-	}
-	constOf := func(e syntax.Expr) (constant.Value, bool) {
-		if tv, ok := c.info.Types[e]; ok && tv.Value != nil {
-			v := constant.ToInt(tv.Value)
-			return v, v.Kind() == constant.Int
-		}
-		return nil, false
-	}
-	zero, one := constant.MakeInt64(0), constant.MakeInt64(1)
-	switch e := e.(type) {
-	case *syntax.ParenExpr:
-		return c.interval(e.X)
-	case *syntax.Name:
-		if v, ok := c.info.Uses[e].(*Var); ok {
-			if n, ok := c.rangeKeys[v]; ok && n >= 1 {
-				return zero, constant.MakeInt64(n - 1), true
-			}
-		}
-	case *syntax.BinaryExpr:
-		switch e.Op {
-		case syntax.And:
-			for _, x := range []syntax.Expr{e.Y, e.X} {
-				if k, ok := constOf(x); ok && constant.Sign(k) >= 0 {
-					return zero, k, true
-				}
-			}
-		case syntax.Rem:
-			if k, ok := constOf(e.Y); ok && constant.Sign(k) > 0 {
-				top := constant.BinaryOp(k, tokenSub, one)
-				if isUnsigned(c.info.Types[e.X].Type) {
-					return zero, top, true
-				}
-				return constant.UnaryOp(tokenSub, top, 0), top, true
-			}
-		case syntax.Shr:
-			b, isBasic := core(c.info.Types[e.X].Type).(*Basic)
-			if k, ok := constOf(e.Y); ok && isBasic && b.info&IsUnsigned != 0 {
-				bits, _ := c.intRange(b)
-				s, _ := constant.Int64Val(k)
-				if s >= int64(bits) {
-					return zero, zero, true
-				}
-				return zero, constant.BinaryOp(constant.Shift(one, tokenShl, uint(int64(bits)-s)), tokenSub, one), true
-			}
-		}
-	case *syntax.CallExpr:
-		if len(e.Args) == 1 && c.isConversion(e) {
-			if lo, hi, ok := c.interval(e.Args[0]); ok {
-				if tlo, thi, ok := typeRange(); ok && constant.Compare(lo, tokenGeq, tlo) && constant.Compare(hi, tokenLeq, thi) {
-					return lo, hi, true
-				}
-			}
-		}
-	}
-	return typeRange()
 }
 
 // rangeFunc returns the iteration types of an iterator function

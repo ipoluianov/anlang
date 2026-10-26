@@ -23,6 +23,9 @@ type Constraints struct {
 	Provides []string
 	Lacks    []string
 	HasDesc  bool
+	// Handlers are the keys of the interrupt handlers, entry points
+	// like Main.
+	Handlers []string
 }
 
 // Environment are the environment effects (target.effects.environment).
@@ -206,6 +209,10 @@ func (ck *checker) pkg(pkg *Package) {
 		}
 		x := ck.p.execNoParams(key)
 		for _, e := range violations(x, s.Without) {
+			if s.Handler {
+				ck.errorf(s.Pos, "emb.irq.effects", "%s has effect %s, which an interrupt handler cannot have: %s", shortKey(key), e.Name(), strings.Join(ck.chain(key, e, x), " → "))
+				continue
+			}
 			ck.errorf(s.Pos, "eff.without.check", "%s ensures effect.Without(%s), but it has effect %s: %s", shortKey(key), names(s.Without), e.Name(), strings.Join(ck.chain(key, e, x), " → "))
 		}
 	}
@@ -282,8 +289,20 @@ func (ck *checker) target() {
 	if s == nil {
 		return
 	}
+	for _, h := range append([]string{ck.c.Main}, ck.c.Handlers...) {
+		ck.entryEffects(h)
+	}
+}
+
+// entryEffects checks the effects of an entry point of the program, main
+// or an interrupt handler, against the target.
+func (ck *checker) entryEffects(entry string) {
+	s := ck.p.Summary(entry)
+	if s == nil {
+		return
+	}
 	x := map[Effect]Origin{}
-	for e, o := range ck.p.exec[ck.c.Main] {
+	for e, o := range ck.p.exec[entry] {
 		x[e] = o
 	}
 	for e, o := range s.D {
@@ -300,7 +319,7 @@ func (ck *checker) target() {
 	}
 	for _, e := range sortedEffects(x) {
 		name := e.Name()
-		chain := strings.Join(ck.p.Chain(ck.c.Main, e, true), " → ")
+		chain := strings.Join(ck.p.Chain(entry, e, true), " → ")
 		switch {
 		case e == Foreign:
 			if len(lacks) > 0 {

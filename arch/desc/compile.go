@@ -15,7 +15,7 @@ type (
 type ctx struct {
 	m    *Machine
 	vars []val
-	ops  []*operandVal // the operands a, b and c of the instruction
+	ops  []*operandVal // the operands a, b, c and d of the instruction
 	ret  val
 	done bool
 	brk  bool
@@ -68,7 +68,7 @@ func (cp *compiler) declare(name string) int {
 	return s
 }
 
-var opIndex = map[string]int{"a": 0, "b": 1, "c": 2}
+var opIndex = map[string]int{"a": 0, "b": 1, "c": 2, "d": 3}
 
 // compileFuncs compiles the functions of the shared definitions.
 func (a *Arch) compileFuncs() {
@@ -227,9 +227,14 @@ func (cp *compiler) expr(x Expr) cexpr {
 			return func(c *ctx) val { return val{c.m.readReg(r), w} }
 		}
 		if i, ok := opIndex[x.Name]; ok {
+			a := cp.a
 			return func(c *ctx) val {
 				o := c.ops[i]
 				switch {
+				case o.reg == a.pc && a.PCRead != 0:
+					// A program counter operand reads as the program
+					// counter does.
+					return val{(c.m.istart + uint64(a.PCRead)) & mask(o.reg.Width), o.reg.Width}
 				case o.reg != nil:
 					return val{c.m.readReg(o.reg), o.reg.Width}
 				case o.mem:

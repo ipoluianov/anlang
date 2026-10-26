@@ -2,8 +2,10 @@
 
 package main
 
+func widen(a i8) u64 {
+	return u64(a)
+}
+
 func main() {
-	var a i8 = 1
-	b := u64(a)
-	_ = b
+	_ = widen(1)
 }

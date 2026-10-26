@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"an/syntax"
 )
 
 // Type is an Anlang type (spec/02-types.md).
@@ -201,6 +203,9 @@ type Struct struct {
 	Fields []*Var
 	Tags   []string // "" for a field without a tag
 	Layout string   // "", "c" or "packed" (type.layout.c, type.layout.packed)
+	// Invariants are the expressions of the invariant clauses
+	// (contract.type.clause), with the fields in scope.
+	Invariants []syntax.Expr
 }
 
 // Tuple is an ordered list of variables: the parameters or results of a

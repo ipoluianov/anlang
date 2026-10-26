@@ -10,7 +10,13 @@ A *device description* describes the peripherals, registers and interrupt vector
 
 **emb.device.source** — A device description MUST be produced at compile time. The standard source is a vendor SVD file loaded with `svd.Load(path)`; `svd.Load` runs under the rules for compile-time evaluation and generators ([10-compile-time](10-compile-time.md)).
 
+**emb.device.schema** — A device description is a value of type `target.Device` of package `an/target`: its `Name` and `Description`, its `Peripherals` and its `Interrupts` (each with a `Name`, a `Description` and a `Number`), in the order of their numbers. A `target.Peripheral` has a `Name`, a `Description`, a `Group` that names its kind (such as `GPIO`), the peripheral it is `DerivedFrom`, a `Base` address and its `Registers`; a `target.Register` has a `Name`, a `Description`, an `Offset` from the base, a `Size` in bits, an `Access` (`target.ReadWrite`, `target.ReadOnly`, `target.WriteOnly`, `target.WriteOnce`, `target.ReadWriteOnce`), a `Reset` value and its `Fields`; a `target.Field` has a `Name`, a `Description`, its least significant bit `Lsb`, its `Width`, an `Access` and its allowed `Values`, each with a `Name`, a `Description` and a `Value`.
+
+**emb.device.svd** — `svd.Load(name)` of package `an/svd` (profile `app`) reads the SVD file `name` of the directory of the target package (**ct.eval.read-input**) and returns its device description. It accepts the elements of SVD 1.1 for devices, peripherals with `derivedFrom`, registers, fields given by `bitOffset` and `bitWidth`, by `lsb` and `msb` or by `bitRange`, enumerated values and interrupts; a register takes its size, access and reset value from its peripheral or the device when it gives none, and a derived peripheral has the registers, the group and the description of its original. Clusters and `dim` arrays are rejected with a message.
+
 **emb.device.package** — For a target whose description has a `Device`, the implementation MUST provide the package `an/device`, generated from that description. The content of `an/device` depends on the selected target. Importing `an/device` when the selected target has no `Device` is an error.
+
+**emb.device.api** — Package `an/device` is in profile `core`. For each group of peripherals it declares a struct type named after the group with the suffix `_Regs`, whose fields are the registers at their offsets, and for each peripheral a package-level variable named after it, mapped at its base address (**emb.reg.unsafe**), such as `device.GPIOC` of type `device.GPIO_Regs`. Peripherals of one group share their types. A register has a type named after the group and the register, such as `GPIO_ODR`, of the unsigned integer of its size; for each field it has a method that reads the field, such as `ODR13()`, unless the field is write-only, and a method `With…` that returns the register with the field replaced, such as `WithODR13(true)`. A field with allowed values has an enum type whose variant names are the type name and the value name joined by an underscore, such as `GPIO_MODE_Output2MHz`; reading it returns the variant and whether the bits are an allowed value. A field of one bit without allowed values has a type with underlying type `bool`, and a wider one a type of the smallest unsigned integer, whose `With…` method requires that its argument fits the field (**emb.reg.values**). Fields whose names differ only in a trailing number and whose allowed values are the same share a type named without the number, such as `GPIO_MODE` for `MODE0` to `MODE15`. The struct type of a group has the iterator method `Lock` (**emb.lock.form**), which yields its receiver with the interrupts disabled and restores their state after the body. The type `Interrupt` and the constants `Interrupt<name>` give the numbers of the interrupts.
 
 **emb.device.granularity** — The device description defines the *ownership units*: each peripheral instance (for example `TIM2`, `USART1`) is a unit. Where the hardware allows parts of a peripheral to be changed independently without read-modify-write (for example GPIO pins with atomic set/reset registers), the description MAY declare each part (each pin) as a separate unit.
 
@@ -18,7 +24,7 @@ A *device description* describes the peripherals, registers and interrupt vector
 
 **emb.reg.types** — For each register and bit field of the device description the generated package MUST declare a distinct type. A field whose description lists its allowed values MUST have a type whose values are exactly those values.
 
-**emb.reg.values** — Writing a value that is not an allowed value of a field is a compile-time error. A non-constant value of a wider type MUST be converted under the narrowing rules of [02-types](02-types.md) (the conversion compiles only if the range is proven, otherwise it yields a comma-ok form).
+**emb.reg.values** — Writing a value that is not an allowed value of a field is a compile-time error. A non-constant value of a wider type MUST be converted under the narrowing rules of [02-types](02-types.md) (the conversion compiles only if the range is proven, otherwise it yields a comma-ok form). For a field of n bits without allowed values whose type is wider, the `With…` method has the precondition `requires v <= 2ⁿ − 1`: a value that the solver does not prove to fit is rejected (**contract.obligation.unproven**).
 
 **emb.reg.volatile** — Every read and write of a device register is a *volatile access*: the implementation MUST NOT remove, duplicate, merge or reorder volatile accesses relative to other volatile accesses of the same execution context.
 
@@ -66,14 +72,14 @@ A *device description* describes the peripherals, registers and interrupt vector
 **emb.ctx.multi** — If `C(U)` has more than one element, every access to `U` outside the initialization phase MUST occur inside a critical section of `U`:
 
 ```go
-for t := range device.TIM2.Lock() {
-    t.ClearUpdateFlag()
+for t := range device.TIM2.Lock {
+    t.SR = t.SR.WithUIF(false)
 }
 ```
 
 Any other access is an error. The diagnostic MUST name at least two contexts in `C(U)` and the access path in each, for example: `TIM2 is used in main (after interrupts.Enable) and in interrupt TIM2 without a critical section`.
 
-**emb.lock.form** — `Lock()` of an ownership unit returns an iterator that yields `inout` access to the unit exactly once, as specified for range-over-func with `inout` in [05-statements](05-statements.md).
+**emb.lock.form** — `Lock` of an ownership unit is an iterator method that yields `inout` access to the unit exactly once, as specified for range-over-func with `inout` in [05-statements](05-statements.md); a critical section of `U` is the body of a range statement over `U.Lock`, together with the expression of the range statement. An access in a function that the body calls is outside the critical section.
 
 **emb.lock.ceiling** — The *priority ceiling* of `U` is the highest priority among the contexts in `C(U)`. While the body of a critical section of `U` executes, the implementation MUST prevent preemption by every context whose priority is not above the ceiling (for example by raising the interrupt priority mask, or by disabling interrupts where the architecture has no priority masking). The ceiling MUST be computed at compile time.
 
@@ -85,7 +91,7 @@ Any other access is an error. The diagnostic MUST name at least two contexts in 
 
 **emb.init.start** — On targets with interrupts, `main` begins execution with interrupts globally disabled and the task scheduler not running.
 
-**emb.init.end** — The *initialization phase* of `main` consists of the program points reachable from the entry of `main` along a path that does not pass through a call of `interrupts.Enable()` or `task.Run()`. An access to an ownership unit inside the initialization phase does not add the main context to `C(U)`.
+**emb.init.end** — The *initialization phase* of `main` consists of the program points reachable from the entry of `main` along a path that does not pass through a call of `interrupts.Enable()` or `task.Run()`. An access to an ownership unit inside the initialization phase does not add the main context to `C(U)`. Until the analysis follows the control flow (roadmap step 21), the initialization phase is the top-level statements of the body of `main` before its first top-level statement that calls `interrupts.Enable()`; if `main` calls it only inside another statement, `main` has no initialization phase, and if it does not call it, no interrupt handler runs and the handlers are not contexts.
 
 **emb.init.calls** — `interrupts.Enable()` and `task.Run()` MUST be called only directly from `main`.
 
@@ -107,7 +113,7 @@ Any other access is an error. The diagnostic MUST name at least two contexts in 
 
 **emb.irq.no-call** — An `interrupt` handler MUST NOT be called, referenced as a function value or passed as an argument.
 
-**emb.irq.vectors** — The implementation MUST generate the interrupt vector table from the device description and the declared handlers. Vectors without a handler MUST be bound to a default handler that behaves as a panic with the target's `OnPanic` behavior ([19-runtime](19-runtime.md)).
+**emb.irq.vectors** — The implementation MUST generate the interrupt vector table from the device description and the declared handlers. Vectors without a handler MUST be bound to a default handler that behaves as a panic with the target's `OnPanic` behavior ([19-runtime](19-runtime.md)). The code generator writes the table with the platform operation `vectors`, which receives the reset vector and the default handler, then the operation `vector` for each interrupt of the device from number 0, which receives its handler or the default handler ([13-targets](13-targets.md), **target.platform.bare**). A handler is entered and left with the operations `enter.handler` and `leave.handler`, which save the registers that the templates use and the processor does not save; the default handler panics with the reason `unhandled interrupt`.
 
 ## 4. Static tasks
 
@@ -124,6 +130,8 @@ Any other access is an error. The diagnostic MUST name at least two contexts in 
 **emb.stack.limit** — If a stack requirement exceeds the size available for it (the target's `Stack` for the main stack, the computed task stack for a task), the build MUST fail, and the diagnostic MUST show the deepest call chain.
 
 **emb.stack.recursion** — Recursion in the `core` profile is subject to [19-runtime](19-runtime.md): recursion without a proven depth bound in a task or handler is an error.
+
+**emb.stack.compute** — The code generator computes the depth of a function from its frame, with what `enter` pushes (`ABI.Params`, **target.arch.abi**), and the deepest of the functions it calls; an indirect call may call each function whose address the program takes and whose parameters and results have the types of the call. A handler adds `ABI.InterruptFrame`, what the processor and `enter.handler` push. Interrupts of the same priority do not preempt each other, so the main stack needs the depth of `main` and that of the deepest handler. A cycle of calls through the panic functions of the runtime package or the routine that runs the deferred calls during a panic is not recursion: the program ends after the panic, and they count once. A function that calls itself with a proven bound d on the depth of its recursion (**rt.stack.core-recursion**) needs d times its frame and the deepest of the other functions it calls. The recursion is checked on every target, the depth against the `Stack` size on targets that have one.
 
 ## 6. Worst-case execution time
 

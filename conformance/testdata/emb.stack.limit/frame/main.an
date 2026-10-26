@@ -1,0 +1,14 @@
+// want: emb.stack.limit
+
+// The frame of main is larger than the 8 KiB stack of the target.
+package main
+
+profile core
+
+import "an/fmt"
+
+func main() {
+	var buf [9000]u8
+	buf[4500] = 1
+	fmt.Println(buf[4500])
+}

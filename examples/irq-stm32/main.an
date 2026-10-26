@@ -1,0 +1,54 @@
+// Command irqstm32 blinks the LED on pin PC13 of an STM32F103C8 board
+// once a second from an interrupt handler: timer TIM2 interrupts every
+// half second, the handler counts, and main sets the LED from the count
+// and sleeps until the next interrupt (spec/14-embedded.md §7).
+//
+// Until interrupts.Enable, main is in its initialization phase: it may
+// configure TIM2, which afterwards only the handler uses (emb.init.end).
+package main
+
+profile core
+
+import (
+	"an/atomic"
+	"an/cpu"
+	"an/device"
+	"an/interrupts"
+)
+
+// ticks counts the interrupts of TIM2.
+var ticks atomic.U32
+
+// tim2Bit is the bit of the interrupt of TIM2 in the registers of the
+// interrupt controller.
+const tim2Bit = 1 << 28
+
+func main() {
+	device.RCC.APB2ENR = device.RCC.APB2ENR.WithIOPCEN(true)
+	device.RCC.APB1ENR = device.RCC.APB1ENR.WithTIM2EN(true)
+	// PC13 is a push-pull output; the LED is on when the pin is low.
+	device.GPIOC.CRH = device.GPIOC.CRH.WithMODE13(device.GPIO_MODE_Output2MHz).WithCNF13(0)
+	// At the 8 MHz clock after reset, TIM2 counts at 10 kHz and updates
+	// every 5000 counts.
+	device.TIM2.PSC = device.TIM2.PSC.WithPSC(800 - 1)
+	device.TIM2.ARR = device.TIM2.ARR.WithARR(5000 - 1)
+	device.TIM2.EGR = device.TIM2.EGR.WithUG(true)
+	device.TIM2.SR = 0
+	device.TIM2.DIER = device.TIM2.DIER.WithUIE(true)
+	device.NVIC.ISER0 = tim2Bit
+	device.TIM2.CR1 = device.TIM2.CR1.WithCEN(true)
+	interrupts.Enable()
+	for {
+		if ticks.Load()%2 == 0 {
+			device.GPIOC.BSRR = device.GPIOC.BSRR.WithBS13(true)
+		} else {
+			device.GPIOC.BSRR = device.GPIOC.BSRR.WithBR13(true)
+		}
+		cpu.WaitForInterrupt()
+	}
+}
+
+interrupt TIM2() {
+	device.TIM2.SR = 0
+	ticks.Add(1)
+}

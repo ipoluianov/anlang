@@ -1,0 +1,16 @@
+// want: emb.irq.effects
+
+// An interrupt handler cannot panic: the checked addition may overflow.
+package main
+
+profile core
+
+import "an/atomic"
+
+var ticks atomic.U32
+
+func main() {}
+
+interrupt TIM2() {
+	ticks.Store(ticks.Load() + 1)
+}

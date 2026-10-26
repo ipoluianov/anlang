@@ -1,0 +1,17 @@
+// want: contract.obligation.unproven
+// checks: contract.type.boundaries
+
+// A composite literal is a boundary.
+package main
+
+profile core
+
+type Range struct {
+	invariant lo <= hi
+	lo, hi int
+}
+
+func main() {
+	r := Range{lo: 3, hi: 1}
+	_ = r
+}

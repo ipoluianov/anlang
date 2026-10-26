@@ -344,6 +344,12 @@ func (w *walker) builtin(n *syntax.CallExpr) {
 				}
 			}
 		}
+	case "gen.ReadFile":
+		fn.source(ReadInput, pos, "gen.ReadFile")
+	case "console.ReadByte":
+		// It waits for input (std.console.read).
+		fn.source(Console, pos, name)
+		fn.source(Block, pos, name)
 	case "effect.Mark":
 		if e, ok := a.effectConst(n.Args[0]); ok {
 			fn.source(e, pos, "effect.Mark")

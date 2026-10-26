@@ -1,0 +1,11 @@
+// want: emb.device.package
+
+// An/device exists only for a target with a device description: the
+// conformance suite builds single-file tests for the host target.
+package main
+
+import "an/device"
+
+func main() {
+	_ = device.GPIOC
+}

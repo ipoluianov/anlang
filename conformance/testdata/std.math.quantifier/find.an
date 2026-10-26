@@ -1,0 +1,48 @@
+// want: ok
+// checks: contract.loop.obligations
+
+// A linear search with its contract: the result is an index of x, or x
+// is nowhere in xs. The loop invariant says that x is not among the
+// elements before i.
+package main
+
+profile core
+
+import (
+	"an/fmt"
+	"an/math"
+)
+
+func find(xs []int, x int) int {
+	ensures result == -1 || 0 <= result && result < len(xs) && xs[result] == x
+	ensures result != -1 || math.ForAll(0, len(xs), func(j int) bool { return xs[j] != x })
+
+	for i := range xs {
+		invariant math.ForAll(0, i, func(j int) bool { return xs[j] != x })
+		if xs[i] == x {
+			return i
+		}
+	}
+	return -1
+}
+
+func max(xs []int) int {
+	requires len(xs) > 0
+	ensures math.ForAll(0, len(xs), func(j int) bool { return xs[j] <= result })
+	ensures math.Exists(0, len(xs), func(j int) bool { return xs[j] == result })
+
+	m := xs[0]
+	for i := range xs {
+		invariant math.ForAll(0, i, func(j int) bool { return xs[j] <= m })
+		invariant math.Exists(0, len(xs), func(j int) bool { return xs[j] == m })
+		if xs[i] > m {
+			m = xs[i]
+		}
+	}
+	return m
+}
+
+func main() {
+	xs := [5]int{4, 8, 15, 16, 23}
+	fmt.Println(find(xs[:], 15), find(xs[:], 42), max(xs[:]))
+}

@@ -1,0 +1,27 @@
+// want: emb.stack.recursion
+
+// even and odd call each other: only a function that calls itself has a
+// bound on the depth of its recursion (rt.stack.core-recursion).
+package main
+
+profile core
+
+import "an/fmt"
+
+func even(n u8) bool {
+	if n == 0 {
+		return true
+	}
+	return odd(n - 1)
+}
+
+func odd(n u8) bool {
+	if n == 0 {
+		return false
+	}
+	return even(n - 1)
+}
+
+func main() {
+	fmt.Println(even(10))
+}

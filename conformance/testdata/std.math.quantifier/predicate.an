@@ -1,0 +1,20 @@
+// want: std.math.quantifier
+
+// The predicate of a quantifier is a function literal with one return
+// statement.
+package main
+
+profile core
+
+import "an/math"
+
+func positive(i int) bool { return i > 0 }
+
+func f(n int) int {
+	requires math.ForAll(0, n, positive)
+	return n
+}
+
+func main() {
+	_ = f(1)
+}

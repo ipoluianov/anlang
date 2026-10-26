@@ -22,7 +22,7 @@ No construct in this file adds a keyword. `for const` is a combination of existi
 
 **ct.eval.no-env** — A compile-time evaluated call MUST NOT have any other effect. In particular `Clock`, `Random`, `Global`, `Tasks`, `Block`, `Foreign`, any I/O effect and any hardware effect make a call non-evaluable.
 
-**ct.eval.read-input** — During compile-time evaluation, `ReadInput` permits reading only files located inside the directory of the package that contains the constant declaration being evaluated, or its subdirectories. The path MUST be a compile-time constant. The content of every file read is part of the build cache key (see [22-compiler](22-compiler.md)).
+**ct.eval.read-input** — During compile-time evaluation, `ReadInput` permits reading only files located inside the directory of the package that contains the constant declaration being evaluated, or its subdirectories. The path MUST be a compile-time constant. The content of every file read is part of the build cache key (see [22-compiler](22-compiler.md)). A file is read with `gen.ReadFile(name)` of package `an/gen`, which has effect `ReadInput` and returns the bytes of the file as `[]u8`; a name that is not a slash-separated path within the directory, or a file that cannot be read, makes the evaluation panic.
 
 **Note** — This is what makes `svd.Load("STM32F103.svd")` in a target description possible (see [13-targets](13-targets.md)).
 

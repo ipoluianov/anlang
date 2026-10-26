@@ -1,0 +1,509 @@
+// Package svd reads device descriptions (target.Device) from CMSIS-SVD
+// files at compile time (spec/14-embedded.md §1): the peripherals of a
+// microcontroller with their base addresses, registers, bit fields and
+// allowed values, and its interrupts. A target description sets its
+// Device to svd.Load of a file in its directory, which compile-time
+// evaluation reads (ct.eval.read-input).
+//
+// The reader accepts the elements of SVD 1.1 that describe peripherals,
+// registers, fields, enumerated values and interrupts, including
+// derivedFrom of peripherals and the default size, access and reset value
+// of the device and the peripherals; clusters and dim arrays are rejected.
+package svd
+
+profile app
+
+import (
+	"an/gen"
+	"an/target"
+)
+
+// Load reads the SVD file name of the directory of the package being
+// evaluated.
+func Load(name string) target.Device {
+	return Parse(string(gen.ReadFile(name)))
+}
+
+// Parse reads the text of an SVD file.
+func Parse(text string) target.Device {
+	var p parser
+	p.s = text
+	p.run()
+	return p.dev
+}
+
+// token kinds.
+const (
+	tokEOF = iota
+	tokStart
+	tokEnd
+	tokText
+)
+
+// parser reads SVD text element by element. The element being read and
+// its parents are built in the fields per, reg, field and value, and
+// added to their parents when they end.
+type parser struct {
+	s   string
+	i   int
+	dev target.Device
+	// The kind and contents of the current token.
+	kind    int
+	name    string // of a start or end tag
+	text    string // of text
+	derived string // the derivedFrom attribute of a start tag
+	empty   bool   // a start tag that ends itself
+	path    []string
+	per     target.Peripheral
+	reg     target.Register
+	field   target.Field
+	value   target.Value
+	irq     target.Interrupt
+	// The defaults of registers, of the device and of the peripheral.
+	size   int
+	access target.Access
+	reset  u64
+	psize  int
+	pacc   target.Access
+	preset u64
+}
+
+func (p inout parser) fail(msg string) {
+	panic("svd: " + msg + " at offset " + itoa(p.i))
+}
+
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	var b []u8
+	for n > 0 {
+		b = append(b, "0123456789"[n%10])
+		n /= 10
+	}
+	for i, j := 0, len(b)-1; i < j; i, j = i+1, j-1 {
+		b[i], b[j] = b[j], b[i]
+	}
+	return string(b)
+}
+
+func isSpace(c u8) bool { return c == ' ' || c == '\t' || c == '\n' || c == '\r' }
+
+// next reads the next token.
+func (p inout parser) next() {
+	for {
+		if p.i >= len(p.s) {
+			p.kind = tokEOF
+			return
+		}
+		if p.s[p.i] != '<' {
+			start := p.i
+			for p.i < len(p.s) && p.s[p.i] != '<' {
+				p.i++
+			}
+			text := trim(p.s[start:p.i])
+			if text == "" {
+				continue
+			}
+			p.kind, p.text = tokText, unescape(text)
+			return
+		}
+		if hasPrefix(p.s, p.i, "<?") {
+			p.skipPast("?>")
+			continue
+		}
+		if hasPrefix(p.s, p.i, "<!--") {
+			p.skipPast("-->")
+			continue
+		}
+		end := p.s[p.i+1] == '/'
+		p.i++
+		if end {
+			p.i++
+		}
+		start := p.i
+		for p.i < len(p.s) && !isSpace(p.s[p.i]) && p.s[p.i] != '>' && p.s[p.i] != '/' {
+			p.i++
+		}
+		p.name = p.s[start:p.i]
+		p.derived = ""
+		p.empty = false
+		// Attributes, of which derivedFrom matters.
+		for p.i < len(p.s) && p.s[p.i] != '>' {
+			if p.s[p.i] == '/' {
+				p.empty = true
+				p.i++
+				continue
+			}
+			if isSpace(p.s[p.i]) {
+				p.i++
+				continue
+			}
+			as := p.i
+			for p.i < len(p.s) && p.s[p.i] != '=' {
+				p.i++
+			}
+			attr := trim(p.s[as:p.i])
+			p.i++ // =
+			for p.i < len(p.s) && isSpace(p.s[p.i]) {
+				p.i++
+			}
+			if p.i >= len(p.s) {
+				break
+			}
+			q := p.s[p.i]
+			p.i++
+			vs := p.i
+			for p.i < len(p.s) && p.s[p.i] != q {
+				p.i++
+			}
+			if attr == "derivedFrom" {
+				p.derived = p.s[vs:p.i]
+			}
+			p.i++
+		}
+		if p.i >= len(p.s) {
+			p.fail("unterminated tag")
+		}
+		p.i++ // >
+		if end {
+			p.kind = tokEnd
+		} else {
+			p.kind = tokStart
+		}
+		return
+	}
+}
+
+func (p inout parser) skipPast(end string) {
+	for p.i < len(p.s) && !hasPrefix(p.s, p.i, end) {
+		p.i++
+	}
+	p.i += len(end)
+}
+
+func hasPrefix(s string, i int, prefix string) bool {
+	return len(s)-i >= len(prefix) && s[i:i+len(prefix)] == prefix
+}
+
+func trim(s string) string {
+	i, j := 0, len(s)
+	for i < j && isSpace(s[i]) {
+		i++
+	}
+	for j > i && isSpace(s[j-1]) {
+		j--
+	}
+	return s[i:j]
+}
+
+// unescape replaces the entities of XML text.
+func unescape(s string) string {
+	amp := false
+	for i := range len(s) {
+		if s[i] == '&' {
+			amp = true
+		}
+	}
+	if !amp {
+		return s
+	}
+	var b []u8
+	for i := 0; i < len(s); i++ {
+		if s[i] != '&' {
+			b = append(b, s[i])
+			continue
+		}
+		switch {
+		case hasPrefix(s, i, "&amp;"):
+			b = append(b, '&')
+			i += 4
+		case hasPrefix(s, i, "&lt;"):
+			b = append(b, '<')
+			i += 3
+		case hasPrefix(s, i, "&gt;"):
+			b = append(b, '>')
+			i += 3
+		case hasPrefix(s, i, "&quot;"):
+			b = append(b, '"')
+			i += 5
+		case hasPrefix(s, i, "&apos;"):
+			b = append(b, '\'')
+			i += 5
+		default:
+			b = append(b, '&')
+		}
+	}
+	return string(b)
+}
+
+// number reads a number of SVD: decimal, hexadecimal with 0x, or binary
+// with #.
+func (p inout parser) number(s string) u64 {
+	var v u64
+	switch {
+	case len(s) > 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X'):
+		for i := 2; i < len(s); i++ {
+			c := s[i]
+			var d u64
+			switch {
+			case '0' <= c && c <= '9':
+				d = u64(c - '0')
+			case 'a' <= c && c <= 'f':
+				d = u64(c-'a') + 10
+			case 'A' <= c && c <= 'F':
+				d = u64(c-'A') + 10
+			default:
+				p.fail("invalid number " + s)
+			}
+			v = v<<4 | d
+		}
+	case len(s) > 1 && s[0] == '#':
+		for i := 1; i < len(s); i++ {
+			if s[i] != '0' && s[i] != '1' {
+				p.fail("invalid number " + s)
+			}
+			v = v<<1 | u64(s[i]-'0')
+		}
+	default:
+		if s == "" {
+			p.fail("empty number")
+		}
+		for i := range len(s) {
+			c := s[i]
+			if c < '0' || c > '9' {
+				p.fail("invalid number " + s)
+			}
+			v = v*10 + u64(c-'0')
+		}
+	}
+	return v
+}
+
+func (p inout parser) small(s string) int {
+	v := p.number(s)
+	if v > 0x7FFF {
+		p.fail("number too large: " + s)
+	}
+	return int(v & 0x7FFF)
+}
+
+func (p inout parser) accessOf(s string) target.Access {
+	switch s {
+	case "read-write":
+		return target.ReadWrite
+	case "read-only":
+		return target.ReadOnly
+	case "write-only":
+		return target.WriteOnly
+	case "writeOnce":
+		return target.WriteOnce
+	case "read-writeOnce":
+		return target.ReadWriteOnce
+	}
+	p.fail("invalid access " + s)
+	return target.ReadWrite
+}
+
+// parent returns the element n levels above the current one, or "".
+func (p parser) parent(n int) string {
+	if len(p.path) < n+1 {
+		return ""
+	}
+	return p.path[len(p.path)-1-n]
+}
+
+func (p inout parser) run() {
+	p.size, p.access = 32, target.ReadWrite
+	for {
+		p.next()
+		switch p.kind {
+		case tokEOF:
+			p.finish()
+			return
+		case tokStart:
+			p.start()
+			if p.empty {
+				p.end()
+			} else {
+				p.path = append(p.path, p.name)
+			}
+		case tokEnd:
+			if len(p.path) == 0 || p.path[len(p.path)-1] != p.name {
+				p.fail("unexpected </" + p.name + ">")
+			}
+			p.path = p.path[:len(p.path)-1]
+			p.end()
+		case tokText:
+			p.set(p.text)
+		}
+	}
+}
+
+// start begins element p.name.
+func (p inout parser) start() {
+	switch p.name {
+	case "cluster", "dim":
+		p.fail("<" + p.name + "> is not supported")
+	case "peripheral":
+		p.per = target.Peripheral{DerivedFrom: p.derived}
+		p.psize, p.pacc, p.preset = p.size, p.access, p.reset
+	case "register":
+		p.reg = target.Register{Size: p.psize, Access: p.pacc, Reset: p.preset}
+	case "field":
+		p.field = target.Field{Access: p.reg.Access}
+	case "enumeratedValue":
+		p.value = target.Value{}
+	case "interrupt":
+		p.irq = target.Interrupt{}
+	}
+}
+
+// end ends element p.name, adding it to its parent.
+func (p inout parser) end() {
+	switch p.name {
+	case "peripheral":
+		p.dev.Peripherals = append(p.dev.Peripherals, p.per)
+	case "register":
+		p.per.Registers = append(p.per.Registers, p.reg)
+	case "field":
+		p.reg.Fields = append(p.reg.Fields, p.field)
+	case "enumeratedValue":
+		p.field.Values = append(p.field.Values, p.value)
+	case "interrupt":
+		p.dev.Interrupts = append(p.dev.Interrupts, p.irq)
+	}
+}
+
+// set sets the text of the current element.
+func (p inout parser) set(text string) {
+	elem, up := p.parent(0), p.parent(1)
+	switch up {
+	case "device":
+		switch elem {
+		case "name":
+			p.dev.Name = text
+		case "description":
+			p.dev.Description = text
+		case "size":
+			p.size = p.small(text)
+		case "access":
+			p.access = p.accessOf(text)
+		case "resetValue":
+			p.reset = p.number(text)
+		}
+	case "peripheral":
+		switch elem {
+		case "name":
+			p.per.Name = text
+		case "description":
+			p.per.Description = text
+		case "groupName":
+			p.per.Group = text
+		case "baseAddress":
+			p.per.Base = p.number(text)
+		case "size":
+			p.psize = p.small(text)
+		case "access":
+			p.pacc = p.accessOf(text)
+		case "resetValue":
+			p.preset = p.number(text)
+		}
+	case "interrupt":
+		switch elem {
+		case "name":
+			p.irq.Name = text
+		case "description":
+			p.irq.Description = text
+		case "value":
+			p.irq.Number = p.small(text)
+		}
+	case "register":
+		switch elem {
+		case "name":
+			p.reg.Name = text
+		case "description":
+			p.reg.Description = text
+		case "addressOffset":
+			p.reg.Offset = p.number(text)
+		case "size":
+			p.reg.Size = p.small(text)
+		case "access":
+			p.reg.Access = p.accessOf(text)
+		case "resetValue":
+			p.reg.Reset = p.number(text)
+		}
+	case "field":
+		switch elem {
+		case "name":
+			p.field.Name = text
+		case "description":
+			p.field.Description = text
+		case "bitOffset", "lsb":
+			p.field.Lsb = p.small(text)
+		case "bitWidth":
+			p.field.Width = p.small(text)
+		case "msb":
+			p.field.Width = p.small(text) - p.field.Lsb + 1
+		case "bitRange":
+			// [msb:lsb]
+			colon := 0
+			for i := range len(text) {
+				if text[i] == ':' {
+					colon = i
+				}
+			}
+			if len(text) < 5 || text[0] != '[' || text[len(text)-1] != ']' || colon == 0 {
+				p.fail("invalid bitRange " + text)
+			}
+			msb := p.small(text[1:colon])
+			p.field.Lsb = p.small(text[colon+1 : len(text)-1])
+			p.field.Width = msb - p.field.Lsb + 1
+		case "access":
+			p.field.Access = p.accessOf(text)
+		}
+	case "enumeratedValue":
+		switch elem {
+		case "name":
+			p.value.Name = text
+		case "description":
+			p.value.Description = text
+		case "value":
+			p.value.Value = p.number(text)
+		}
+	}
+}
+
+// finish copies the registers of derived peripherals and sorts the
+// interrupts by number.
+func (p inout parser) finish() {
+	for i := range len(p.dev.Peripherals) {
+		from := p.dev.Peripherals[i].DerivedFrom
+		if from == "" {
+			continue
+		}
+		found := false
+		for _, q := range p.dev.Peripherals {
+			if q.Name == from && q.DerivedFrom == "" {
+				p.dev.Peripherals[i].Registers = q.Registers
+				if p.dev.Peripherals[i].Group == "" {
+					p.dev.Peripherals[i].Group = q.Group
+				}
+				if p.dev.Peripherals[i].Description == "" {
+					p.dev.Peripherals[i].Description = q.Description
+				}
+				found = true
+			}
+		}
+		if !found {
+			p.fail("peripheral " + p.dev.Peripherals[i].Name + " is derived from unknown " + from)
+		}
+	}
+	irqs := p.dev.Interrupts
+	for i := 1; i < len(irqs); i++ {
+		for j := i; j > 0 && irqs[j].Number < irqs[j-1].Number; j-- {
+			irqs[j], irqs[j-1] = irqs[j-1], irqs[j]
+		}
+	}
+	p.dev.Interrupts = irqs
+}

@@ -8,7 +8,9 @@ import "fmt"
 // a particular architecture.
 type Machine struct {
 	A *Arch
-	// Mem is the physical memory: 2^AddressBits bytes.
+	// Mem is the memory from physical address 0: all 2^AddressBits bytes
+	// if AddressBits is at most 24, otherwise none. Map adds memory
+	// elsewhere; an access to an address without memory fails.
 	Mem []byte
 	// In and Out are the input and output ports; nil ports read 0.
 	In  func(port uint64, width int) uint64
@@ -18,20 +20,31 @@ type Machine struct {
 	// Cycles counts the clock cycles of the executed instructions.
 	Cycles int64
 
-	regs  []uint64 // the whole registers, by index in A.Registers
-	stack []val    // local slots of compiled semantics
-	sp    int
-	cache map[cacheKey]*decodedEntry
+	regions []region // the memory added by Map
+	ios     []ioRegion
+	regs    []uint64 // the whole registers, by index in A.Registers
+	stack   []val    // local slots of compiled semantics
+	sp      int
+	cache   map[cacheKey]*decodedEntry
 	// istart is the program counter value of the executing instruction.
 	istart uint64
-	opbuf  [3]operandVal
-	ops   [3]*operandVal
+	opbuf  [4]operandVal
+	ops    [4]*operandVal
 }
 
 // NewMachine returns a machine with zero registers and memory.
 func NewMachine(a *Arch) *Machine {
 	a.compileOnce.Do(a.compile)
-	m := &Machine{A: a, Mem: make([]byte, 1<<uint(a.AddressBits)), regs: make([]uint64, len(a.Registers)), cache: map[cacheKey]*decodedEntry{}}
+	return newMachine(a, true)
+}
+
+// newMachine returns a machine of the compiled description a, with
+// memory from address 0 if mem is set and AddressBits allows it.
+func newMachine(a *Arch, mem bool) *Machine {
+	m := &Machine{A: a, regs: make([]uint64, len(a.Registers)), cache: map[cacheKey]*decodedEntry{}}
+	if mem && a.AddressBits <= 24 {
+		m.Mem = make([]byte, 1<<uint(a.AddressBits))
+	}
 	for i := range a.Registers {
 		if r := &a.Registers[i]; r.Parent == "" {
 			m.regs[i] = uint64(r.Fixed)
@@ -41,6 +54,84 @@ func NewMachine(a *Arch) *Machine {
 		m.ops[i] = &m.opbuf[i]
 	}
 	return m
+}
+
+// region is memory at a physical address.
+type region struct {
+	base uint64
+	data []byte
+}
+
+// Map adds size bytes of zero memory at physical address base and
+// returns them.
+func (m *Machine) Map(base uint64, size int) []byte {
+	data := make([]byte, size)
+	m.regions = append(m.regions, region{base, data})
+	return data
+}
+
+// IO is a device at a range of physical addresses, such as the registers
+// of a peripheral: the machine reads and writes it with the width of each
+// access, at the offset from the start of the range.
+type IO interface {
+	Read(off uint64, width int) uint64
+	Write(off uint64, width int, v uint64)
+}
+
+type ioRegion struct {
+	base, size uint64
+	io         IO
+}
+
+// MapIO maps device io at size bytes from physical address base.
+func (m *Machine) MapIO(base, size uint64, io IO) {
+	m.ios = append(m.ios, ioRegion{base, size, io})
+}
+
+// ioAt returns the device at physical address addr and the offset into
+// it, if any.
+func (m *Machine) ioAt(addr uint64) (IO, uint64) {
+	for i := range m.ios {
+		r := &m.ios[i]
+		if addr-r.base < r.size {
+			return r.io, addr - r.base
+		}
+	}
+	return nil, 0
+}
+
+// Fault fails the executing instruction with a message, for devices.
+func Fault(format string, args ...any) { failf(format, args...) }
+
+// byteRef returns the byte at physical address addr; an address without
+// memory fails the executing instruction.
+func (m *Machine) byteRef(addr uint64) *byte {
+	if addr < uint64(len(m.Mem)) {
+		return &m.Mem[addr]
+	}
+	for i := range m.regions {
+		r := &m.regions[i]
+		if addr-r.base < uint64(len(r.data)) {
+			return &r.data[addr-r.base]
+		}
+	}
+	failf("no memory at address %#x", addr)
+	return nil
+}
+
+// peek returns the byte at physical address addr, and whether there is
+// memory there.
+func (m *Machine) peek(addr uint64) (byte, bool) {
+	if addr < uint64(len(m.Mem)) {
+		return m.Mem[addr], true
+	}
+	for i := range m.regions {
+		r := &m.regions[i]
+		if addr-r.base < uint64(len(r.data)) {
+			return r.data[addr-r.base], true
+		}
+	}
+	return 0, false
 }
 
 // compile compiles the semantics of the description.
@@ -53,6 +144,11 @@ func (a *Arch) compile() {
 		}
 	}
 	a.compileFuncs()
+	for i := range a.Operands {
+		if o := &a.Operands[i]; o.sparsed != nil {
+			o.csyntax, _ = a.compileExpr(o.sparsed, "v")
+		}
+	}
 	a.cfetch, _ = a.compileExpr(a.fetch)
 	a.caddress, _ = a.compileExpr(a.address, "seg", "off")
 	a.instrPC = true // addresses of operands read the program counter as instructions do
@@ -112,7 +208,7 @@ func (m *Machine) readReg(r *Register) uint64 {
 func (m *Machine) writeReg(r *Register, v uint64) {
 	v &= mask(r.Width)
 	if r.parent == nil {
-		m.regs[r.index] = (v | uint64(r.Fixed)) & mask(r.Width)
+		m.regs[r.index] = (v | uint64(r.Fixed)) &^ uint64(r.Zero) & mask(r.Width)
 		return
 	}
 	p := r.parent
@@ -124,10 +220,15 @@ func (m *Machine) addrMask() uint64 { return mask(m.A.AddressBits) }
 
 // Read returns the value of width bits at physical address addr.
 func (m *Machine) Read(addr uint64, width int) uint64 {
+	if len(m.ios) > 0 {
+		if io, off := m.ioAt(addr & m.addrMask()); io != nil {
+			return io.Read(off, width) & mask(width)
+		}
+	}
 	n := width / 8
 	var v uint64
 	for i := 0; i < n; i++ {
-		b := uint64(m.Mem[(addr+uint64(i))&m.addrMask()])
+		b := uint64(*m.byteRef((addr + uint64(i)) & m.addrMask()))
 		if m.A.Endian == 0 {
 			v |= b << uint(8*i)
 		} else {
@@ -139,6 +240,12 @@ func (m *Machine) Read(addr uint64, width int) uint64 {
 
 // Write stores width bits of v at physical address addr.
 func (m *Machine) Write(addr uint64, width int, v uint64) {
+	if len(m.ios) > 0 {
+		if io, off := m.ioAt(addr & m.addrMask()); io != nil {
+			io.Write(off, width, v&mask(width))
+			return
+		}
+	}
 	n := width / 8
 	for i := 0; i < n; i++ {
 		var b byte
@@ -147,7 +254,7 @@ func (m *Machine) Write(addr uint64, width int, v uint64) {
 		} else {
 			b = byte(v >> uint(8*(n-1-i)))
 		}
-		m.Mem[(addr+uint64(i))&m.addrMask()] = b
+		*m.byteRef((addr + uint64(i)) & m.addrMask()) = b
 	}
 }
 
@@ -243,7 +350,7 @@ func (m *Machine) Step() (err error) {
 
 func (e *decodedEntry) valid(m *Machine) bool {
 	for i, addr := range e.addrs {
-		if m.Mem[addr] != e.bytes[i] {
+		if b, _ := m.peek(addr); b != e.bytes[i] {
 			return false
 		}
 	}
@@ -259,9 +366,15 @@ func (m *Machine) decode(pcVal, fetch uint64) (*decodedEntry, error) {
 	var addrs [16]uint64
 	code := make([]byte, 16)
 	for i := range code {
-		m.writeReg(a.pc, pcVal+uint64(i))
+		// Set directly: the bits of the program counter that read as 0,
+		// such as bit 0 for halfword instructions, still count here.
+		if a.pc.parent == nil {
+			m.regs[a.pc.index] = (pcVal + uint64(i)) & mask(a.pc.Width)
+		} else {
+			m.writeReg(a.pc, pcVal+uint64(i))
+		}
 		addrs[i] = m.eval(a.cfetch).v & m.addrMask()
-		code[i] = m.Mem[addrs[i]]
+		code[i], _ = m.peek(addrs[i])
 	}
 	m.writeReg(a.pc, pcVal)
 	d, amb := a.Decode(code)
@@ -284,6 +397,8 @@ func (a *Arch) plan(d *Decoded, i int, o *Operand) opPlan {
 		return opPlan{reg: a.regs[o.Register], width: w}
 	case o.Constant:
 		return opPlan{imm: true, value: uint64(o.Value)}
+	case o.List || o.Syntax != "":
+		return opPlan{imm: true, value: d.Fields[name], width: w}
 	case o.Imm != 0:
 		v := o.bits(a, d.Fields[name]) & mask(w)
 		return opPlan{imm: true, value: v, relative: o.Relative, width: w}
@@ -385,10 +500,15 @@ func (m *Machine) byteAddr(o *operandVal, i int) uint64 {
 }
 
 func (m *Machine) readOperand(o *operandVal) uint64 {
+	if len(m.ios) > 0 {
+		if io, off := m.ioAt(m.byteAddr(o, 0)); io != nil {
+			return io.Read(off, o.width) & mask(o.width)
+		}
+	}
 	n := o.width / 8
 	var v uint64
 	for i := 0; i < n; i++ {
-		b := uint64(m.Mem[m.byteAddr(o, i)])
+		b := uint64(*m.byteRef(m.byteAddr(o, i)))
 		if m.A.Endian == 0 {
 			v |= b << uint(8*i)
 		} else {
@@ -399,6 +519,12 @@ func (m *Machine) readOperand(o *operandVal) uint64 {
 }
 
 func (m *Machine) writeOperand(o *operandVal, v uint64) {
+	if len(m.ios) > 0 {
+		if io, off := m.ioAt(m.byteAddr(o, 0)); io != nil {
+			io.Write(off, o.width, v&mask(o.width))
+			return
+		}
+	}
 	n := o.width / 8
 	for i := 0; i < n; i++ {
 		var b byte
@@ -407,7 +533,7 @@ func (m *Machine) writeOperand(o *operandVal, v uint64) {
 		} else {
 			b = byte(v >> uint(8*(n-1-i)))
 		}
-		m.Mem[m.byteAddr(o, i)] = b
+		*m.byteRef(m.byteAddr(o, i)) = b
 	}
 }
 

@@ -228,6 +228,13 @@ func dotBeforeName(key string) int {
 // the functions it calls (ct.eval.evaluable). It also returns the chain
 // to a source of each effect.
 func (p *Program) Expr(info *types.Info, e syntax.Expr) (map[Effect]Origin, func(Effect) []string) {
+	return p.Node(info, e)
+}
+
+// Node returns the effects of a syntax node of the package of info, such
+// as an expression or a statement, and a function that gives the call
+// chain to the source of each.
+func (p *Program) Node(info *types.Info, e syntax.Node) (map[Effect]Origin, func(Effect) []string) {
 	a := &analyzer{
 		info:     info,
 		imported: p.Summary,

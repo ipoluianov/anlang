@@ -31,6 +31,11 @@ func Decode(v any, t types.Type, dst reflect.Value) error {
 				n, _ := constant.Int64Val(constant.ToInt(c))
 				dst.SetInt(n)
 			}
+		case reflect.Uint64:
+			if c != nil {
+				n, _ := constant.Uint64Val(constant.ToInt(c))
+				dst.SetUint(n)
+			}
 		case reflect.Bool:
 			if c != nil {
 				dst.SetBool(constant.BoolVal(c))

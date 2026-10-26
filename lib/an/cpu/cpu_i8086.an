@@ -1,0 +1,11 @@
+// Package cpu gives access to the processor (spec/14-embedded.md).
+package cpu
+
+profile core
+
+import "an/arch/i8086"
+
+// WaitForInterrupt halts the processor until an interrupt.
+func WaitForInterrupt() {
+	i8086.Hlt(i8086.Regs{})
+}

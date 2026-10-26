@@ -26,11 +26,80 @@ type TargetDesc struct {
 	Pointers Pointers
 	Formats  []FormatDesc
 	Floats   int // 0 default, 1 hard, 2 soft, 3 none
+	Memory   []Region
+	Device   Device
 	Stack    int
 	Provides []string // effect names
 	Lacks    []string
 	OnPanic  int // 1 PrintAndExit, 2 Reset, 3 Halt
 	Clock    int
+}
+
+// Device is the description of the peripherals of a microcontroller
+// (spec/14-embedded.md §1), as target.Device declares it.
+type Device struct {
+	Name, Description string
+	Peripherals       []Peripheral
+	Interrupts        []Interrupt
+}
+
+// Peripheral is a peripheral instance.
+type Peripheral struct {
+	Name, Description, Group, DerivedFrom string
+	Base                                  uint64
+	Registers                             []Register
+}
+
+// Register is a register of a peripheral.
+type Register struct {
+	Name, Description string
+	Offset            uint64
+	Size              int
+	Access            int // 0 read-write, 1 read-only, 2 write-only, 3 write-once, 4 read-write-once
+	Reset             uint64
+	Fields            []Field
+}
+
+// Field is a bit field of a register.
+type Field struct {
+	Name, Description string
+	Lsb, Width        int
+	Access            int
+	Values            []Value
+}
+
+// Value is an allowed value of a field.
+type Value struct {
+	Name, Description string
+	Value             uint64
+}
+
+// Interrupt is an interrupt of the device.
+type Interrupt struct {
+	Name, Description string
+	Number            int
+}
+
+// Region is a memory region of a bare target (target.memory.region).
+type Region struct {
+	Name     string
+	At, Size int
+	Exec     bool
+}
+
+// Regions returns the first Exec region and the first other region of a
+// target with memory regions (target.memory.placement).
+func (d *TargetDesc) Regions() (code, data Region, ok bool) {
+	var hasCode, hasData bool
+	for _, r := range d.Memory {
+		switch {
+		case r.Exec && !hasCode:
+			code, hasCode = r, true
+		case !r.Exec && !hasData:
+			data, hasData = r, true
+		}
+	}
+	return code, data, hasCode && hasData
 }
 
 // Pointers are the widths of the pointer kinds (target.pointers.kinds).
@@ -44,9 +113,17 @@ type PlatformDesc struct {
 	Provides []string
 	Dynamic  bool
 	Rules    []RuleDesc
+	Imports  []ImportDesc
 	Formats  []string
 	Profiles []string
 	OnPanic  int
+}
+
+// ImportDesc is a function of the environment that an image imports
+// (target.platform.imports).
+type ImportDesc struct {
+	Module, Name    string
+	Params, Results []int
 }
 
 // RuleDesc is an instruction selection rule (target.arch.rule).
@@ -72,7 +149,7 @@ func (f FormatDesc) Kind() string {
 	case "BootSector":
 		return "boot"
 	}
-	return strings.ToLower(f.Type)
+	return strings.ToLower(strings.TrimSuffix(f.Type, "Format"))
 }
 
 // Ext returns the extension of the output file of the format.
@@ -82,6 +159,14 @@ func (f FormatDesc) Ext(d *TargetDesc) string {
 		return ".com"
 	case f.Kind() == "mz":
 		return ".exe"
+	case f.Kind() == "elf":
+		return ".elf"
+	case f.Kind() == "hex":
+		return ".hex"
+	case f.Kind() == "wasm":
+		return ".wasm"
+	case f.Kind() == "html":
+		return ".html"
 	}
 	return ".bin"
 }

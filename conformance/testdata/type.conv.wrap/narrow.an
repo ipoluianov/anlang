@@ -5,7 +5,11 @@ package main
 
 import "an/wrap"
 
+func low(h wrap.U32) u8 {
+	return u8(h)
+}
+
 func main() {
 	var h wrap.U32 = 7
-	_ = u8(h)
+	_ = low(h)
 }

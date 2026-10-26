@@ -79,7 +79,11 @@ func (fn *fnGen) instr(in ir.Instr, bi int) {
 		}
 	case *ir.MakeVariant:
 		r := fn.result(i)
-		e := i.Type().Underlying().(*types.Enum)
+		e, ok := i.Type().Underlying().(*types.Enum)
+		if !ok {
+			fn.errorf("codegen: a variant of %s, which is not an enum", i.Type())
+			return
+		}
 		size := g.sizeof(i.Type())
 		fn.zeroMem(*r.at, size)
 		fn.writeWord(*r.at, imm(uint64(i.Variant), g.tagSize(e)*8), g.tagSize(e))
@@ -108,7 +112,9 @@ func (fn *fnGen) instr(in ir.Instr, bi int) {
 		last := len(boffs) - 1
 		size := boffs[last] + g.sizeof(i.Fn.FreeVars[last].Typ)
 		rec := mref{kind: mFrame, off: fn.slot(size)}
-		fn.writeWord(rec, operand{kind: opSym, sym: g.funcLabel(i.Fn), width: g.ptr * 8}, g.ptr)
+		code := g.funcLabel(i.Fn)
+		g.addressTaken(code, sigKey(paramTypes(i.Fn), resultTypes(i.Fn.Sig)))
+		fn.writeWord(rec, operand{kind: opSym, sym: code, width: g.ptr * 8}, g.ptr)
 		for k, b := range i.Bindings {
 			fn.copyTo(rec.plus(boffs[k]), fn.loc(b), g.sizeof(i.Fn.FreeVars[k].Typ))
 		}
@@ -327,7 +333,9 @@ func (fn *fnGen) indexAddr(i *ir.IndexAddr) {
 			fn.vals[i] = addrOf(x.plus(int(c)*es), i.Type())
 			return
 		}
-		fn.boundsCheck(idx, fn.intLoc(int(u.Len)))
+		if !i.Proven {
+			fn.boundsCheck(idx, fn.intLoc(int(u.Len)))
+		}
 		if x.kind == mFar {
 			// A far address: the element offset is added to the offset
 			// part.
@@ -344,7 +352,9 @@ func (fn *fnGen) indexAddr(i *ir.IndexAddr) {
 		es := g.sizeof(u.Elem)
 		hdr := at(x, i.X.Type().(*ir.Pointer).Elem)
 		n := fn.sub(types.Typ[types.Int], hdr, g.ptr)
-		fn.boundsCheck(idx, n)
+		if !i.Proven {
+			fn.boundsCheck(idx, n)
+		}
 		m := fn.elemPtr(fn.part(hdr, 0), idx, es)
 		fn.vals[i] = addrOf(m, i.Type())
 	default:
@@ -384,7 +394,9 @@ func (fn *fnGen) index(i *ir.Index) {
 	idx := fn.loc(i.Index)
 	if isString(i.X.Type()) {
 		n := fn.sub(types.Typ[types.Int], x, g.ptr)
-		fn.boundsCheck(idx, n)
+		if !i.Proven {
+			fn.boundsCheck(idx, n)
+		}
 		r := fn.result(i)
 		ptr := fn.part(x, 0)
 		if c, ok := fn.constInt(idx); ok {
@@ -398,7 +410,9 @@ func (fn *fnGen) index(i *ir.Index) {
 	}
 	if st, ok := i.X.Type().Underlying().(*types.Slice); ok {
 		es := g.sizeof(st.Elem)
-		fn.boundsCheck(idx, fn.sub(types.Typ[types.Int], x, g.ptr))
+		if !i.Proven {
+			fn.boundsCheck(idx, fn.sub(types.Typ[types.Int], x, g.ptr))
+		}
 		m := fn.elemPtr(fn.part(x, 0), idx, es)
 		r := fn.result(i)
 		fn.copyTo(*r.at, at(m, i.Type()), es)
@@ -410,7 +424,9 @@ func (fn *fnGen) index(i *ir.Index) {
 		fn.vals[i] = fn.sub(i.Type(), x, int(c)*es)
 		return
 	}
-	fn.boundsCheck(idx, fn.intLoc(int(a.Len)))
+	if !i.Proven {
+		fn.boundsCheck(idx, fn.intLoc(int(a.Len)))
+	}
 	if x.zero {
 		fn.vals[i] = &loc{t: i.Type(), zero: true}
 		return

@@ -1,0 +1,25 @@
+// want: contract.obligation.unproven
+// checks: std.math.quantifier
+
+// The loop skips negative elements but not zero, so the invariant does
+// not hold after an iteration.
+package main
+
+profile core
+
+import "an/math"
+
+func positive(xs []int) bool {
+	for i := range xs {
+		invariant math.ForAll(0, i, func(j int) bool { return xs[j] > 0 })
+		if xs[i] < 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func main() {
+	var a [2]int
+	_ = positive(a[:])
+}

@@ -1,0 +1,11 @@
+// want: type.conv.int-narrow
+
+// i - 50 lies in [-50, 149], which i8 does not hold: the solver refutes
+// the conversion with i = 178.
+package main
+
+func main() {
+	for i := range 200 {
+		_ = i8(i - 50)
+	}
+}

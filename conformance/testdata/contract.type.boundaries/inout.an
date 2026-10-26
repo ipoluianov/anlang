@@ -1,0 +1,22 @@
+// want: contract.obligation.unproven
+// checks: contract.type.boundaries
+
+// At the end of a function that receives a Range through an inout
+// receiver, its invariant must hold again.
+package main
+
+profile core
+
+type Range struct {
+	invariant lo <= hi
+	lo, hi int
+}
+
+func (r inout Range) Widen(d int) {
+	r.lo += d
+}
+
+func main() {
+	var r Range
+	r.Widen(1)
+}

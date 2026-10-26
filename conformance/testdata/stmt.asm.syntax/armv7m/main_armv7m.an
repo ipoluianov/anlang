@@ -1,0 +1,45 @@
+// want: ok
+
+// asm statements with input and output registers and local labels, and
+// a call of the instruction package, on ARMv7-M.
+package main
+
+profile core
+
+import (
+	"an/arch/armv7m"
+	"an/fmt"
+)
+
+// Regs are the registers of the asm statements.
+type Regs struct {
+	R0, R1 u32
+}
+
+// triangle returns 1 + 2 + … + n with a loop in assembler.
+func triangle(n u32) u32 {
+	var out Regs
+	out = asm(Regs{R1: n}) `
+		MOVS R0, 0x0
+		CBZ R1, done   ; nothing to add
+	again:
+		ADD R0, R0, R1
+		SUBS R1, 0x1
+		BNE again
+	done:
+	`
+	return out.R0
+}
+
+// reverse reverses the bytes of x.
+func reverse(x u32) u32 {
+	var r armv7m.Regs
+	r = asm(armv7m.Regs{R0: x}) `REV R0, R0`
+	return r.R0
+}
+
+func main() {
+	fmt.Println(triangle(10), triangle(0), reverse(0x01020304))
+	armv7m.Nop(armv7m.Regs{})
+	asm() `NOP`
+}

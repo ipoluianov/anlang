@@ -9,6 +9,7 @@ package ct
 
 import (
 	"fmt"
+	"io/fs"
 	"sort"
 	"strings"
 
@@ -35,9 +36,10 @@ var evaluable = map[string]bool{"Alloc": true, "StaticAlloc": true, "Panic": tru
 
 // Evaluate computes the values of the computed constants of the packages,
 // given each after the packages it imports, for a target whose int has
-// intBits bits (ct.eval.semantics).
-func Evaluate(infos []*types.Info, prog *effects.Program, intBits int, limits Limits) []*syntax.Error {
-	e := &evaluator{infos: infos, prog: prog, intBits: intBits, limits: limits, state: map[*types.Const]int{}, infoOf: map[*types.Const]*types.Info{}}
+// intBits bits (ct.eval.semantics). files returns the files of the
+// directory of a package, which its constants may read; it may be nil.
+func Evaluate(infos []*types.Info, prog *effects.Program, intBits int, limits Limits, files func(pkg string) fs.FS) []*syntax.Error {
+	e := &evaluator{infos: infos, prog: prog, intBits: intBits, limits: limits, files: files, state: map[*types.Const]int{}, infoOf: map[*types.Const]*types.Info{}}
 	for _, info := range infos {
 		for _, k := range info.Computed {
 			e.infoOf[k] = info
@@ -63,6 +65,7 @@ type evaluator struct {
 	prog    *effects.Program
 	intBits int
 	limits  Limits
+	files   func(pkg string) fs.FS
 	state   map[*types.Const]int
 	infoOf  map[*types.Const]*types.Info
 	errs    []*syntax.Error
@@ -137,7 +140,20 @@ func (e *evaluator) compute(k *types.Const, path []*types.Const) bool {
 		}
 		prog.IntBits = e.intBits
 		var out strings.Builder
-		v, err := interp.Eval(prog, interp.Options{Stdout: &out, Stderr: &out, MaxSteps: e.limits.Steps, MaxMemory: e.limits.Memory})
+		opts := interp.Options{Stdout: &out, Stderr: &out, MaxSteps: e.limits.Steps, MaxMemory: e.limits.Memory}
+		if e.files != nil {
+			if dir := e.files(info.Pkg.Path); dir != nil {
+				opts.ReadFile = func(name string) ([]byte, error) {
+					// Only the files of the directory of the package and its
+					// subdirectories (ct.eval.read-input).
+					if !fs.ValidPath(name) {
+						return nil, fmt.Errorf("%q is not a file of the directory of package %s", name, info.Pkg.Path)
+					}
+					return fs.ReadFile(dir, name)
+				}
+			}
+		}
+		v, err := interp.Eval(prog, opts)
 		switch err := err.(type) {
 		case nil:
 			k.Value = v

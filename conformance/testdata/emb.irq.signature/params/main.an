@@ -1,0 +1,10 @@
+// want: emb.irq.signature
+
+// An interrupt handler has no parameters and no results.
+package main
+
+profile core
+
+func main() {}
+
+interrupt TIM2(n int) {}

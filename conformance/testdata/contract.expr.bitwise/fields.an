@@ -1,0 +1,32 @@
+// want: ok
+// checks: contract.expr.math contract.expr.supported
+
+// Bitwise operations and shifts by constants in contracts: the field of
+// a register value and a flag that a function sets.
+package main
+
+profile core
+
+import "an/fmt"
+
+func field(r u32) u32 {
+	ensures result <= 3 && result == (r>>4)&3
+	return (r >> 4) & 3
+}
+
+func flag(x u8) u8 {
+	ensures result&1 == 0 && result >= 0x80
+	return x&^1 | 0x80
+}
+
+func low(x u16) u8 {
+	requires x&0xFF00 == 0
+	ensures u16(result) == x
+	return u8(x)
+}
+
+func main() {
+	f := field(0x35)
+	assert(f == 3)
+	fmt.Println(f, flag(7), low(u16(f)<<4))
+}

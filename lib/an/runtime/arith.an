@@ -212,10 +212,11 @@ func MulU64(x, y u64) u64 {
 // CheckedMulU64 returns the product of x and y and whether it fits,
 // for bits.CheckedMul and bits.SaturatingMul.
 func CheckedMulU64(x, y u64) (u64, bool) {
-	if x != 0 && y > 0xFFFF_FFFF_FFFF_FFFF/x {
+	hi, lo := mul64(x, y)
+	if hi != 0 {
 		return 0, false
 	}
-	return u64(Mul64(wrap.U64(x), wrap.U64(y))), true
+	return lo, true
 }
 
 // MulS64 implements mul.s of 64 bits.
@@ -236,10 +237,11 @@ func CheckedMulS64(x, y i64) (i64, bool) {
 	if neg {
 		limit = 0x8000_0000_0000_0000
 	}
-	if ux != 0 && uy > limit/ux {
+	hi, m := mul64(ux, uy)
+	if hi != 0 || m > limit {
 		return 0, false
 	}
-	p := Mul64(wrap.U64(ux), wrap.U64(uy))
+	p := wrap.U64(m)
 	if neg {
 		p = -p
 	}

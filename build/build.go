@@ -5,6 +5,7 @@ package build
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"an/arch/x86_64"
 	"an/ct"
@@ -26,10 +28,13 @@ import (
 	"an/ir"
 	"an/lib"
 	"an/link/elf"
+	"an/link/ihex"
+	"an/link/wasm"
 	"an/lower"
 	"an/modfile"
 	"an/syntax"
 	"an/types"
+	"an/verify/vc"
 )
 
 // Target is a standard target (spec/13-targets.md, §13.13).
@@ -208,13 +213,14 @@ func (p *Project) buildImage(t Target, d *TargetDesc) (string, []error) {
 	if len(errs) > 0 {
 		return "", errs
 	}
+	image.Name = p.Mod.Module
 	var first string
 	for _, f := range d.Formats {
 		out := p.Output(t.Name) + f.Ext(d)
 		if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
 			return "", []error{err}
 		}
-		if err := os.WriteFile(out, image, 0o644); err != nil {
+		if err := os.WriteFile(out, FormatImage(f, d, image), 0o644); err != nil {
 			return "", []error{err}
 		}
 		if first == "" {
@@ -222,6 +228,51 @@ func (p *Project) buildImage(t Target, d *TargetDesc) (string, []error) {
 		}
 	}
 	return first, nil
+}
+
+// FormatImage returns the contents of the output file of format f for
+// the linked image: the image itself for the raw formats, Intel HEX
+// records, an ELF executable whose segment holds the image at the start
+// of the Exec region, or a WebAssembly module (target.format.all).
+func FormatImage(f FormatDesc, d *TargetDesc, im *Image) []byte {
+	code, _, hasRegions := d.Regions()
+	origin := uint32(code.At)
+	image := im.Bytes
+	switch f.Kind() {
+	case "wasm":
+		return wasmModule(f, d, im)
+	case "html":
+		// The page runs the module of the first WebAssembly format.
+		for _, w := range d.Formats {
+			if w.Kind() == "wasm" {
+				return wasm.Page(im.Name, wasmModule(w, d, im))
+			}
+		}
+		return nil
+	case "hex":
+		return ihex.Encode(origin, image)
+	case "elf":
+		im := &elf.Image{Segments: []elf.Segment{{Addr: origin, Data: image, Exec: true}}}
+		if d.Arch.Name == "armv7m" {
+			// The EABI version 5 with the soft-float calling convention;
+			// the entry is the reset vector of the vector table.
+			im.Machine, im.Flags = elf.MachineARM, 0x05000200
+			if hasRegions && len(image) >= 8 {
+				im.Entry = binary.LittleEndian.Uint32(image[4:])
+			}
+		}
+		return im.Bytes()
+	}
+	return image
+}
+
+// wasmModule returns the WebAssembly module of a structured image.
+func wasmModule(f FormatDesc, d *TargetDesc, im *Image) []byte {
+	m := &wasm.Module{Funcs: im.Funcs, Entry: im.Entry, Data: im.Bytes, Origin: f.Origin, Memory: im.Memory, Globals: im.Registers}
+	for _, i := range d.Platform.Imports {
+		m.Imports = append(m.Imports, wasm.Import{Module: i.Module, Name: i.Name, Params: i.Params, Results: i.Results})
+	}
+	return m.Bytes()
 }
 
 // Check checks the program in the project root for one target: package
@@ -335,8 +386,16 @@ func (p *Project) checkFrom(rootPath, target string, cache *effects.Cache, extra
 	for _, lp := range l.order {
 		infos = append(infos, lp.info)
 	}
-	if cerrs := ct.Evaluate(infos, prog, t.wordBits(), ct.DefaultLimits); len(cerrs) > 0 {
+	if cerrs := ct.Evaluate(infos, prog, t.wordBits(), ct.DefaultLimits, l.files); len(cerrs) > 0 {
 		return nil, nil, asErrors(cerrs)
+	}
+	// The proof obligations (spec/08-contracts.md).
+	var keys []string
+	for _, lp := range l.order {
+		keys = append(keys, lp.path+"\x00"+lp.hash)
+	}
+	if verrs := vc.CheckCached(infos, keys); len(verrs) > 0 {
+		return nil, nil, asErrors(verrs)
 	}
 	return l.order, prog, nil
 }
@@ -357,9 +416,47 @@ func (p *Project) Program(target string) (*ir.Program, []error) {
 	return prog, nil
 }
 
+// mainProfile returns the profile in which package main runs on the
+// target: the first of its profiles that the platform allows.
+func mainProfile(order []*loadedPkg, d *TargetDesc) string {
+	for _, lp := range order {
+		if lp.info == nil || lp.info.Pkg.Name != "main" {
+			continue
+		}
+		for _, p := range lp.info.Pkg.Profiles {
+			for _, q := range d.Platform.Profiles {
+				if p == q {
+					return p
+				}
+			}
+		}
+	}
+	return ""
+}
+
 // Backend generates the image of a program for a target that has a
 // target package (spec/22-compiler.md §22.11). Package codegen sets it.
-var Backend func(prog *ir.Program, d *TargetDesc) ([]byte, []error)
+var Backend func(prog *ir.Program, d *TargetDesc) (*Image, []error)
+
+// Image is a linked image (comp.gen.link): the code and the constant data
+// at the origin, or, for an architecture with structured control flow
+// (target.arch.structured), the code of each function and the data.
+type Image struct {
+	// Bytes are the code and the data from the origin; of a structured
+	// image, the data.
+	Bytes []byte
+	// Funcs are the bodies of the functions of a structured image, in the
+	// order of their indices after the imports of the platform; Entry is
+	// the index of the entry code among them, Memory the bytes of memory
+	// from address 0 that the data and the stack need, and Registers the
+	// number of registers of the architecture that the functions share.
+	Funcs     [][]byte
+	Entry     int
+	Memory    int
+	Registers int
+	// Name is the name of the program, for the formats that show it.
+	Name string
+}
 
 // BackendProgram checks the program for a target and translates it to
 // IR together with the runtime package (comp.gen.runtime).
@@ -382,6 +479,9 @@ func (p *Project) BackendProgram(target string) (*ir.Program, []error) {
 		return nil, asErrors(lerrs)
 	}
 	prog.IntBits = t.wordBits()
+	if d, _ := t.Description(); d != nil {
+		prog.Core = mainProfile(order, d) == "core"
+	}
 	return prog, nil
 }
 
@@ -397,6 +497,7 @@ type loader struct {
 
 type loadedPkg struct {
 	path    string
+	dir     fs.FS  // the files of the directory of the package
 	hash    string // hash of the source files
 	files   []*syntax.File
 	imports []string // project packages imported
@@ -407,6 +508,33 @@ type loadedPkg struct {
 // load loads the project package path and the project packages it
 // imports. It returns nil if the package has no source files for the
 // target; the importer then reports the missing package.
+var (
+	deviceMu  sync.Mutex
+	deviceSrc = map[string][]byte{}
+)
+
+// devicePackage returns the source of an/device for a target, generated
+// once.
+func devicePackage(target string, d *TargetDesc) []byte {
+	deviceMu.Lock()
+	defer deviceMu.Unlock()
+	if src, ok := deviceSrc[target]; ok {
+		return src
+	}
+	src := DevicePackage(target, &d.Device)
+	deviceSrc[target] = src
+	return src
+}
+
+// files returns the files of the directory of a loaded package, for its
+// computed constants (ct.eval.read-input).
+func (l *loader) files(path string) fs.FS {
+	if lp := l.pkgs[path]; lp != nil {
+		return lp.dir
+	}
+	return nil
+}
+
 func (l *loader) load(path string, from *syntax.ImportSpec) (*loadedPkg, error) {
 	if lp := l.pkgs[path]; lp != nil {
 		if !lp.done {
@@ -430,6 +558,16 @@ func (l *loader) load(path string, from *syntax.ImportSpec) (*loadedPkg, error) 
 			return nil, nil
 		}
 		generated = src
+	} else if path == "an/device" {
+		// The package of the device of the target (emb.device.package).
+		d, errs := l.t.Description()
+		if len(errs) > 0 {
+			return nil, errs[0]
+		}
+		if d == nil || d.Device.Name == "" {
+			return nil, nil // reported at the import
+		}
+		generated = devicePackage(l.t.Name, d)
 	} else if isLibPackage(path) {
 		fsys, dir, rel = lib.FS, path, path
 	} else {
@@ -473,13 +611,16 @@ func (l *loader) load(path string, from *syntax.ImportSpec) (*loadedPkg, error) 
 		h.Write(src.Data)
 	}
 	lp := &loadedPkg{path: path, files: files, hash: hex.EncodeToString(h.Sum(nil))}
+	if fsys != nil {
+		lp.dir, _ = fs.Sub(fsys, dir)
+	}
 	l.pkgs[path] = lp
 	l.stack = append(l.stack, lp)
 	module := l.p.Mod.Module
 	for _, f := range files {
 		for _, spec := range f.Imports {
 			ipath, err := strconv.Unquote(spec.Path.Value)
-			if err != nil || !strings.HasPrefix(ipath, module+"/") && !isLibPackage(ipath) && !strings.HasPrefix(ipath, "an/arch/") {
+			if err != nil || !strings.HasPrefix(ipath, module+"/") && !isLibPackage(ipath) && !strings.HasPrefix(ipath, "an/arch/") && ipath != "an/device" {
 				continue // the root package and other paths are reported by the checker
 			}
 			if ipath == "an/runtime" && !strings.HasPrefix(path, "an/") {
@@ -544,7 +685,10 @@ func CheckSources(module string, t Target, srcs []Source) (*types.Info, []*synta
 	if len(errs) > 0 {
 		return info, errs
 	}
-	return info, ct.Evaluate([]*types.Info{info}, prog, t.wordBits(), ct.DefaultLimits)
+	if errs := ct.Evaluate([]*types.Info{info}, prog, t.wordBits(), ct.DefaultLimits, nil); len(errs) > 0 {
+		return info, errs
+	}
+	return info, vc.Check([]*types.Info{info})
 }
 
 // targetEffects are the environment effects that targets provide and
@@ -557,7 +701,6 @@ var targetEffects = map[string]struct{ provides, lacks []string }{
 	"linux-arm64":    {provides: hostEffects},
 	"macos-arm64":    {provides: hostEffects},
 	"windows-x86_64": {provides: hostEffects},
-	"stm32f103c8":    {provides: []string{"Gpio", "Uart", "Timers", "Interrupts", "StaticAlloc", "Tasks"}, lacks: []string{"File"}},
 }
 
 var hostEffects = []string{"Alloc", "StaticAlloc", "Console", "File", "Network", "Keyboard", "Tasks", "Clock", "Random"}
@@ -599,7 +742,18 @@ func checkEffects(in []effects.Input, module, modName string, rules []modfile.Ef
 	} else if te, ok := targetEffects[t.Name]; ok {
 		c.HasDesc, c.Provides, c.Lacks = true, te.provides, te.lacks
 	}
-	return prog, prog.Check(c)
+	var infos []*types.Info
+	for _, x := range in {
+		infos = append(infos, x.Info)
+		for _, h := range x.Info.Handlers {
+			c.Handlers = append(c.Handlers, effects.FuncKey(h))
+		}
+	}
+	errs := prog.Check(c)
+	if len(errs) == 0 {
+		errs = prog.Ownership(infos)
+	}
+	return prog, errs
 }
 
 // parseSources parses srcs and checks that they are in canonical form
@@ -623,7 +777,21 @@ func parseSources(srcs []Source) ([]*syntax.File, []*syntax.Error) {
 // checkFiles type-checks the files of package path for target t.
 func checkFiles(module, path string, t Target, imports map[string]*types.Package, files []*syntax.File) (*types.Info, []*syntax.Error) {
 	word := wordBits[t.Arch]
-	return types.Check(&types.Config{Module: module, Path: path, Imports: imports, IntBits: word, AddrBits: word, Arch: t.Arch}, files)
+	conf := &types.Config{Module: module, Path: path, Imports: imports, IntBits: word, AddrBits: word, Arch: t.Arch, DeferNarrowing: true}
+	// The interrupt vectors of the device, for the files with handlers.
+	for _, f := range files {
+		for _, d := range f.Decls {
+			if fd, ok := d.(*syntax.FuncDecl); ok && fd.Handler != "" && conf.Interrupts == nil {
+				conf.Interrupts = []string{}
+				if desc, _ := t.Description(); desc != nil {
+					for _, irq := range desc.Device.Interrupts {
+						conf.Interrupts = append(conf.Interrupts, irq.Name)
+					}
+				}
+			}
+		}
+	}
+	return types.Check(conf, files)
 }
 
 // SelectFiles returns the names of the source files in dir that belong

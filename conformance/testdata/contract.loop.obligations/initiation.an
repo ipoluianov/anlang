@@ -1,0 +1,21 @@
+// want: contract.obligation.unproven
+// checks: contract.loop.obligations
+
+// The invariant does not hold when control first reaches the loop.
+package main
+
+profile core
+
+func count(n int) int {
+	requires n >= 0
+	i := 1
+	for i <= n {
+		invariant i <= n
+		i++
+	}
+	return i
+}
+
+func main() {
+	_ = count(0)
+}

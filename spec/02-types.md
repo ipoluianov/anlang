@@ -345,15 +345,18 @@ for i, c := range []u8("HELLO") {
 v, ok := conv.Narrow[u8](n)               // n not known to fit
 ```
 
-**type.conv.int-narrow-facts** — Until the solver of [08-contracts](08-contracts.md) is available (roadmap step 20), the compiler proves that the value of `x` is representable in `T` from these facts only, each of which gives an interval of values; the conversion is proven if the interval of `x` lies within the range of `T`:
+**type.conv.int-narrow-facts** — The compiler proves with the solver of [08-contracts](08-contracts.md) that the value of `x` lies in the range of `T`, with the facts of the program point of the conversion (the path conditions, the values of the variables and the facts of loops, contracts and checks, [08-contracts](08-contracts.md) §8.3, §8.4, **contract.check.proven**) and these facts about the expression: `x` is a linear term over variables, which stand for the variables of the program and for the subexpressions that have no linear term, where:
 
 1. a constant has its value;
-2. a value of an integer type lies in the range of its type;
-3. `x & c` and `c & x` with a constant `c ≥ 0` lie in [0, `c`];
-4. `x % c` with a constant `c > 0` lies in [0, `c`-1] if `x` has an unsigned type, in [1-`c`, `c`-1] otherwise;
-5. `x >> c` with a constant `c` and `x` of an unsigned type of n bits lies in [0, 2ⁿ⁻ᶜ-1];
-6. the key variable of a `range` clause declared with `:=` that the loop body does not assign or pass as an argument lies in [0, n-1] when the range expression is an integer constant n, an array of length n, or a composite literal or a conversion of a constant string with n elements;
-7. a parenthesized expression and a conversion between integer types that is proven have the interval of their operand.
+2. a value of an integer type lies in the range of its type: a subexpression of a checked integer type too, since its operation panics otherwise;
+3. a sum, a difference, a negation and a product with a constant of checked integer values is exact, and a variable has one value in an expression without calls; the operations of `wrap` types and the other operations have no linear term;
+4. `x & c` and `c & x` with a constant `c ≥ 0` lie in [0, `c`];
+5. `x % c` with a constant `c > 0` lies in [0, `c`-1] if `x` has an unsigned type, in [1-`c`, `c`-1] otherwise;
+6. `x >> c` with a constant `c` and `x` of an unsigned type of n bits lies in [0, 2ⁿ⁻ᶜ-1];
+7. the key variable of a `range` clause declared with `:=` that the loop body does not assign or pass as an argument lies in [0, n-1] when the range expression is an integer constant n, an array of length n, or a composite literal or a conversion of a constant string with n elements;
+8. a parenthesized expression and a conversion between integer types that the checker accepts have the value of their operand.
+
+If the solver refutes the conversion, the diagnostic SHOULD show its counterexample, such as `for example when i = 178`.
 
 **type.conv.wrap** — A conversion from any integer type to a `wrap` type, and from a `wrap` type to any `wrap` type, is always allowed and truncates modulo 2ⁿ. A conversion from a `wrap` type to an ordinary integer type follows **type.conv.int-widen** and **type.conv.int-narrow** for the corresponding integer type.
 

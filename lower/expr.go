@@ -212,7 +212,7 @@ func (fb *funcBuilder) addr(e syntax.Expr) ir.Value {
 				return nil
 			}
 			i := fb.expr(e.Indices[0])
-			return fb.emit(&ir.IndexAddr{X: base, Index: i}, &ir.Pointer{Elem: elemType(xt)})
+			return fb.emit(&ir.IndexAddr{X: base, Index: i, Proven: fb.info.Proven[e]}, &ir.Pointer{Elem: elemType(xt)})
 		}
 	}
 	return nil
@@ -254,7 +254,10 @@ func (fb *funcBuilder) fieldPath(base ir.Value, index []int, addrs bool) ir.Valu
 func (fb *funcBuilder) selector(e *syntax.SelectorExpr) ir.Value {
 	sel := fb.info.Selections[e]
 	if sel == nil {
-		// A qualified identifier.
+		// A qualified identifier; a variant has its type at the selector.
+		if v, ok := fb.info.Uses[e.Sel].(*types.Variant); ok {
+			return fb.variantValue(e, v)
+		}
 		return fb.name(e.Sel)
 	}
 	switch sel.Kind {
@@ -281,7 +284,7 @@ func (fb *funcBuilder) index(e *syntax.IndexExpr) ir.Value {
 	}
 	x := fb.expr(e.X)
 	i := fb.expr(e.Indices[0])
-	return fb.emit(&ir.Index{X: x, Index: i}, t)
+	return fb.emit(&ir.Index{X: x, Index: i, Proven: fb.info.Proven[e]}, t)
 }
 
 func (fb *funcBuilder) slice(e *syntax.SliceExpr) ir.Value {
@@ -302,7 +305,7 @@ func (fb *funcBuilder) slice(e *syntax.SliceExpr) ir.Value {
 		}
 		return fb.expr(e)
 	}
-	return fb.emit(&ir.Slice{X: x, Low: opt(e.Low), High: opt(e.High), Max: opt(e.Max)}, fb.typeOf(e))
+	return fb.emit(&ir.Slice{X: x, Low: opt(e.Low), High: opt(e.High), Max: opt(e.Max), Proven: fb.info.Proven[e]}, fb.typeOf(e))
 }
 
 func (fb *funcBuilder) unary(e *syntax.UnaryExpr) ir.Value {
@@ -311,7 +314,7 @@ func (fb *funcBuilder) unary(e *syntax.UnaryExpr) ir.Value {
 		return zero(fb.typeOf(e))
 	}
 	x := fb.expr(e.X)
-	return fb.emit(&ir.UnOp{Op: e.Op, X: x}, fb.typeOf(e))
+	return fb.emit(&ir.UnOp{Op: e.Op, X: x, Proven: fb.info.Proven[e]}, fb.typeOf(e))
 }
 
 func (fb *funcBuilder) binary(e *syntax.BinaryExpr) ir.Value {
@@ -341,7 +344,7 @@ func (fb *funcBuilder) binary(e *syntax.BinaryExpr) ir.Value {
 	default:
 		x, y = fb.convert(x, t), fb.convert(y, t)
 	}
-	return fb.emit(&ir.BinOp{Op: e.Op, X: x, Y: y}, t)
+	return fb.emit(&ir.BinOp{Op: e.Op, X: x, Y: y, Proven: fb.info.Proven[e]}, t)
 }
 
 // uninstantiated reports whether t is a generic type without type

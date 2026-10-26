@@ -41,7 +41,19 @@ func Program(infos ...*types.Info) (*ir.Program, []*syntax.Error) {
 		return nil, []*syntax.Error{{Msg: "package main has no func main"}}
 	}
 	b.prog.Main = b.function(main.Main, nil)
+	b.handlers(infos)
 	return b.run()
+}
+
+// handlers translates the interrupt handlers of the packages.
+func (b *builder) handlers(infos []*types.Info) {
+	for _, info := range infos {
+		for _, h := range info.Handlers {
+			fn := b.function(h, nil)
+			fn.Handler = h.Handler
+			b.prog.Handlers = append(b.prog.Handlers, fn)
+		}
+	}
 }
 
 // ProgramWith translates the program as Program does, and the functions
@@ -57,6 +69,7 @@ func ProgramWith(extra []*types.Func, infos ...*types.Info) (*ir.Program, []*syn
 	for _, f := range extra {
 		b.function(f, nil)
 	}
+	b.handlers(infos)
 	return b.run()
 }
 
@@ -155,6 +168,9 @@ func (b *builder) function(f *types.Func, targs []types.Type) *ir.Func {
 		tps = sig.RecvTypeParamList()
 	}
 	fn := ir.NewFunc(key, b.substSig(info, sig, tps, targs), origin.Pos())
+	if info != nil {
+		fn.RecursionDepth = info.RecursionDepth[origin]
+	}
 	b.funcs[key] = fn
 	b.prog.Funcs = append(b.prog.Funcs, fn)
 	b.queue = append(b.queue, func() {
@@ -371,7 +387,7 @@ func (fb *funcBuilder) local(v *types.Var) ir.Value {
 	if a, ok := fb.vars[v]; ok {
 		return a
 	}
-	if v.Map != nil {
+	if v.Map != nil || v.Static {
 		return fb.b.global(v)
 	}
 	// A variable of an enclosing function, captured by a function literal.
@@ -381,9 +397,15 @@ func (fb *funcBuilder) local(v *types.Var) ir.Value {
 	return nil
 }
 
-// global returns the address of a hardware mapping.
+// global returns the address of a hardware mapping or of a package-level
+// variable with static storage.
 func (b *builder) global(v *types.Var) *ir.Global {
 	if g, ok := b.globals[v]; ok {
+		return g
+	}
+	if v.Static {
+		g := &ir.Global{Var: v, Typ: &ir.Pointer{Elem: v.Type()}}
+		b.globals[v] = g
 		return g
 	}
 	addr := &ir.Const{Typ: v.Map.Type(), Val: v.Map.Val}

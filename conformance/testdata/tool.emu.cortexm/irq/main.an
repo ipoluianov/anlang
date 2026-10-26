@@ -1,0 +1,46 @@
+// want: ok
+
+// Interrupts in the model of the STM32F103C8: TIM2 interrupts every
+// millisecond, its handler counts in an atomic variable, and main, which
+// shares TIM2 with the handler, stops the timer in a critical section
+// after five interrupts (tool.emu.cortexm, emb.lock.form).
+package main
+
+profile core
+
+import (
+	"an/atomic"
+	"an/cpu"
+	"an/device"
+	"an/fmt"
+	"an/interrupts"
+)
+
+var ticks atomic.U32
+
+func main() {
+	device.RCC.APB1ENR = device.RCC.APB1ENR.WithTIM2EN(true)
+	// 1 MHz counts, an update every 1000.
+	device.TIM2.PSC = device.TIM2.PSC.WithPSC(8 - 1)
+	device.TIM2.ARR = device.TIM2.ARR.WithARR(1000 - 1)
+	device.TIM2.EGR = device.TIM2.EGR.WithUG(true)
+	device.TIM2.SR = 0
+	device.TIM2.DIER = device.TIM2.DIER.WithUIE(true)
+	device.NVIC.ISER0 = 1 << 28
+	device.TIM2.CR1 = device.TIM2.CR1.WithCEN(true)
+	interrupts.Enable()
+	for ticks.Load() < 5 {
+		cpu.WaitForInterrupt()
+	}
+	for t := range device.TIM2.Lock {
+		t.CR1 = t.CR1.WithCEN(false)
+	}
+	fmt.Println("ticks:", ticks.Load())
+}
+
+interrupt TIM2() {
+	for t := range device.TIM2.Lock {
+		t.SR = 0
+	}
+	ticks.Add(1)
+}

@@ -11,12 +11,15 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"an/arch/desc"
 	"an/build"
 	_ "an/codegen" // the code generator of the targets with target packages
 	"an/effects"
+	"an/emu/cortexm"
 	"an/emu/dos"
+	"an/emu/wasm"
 	"an/format"
 	"an/interp"
 	"an/modfile"
@@ -120,6 +123,8 @@ func runRun(args []string) int {
 	target := fs.String("target", "", "target to build and run (default: the first target in anlang.mod)")
 	emu := fs.String("emu", "", "emulator to run in: ir (the IR interpreter) or builtin (the emulator of the target)")
 	screen := fs.Bool("screen", false, "write the text screen of the built-in emulator after the program ends")
+	gpio := fs.Bool("gpio", false, "write the changes of the output pins in the built-in emulator after the program ends")
+	limit := fs.Duration("for", 0, "end the run in the built-in emulator after this much time of the model, such as 3s")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
@@ -135,13 +140,13 @@ func runRun(args []string) int {
 	case "ir":
 		return runIR(*target)
 	case "builtin":
-		return runBuiltin(*target, *screen)
+		return runBuiltin(*target, emuOptions{*screen, *gpio, *limit})
 	default:
 		fmt.Fprintf(os.Stderr, "anlang run: unknown emulator %s\n", *emu)
 		return exitUsage
 	}
 	if *target != build.HostTarget() {
-		return runBuiltin(*target, *screen)
+		return runBuiltin(*target, emuOptions{*screen, *gpio, *limit})
 	}
 	p, status := load()
 	if p == nil {
@@ -167,7 +172,14 @@ func runRun(args []string) int {
 
 // runBuiltin builds the program and runs it in the built-in emulator of
 // the target (tool.emu.target).
-func runBuiltin(target string, screen bool) int {
+// emuOptions are the observations and limits of a run in a built-in
+// emulator.
+type emuOptions struct {
+	screen, gpio bool
+	limit        time.Duration
+}
+
+func runBuiltin(target string, opts emuOptions) int {
 	t, ok := build.LookupTarget(target)
 	if !ok {
 		fmt.Fprintf(os.Stderr, "anlang run: unknown target %q\n", target)
@@ -178,7 +190,7 @@ func runBuiltin(target string, screen bool) int {
 		report(errs)
 		return exitProblems
 	}
-	if d == nil || d.Platform.Name != "dos" {
+	if d == nil || d.Platform.Name != "dos" && d.Platform.Name != "web" && (d.Platform.Name != "bare" || d.Arch.Name != "armv7m") {
 		fmt.Fprintf(os.Stderr, "anlang run: target %s has no built-in emulator yet\n", target)
 		return exitUsage
 	}
@@ -196,10 +208,23 @@ func runBuiltin(target string, screen bool) int {
 		fmt.Fprintln(os.Stderr, "anlang run:", err)
 		return exitUsage
 	}
+	if d.Platform.Name == "web" {
+		// The WebAssembly interpreter with WASI (tool.emu.wasm).
+		w := &wasm.WASI{Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr}
+		code, err := w.Run(image)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "anlang run: emulation stopped:", err)
+			return exitUsage
+		}
+		return code
+	}
 	a, errs := desc.ForName(d.Arch.Name)
 	if len(errs) > 0 {
 		report(errs)
 		return exitProblems
+	}
+	if d.Platform.Name == "bare" {
+		return runCortexM(a, d, out, opts)
 	}
 	m, err := dos.Load(a, image)
 	if err != nil {
@@ -208,8 +233,35 @@ func runBuiltin(target string, screen bool) int {
 	}
 	m.Stdout, m.Stderr, m.Stdin = os.Stdout, os.Stderr, os.Stdin
 	code, err := m.Run()
-	if screen {
+	if opts.screen {
 		fmt.Print(m.Screen())
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "anlang run: emulation stopped:", err)
+		return exitUsage
+	}
+	return code
+}
+
+// runCortexM runs the BIN image next to the first output file out in
+// the Cortex-M emulator (tool.emu.cortexm).
+func runCortexM(a *desc.Arch, d *build.TargetDesc, out string, opts emuOptions) int {
+	bin := strings.TrimSuffix(out, filepath.Ext(out)) + ".bin"
+	image, err := os.ReadFile(bin)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "anlang run: the target writes no BIN file:", err)
+		return exitUsage
+	}
+	m, err := cortexm.Load(a, d, image)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "anlang run:", err)
+		return exitUsage
+	}
+	m.Stdout, m.Stderr, m.Stdin, m.UART = os.Stdout, os.Stderr, os.Stdin, os.Stdout
+	m.MaxTime = uint64(opts.limit.Nanoseconds()) * 1000
+	code, err := m.Run()
+	if opts.gpio {
+		fmt.Print(m.PinText())
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "anlang run: emulation stopped:", err)

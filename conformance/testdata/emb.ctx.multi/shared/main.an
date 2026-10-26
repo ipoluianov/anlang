@@ -1,0 +1,24 @@
+// want: emb.ctx.multi
+
+// TIM2 is used by main after the initialization phase and by its
+// interrupt handler, outside critical sections.
+package main
+
+profile core
+
+import (
+	"an/device"
+	"an/interrupts"
+)
+
+func main() {
+	device.TIM2.DIER = device.TIM2.DIER.WithUIE(true)
+	interrupts.Enable()
+	for {
+		device.TIM2.CR1 = device.TIM2.CR1.WithCEN(true)
+	}
+}
+
+interrupt TIM2() {
+	device.TIM2.SR = 0
+}

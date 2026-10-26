@@ -120,7 +120,7 @@ func (fb *funcBuilder) rangeStmt(s *syntax.RangeStmt, label string) {
 	default:
 		fb.storeRange(fb.rangeVar(s.Key, define, it), i)
 		if s.Value != nil {
-			v := fb.emit(&ir.Index{X: x, Index: i}, elemType(xt))
+			v := fb.emit(&ir.Index{X: x, Index: i, Proven: true}, elemType(xt))
 			fb.storeRange(fb.rangeVar(s.Value, define, elemType(xt)), fb.copy(v))
 		}
 	}
@@ -130,7 +130,8 @@ func (fb *funcBuilder) rangeStmt(s *syntax.RangeStmt, label string) {
 	fb.jump(post)
 	fb.cur = post
 	if next == nil {
-		next = fb.emit(&ir.BinOp{Op: syntax.Add, X: fb.load(idx), Y: &ir.Const{Typ: it, Val: constant.MakeInt64(1)}}, it)
+		// The index is below the length, so the next one does not overflow.
+		next = fb.emit(&ir.BinOp{Op: syntax.Add, X: fb.load(idx), Y: &ir.Const{Typ: it, Val: constant.MakeInt64(1)}, Proven: true}, it)
 	}
 	fb.store(idx, next)
 	fb.jump(head)

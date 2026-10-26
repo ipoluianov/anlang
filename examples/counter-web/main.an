@@ -1,0 +1,52 @@
+// Command counter is a counter that reads its commands from the standard
+// input: + adds one, - subtracts one, 0 resets and q ends. The same
+// program runs in a browser (target web, in the page counter.html), in
+// DOS and on a Cortex-M board, where the input is the keyboard and the
+// console of the debugger.
+package main
+
+profile core
+
+import (
+	"an/console"
+	"an/fmt"
+)
+
+// Counter is the state of the counter.
+type Counter struct {
+	n     int
+	steps int
+}
+
+// Apply changes the counter by the command c and reports whether c is a
+// command.
+func (c inout Counter) Apply(cmd u8) bool {
+	switch cmd {
+	case '+':
+		c.n++
+	case '-':
+		c.n--
+	case '0':
+		c.n = 0
+	default:
+		return false
+	}
+	c.steps++
+	return true
+}
+
+func main() {
+	var c Counter
+	fmt.Println("Counter: type + to add one, - to subtract one, 0 to reset, q to quit.")
+	fmt.Println("count:", c.n)
+	for {
+		cmd, ok := console.ReadByte()
+		if !ok || cmd == 'q' {
+			break
+		}
+		if c.Apply(cmd) {
+			fmt.Println("count:", c.n)
+		}
+	}
+	fmt.Printf("%d commands, final count %d\n", c.steps, c.n)
+}

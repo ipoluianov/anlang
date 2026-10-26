@@ -1,0 +1,43 @@
+// want: ok
+// checks: std.math.contract
+
+// Values of enum types in contracts: Option results, variants and the
+// fields of a variant pattern.
+package main
+
+profile core
+
+import "an/fmt"
+
+type Shape enum {
+	Circle{r int}
+	Rect{w, h int}
+	Empty
+}
+
+func first(xs []int) Option[int] {
+	ensures (len(xs) > 0) == (result != None)
+	if len(xs) == 0 {
+		return None
+	}
+	return Some(xs[0])
+}
+
+func area(s Shape) int {
+	requires s != Empty
+	switch s {
+	case Circle{r}:
+		return 3 * r * r
+	case Rect{w, h}:
+		return w * h
+	case Empty:
+		panic("unreachable")
+	}
+}
+
+func main() {
+	xs := [2]int{7, 9}
+	v, ok := first(xs[:]).Get()
+	assert(ok)
+	fmt.Println(v, area(Rect(2, 3)), area(Circle(1)))
+}

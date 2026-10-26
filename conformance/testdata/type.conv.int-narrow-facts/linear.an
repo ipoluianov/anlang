@@ -1,0 +1,22 @@
+// want: ok
+
+// Narrowing conversions of linear expressions that the solver proves
+// from the facts of their operands (type.conv.int-narrow-facts).
+package main
+
+profile core
+
+import "an/fmt"
+
+func main() {
+	for i, c := range []u8("HELLO") {
+		// i lies in [0, 4].
+		fmt.Println(u16(i)+10, u8(2*i+1), i8(i-4), u8(i+i), c)
+	}
+	var b u8 = 200
+	// b >> 4 lies in [0, 15].
+	fmt.Println(i8((b>>4)+(b>>4)-3), u8((b>>4)*16+15))
+	var x u32 = 1003
+	// x % 10 lies in [0, 9].
+	fmt.Println(u8((x%10)*3+7), i8(x%10-x%10), i8(-i32(x&100)))
+}

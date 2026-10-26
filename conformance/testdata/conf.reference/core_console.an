@@ -1,0 +1,38 @@
+// want: ok
+
+// A counter that reads its commands from the standard input: + adds one,
+// - subtracts one, 0 resets, q ends; other bytes are ignored
+// (std.console.read).
+package main
+
+profile core
+
+import (
+	"an/console"
+	"an/fmt"
+)
+
+func main() {
+	n := 0
+	for {
+		c, ok := console.ReadByte()
+		if !ok {
+			fmt.Println("end of input")
+			return
+		}
+		switch c {
+		case '+':
+			n++
+		case '-':
+			n--
+		case '0':
+			n = 0
+		case 'q':
+			fmt.Println("bye")
+			return
+		default:
+			continue
+		}
+		fmt.Println("count:", n)
+	}
+}

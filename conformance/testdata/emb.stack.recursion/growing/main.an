@@ -1,0 +1,27 @@
+// want: emb.stack.recursion
+
+// The parameter of steps grows at one of its calls of itself, so the
+// depth of its recursion has no proven bound (rt.stack.core-recursion).
+package main
+
+profile core
+
+import "an/fmt"
+
+func steps(n u16) u16 {
+	requires n <= 1000
+	if n <= 1 {
+		return 0
+	}
+	if n%2 == 0 {
+		return steps(n/2) + 1
+	}
+	if n > 333 {
+		return 0
+	}
+	return steps(3*n+1) + 1
+}
+
+func main() {
+	fmt.Println(steps(27))
+}

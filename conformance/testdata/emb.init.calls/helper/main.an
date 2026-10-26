@@ -1,0 +1,16 @@
+// want: emb.init.calls
+
+// interrupts.Enable may be called only directly from main.
+package main
+
+profile core
+
+import "an/interrupts"
+
+func start() {
+	interrupts.Enable()
+}
+
+func main() {
+	start()
+}

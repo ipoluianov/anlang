@@ -1,0 +1,31 @@
+// want: ok
+
+// A function assumes the invariant of a parameter and of a result.
+package main
+
+profile core
+
+import "an/fmt"
+
+type Range struct {
+	invariant lo <= hi
+	lo, hi int
+}
+
+func make2(a, b int) Range {
+	if a <= b {
+		return Range{a, b}
+	}
+	return Range{b, a}
+}
+
+func span(r Range) int {
+	ensures result >= 1
+	return r.hi - r.lo + 1
+}
+
+func main() {
+	r := make2(7, 3)
+	assert(r.lo <= r.hi)
+	fmt.Println(span(r))
+}

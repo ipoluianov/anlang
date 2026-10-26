@@ -21,7 +21,7 @@ import (
 )
 
 func init() {
-	build.Backend = func(prog *ir.Program, d *build.TargetDesc) ([]byte, []error) {
+	build.Backend = func(prog *ir.Program, d *build.TargetDesc) (*build.Image, []error) {
 		a, errs := desc.ForName(d.Arch.Name)
 		if len(errs) > 0 {
 			return nil, errs
@@ -41,6 +41,10 @@ type gen struct {
 	align   int
 	intBits int
 	frame   string // the frame register
+	bottom  bool   // the frame register holds the bottom of the frame
+	// structured is set for an architecture with structured control flow
+	// (target.arch.structured).
+	structured bool
 
 	layouts  map[types.Type][2]int
 	funcs    map[*ir.Func]string // labels of the functions to generate
@@ -57,8 +61,13 @@ type gen struct {
 	errs     []error
 
 	usesDefer    bool
+	handlers     map[*ir.Func]bool // the interrupt handlers
+	stackInfos   map[string]*stackInfo
+	addrTaken    map[string]string // the labels of routines whose address is a value, with their signatures
+	stackNeed    int
 	funcsByLabel map[string]bool // generated routines
 	addrs        map[string]int  // the addresses of the labels, after linking
+	sizes        map[string]int  // the bytes of code of each function, after linking
 }
 
 // item is a line of generated code: a label or an instruction whose text
@@ -67,15 +76,18 @@ type item struct {
 	label string
 	text  string
 	fn    string // the function, for diagnostics
+	term  bool   // control does not continue after the instruction
+	unit  bool   // the label of a routine of a structured image
 }
 
 // dataItem is constant data: bytes with the addresses of labels written
-// into them.
+// into them; or writable data, which starts as zero bytes.
 type dataItem struct {
-	label  string
-	bytes  []byte
-	align  int
-	relocs []reloc
+	label    string
+	bytes    []byte
+	align    int
+	relocs   []reloc
+	writable bool
 }
 
 type reloc struct {
@@ -87,24 +99,50 @@ type reloc struct {
 // Generate generates the image of prog for the target: the entry code,
 // the functions and the constant data, linked at the origin of the first
 // format of the target.
-func Generate(prog *ir.Program, a *desc.Arch, d *build.TargetDesc) ([]byte, []error) {
+func Generate(prog *ir.Program, a *desc.Arch, d *build.TargetDesc) (*build.Image, []error) {
+	image, _, errs := GenerateMap(prog, a, d)
+	return image, errs
+}
+
+// GenerateMap is Generate that also returns the memory map: the address
+// of the code of each function, by its name.
+func GenerateMap(prog *ir.Program, a *desc.Arch, d *build.TargetDesc) (*build.Image, map[string]int, []error) {
+	g, image, errs := generate(prog, a, d)
+	if len(errs) > 0 {
+		return nil, nil, errs
+	}
+	funcs := map[string]int{}
+	for _, it := range g.code {
+		if it.label != "" {
+			if _, ok := funcs[it.fn]; !ok {
+				funcs[it.fn] = g.addrs[it.label]
+			}
+		}
+	}
+	return image, funcs, nil
+}
+
+func generate(prog *ir.Program, a *desc.Arch, d *build.TargetDesc) (*gen, *build.Image, []error) {
 	if a.Endian != 0 {
-		return nil, []error{fmt.Errorf("codegen: big-endian architectures are not supported yet")}
+		return nil, nil, []error{fmt.Errorf("codegen: big-endian architectures are not supported yet")}
 	}
 	g := &gen{
 		prog: prog, arch: a, desc: d,
-		rules:    map[string][]desc.Rule{},
-		word:     a.Word / 8,
-		ptr:      d.PointerBits() / 8,
-		align:    a.ABI.Align,
-		intBits:  d.Word,
-		frame:    a.ABI.Frame,
-		layouts:  map[types.Type][2]int{},
-		funcs:    map[*ir.Func]string{},
-		runtime:  map[string]*ir.Func{},
-		strs:     map[string]string{},
-		consts:   map[*ir.Const]string{},
-		selected: map[string]int{},
+		rules:   map[string][]desc.Rule{},
+		word:    a.Word / 8,
+		ptr:     d.PointerBits() / 8,
+		align:   a.ABI.Align,
+		intBits: d.Word,
+		frame:   a.ABI.Frame,
+		bottom:  a.ABI.FrameBottom,
+
+		structured: a.ABI.Structured.End != "",
+		layouts:    map[types.Type][2]int{},
+		funcs:      map[*ir.Func]string{},
+		runtime:    map[string]*ir.Func{},
+		strs:       map[string]string{},
+		consts:     map[*ir.Const]string{},
+		selected:   map[string]int{},
 
 		funcsByLabel: map[string]bool{},
 	}
@@ -124,7 +162,70 @@ func Generate(prog *ir.Program, a *desc.Arch, d *build.TargetDesc) ([]byte, []er
 	}
 	g.scanTypes()
 
+	g.funcLabel(g.prog.Main)
+	g.handlers = map[*ir.Func]bool{}
+	for _, h := range g.prog.Handlers {
+		g.handlers[h] = true
+		g.funcLabel(h)
+	}
+	g.drain()
+	// The entry code, which clears the writable data, comes first; the
+	// default interrupt handler it generates may use the defer chain.
+	body := g.code
+	g.code = nil
+	if g.hasRule("vectors", 0, 0) {
+		g.defaultHandler()
+		g.drain()
+	}
+	if g.usesDefer {
+		g.data = append(g.data, &dataItem{label: "Ldefers", bytes: make([]byte, g.ptr), align: g.scalarAlign(g.ptr), writable: true})
+	}
+	if _, _, ok := d.Regions(); !ok && d.Stack > 0 {
+		// The stack of main follows the writable data.
+		g.data = append(g.data, &dataItem{label: "Lstack", bytes: make([]byte, d.Stack), align: 16, writable: true})
+	}
+	body = append(body, g.code...)
+	g.code = nil
 	g.entry()
+	g.drain()
+	g.code = append(g.code, body...)
+	g.checkStack()
+	if len(g.errs) > 0 {
+		return nil, nil, g.errs
+	}
+	origin, limit := 0, 0
+	if len(d.Formats) > 0 {
+		origin, limit = d.Formats[0].Origin, d.Formats[0].MaxSize
+	}
+	if g.structured {
+		im, err := g.linkStructured(origin)
+		if err != nil {
+			return nil, nil, []error{err}
+		}
+		return g, im, nil
+	}
+	ram := -1
+	if code, data, ok := d.Regions(); ok {
+		origin, limit, ram = code.At, code.Size, data.At
+	}
+	image, err := g.link(origin, ram)
+	if limit > 0 && g.imageSize() > limit {
+		// An image too large may fail to link first, with addresses that
+		// do not fit their instructions.
+		what := "format " + d.Formats[0].Type
+		if ram >= 0 {
+			what = "the Exec region"
+		}
+		return nil, nil, []error{fmt.Errorf("the image is %d bytes, more than the %d bytes of %s (target.format.size, target.memory.overflow); %s", g.imageSize(), limit, what, g.breakdown())}
+	}
+	if err != nil {
+		return nil, nil, []error{err}
+	}
+	return g, &build.Image{Bytes: image}, nil
+}
+
+// drain generates the queued functions and thunks.
+func (g *gen) drain() {
 	for len(g.queue) > 0 || len(g.thunks) > 0 {
 		if len(g.queue) > 0 {
 			f := g.queue[0]
@@ -136,24 +237,68 @@ func Generate(prog *ir.Program, a *desc.Arch, d *build.TargetDesc) ([]byte, []er
 		g.thunks = g.thunks[1:]
 		t()
 	}
-	if g.usesDefer {
-		g.data = append(g.data, &dataItem{label: "Ldefers", bytes: make([]byte, g.ptr), align: g.scalarAlign(g.ptr)})
+}
+
+// imageSize returns the size of the code and constant data after the
+// last pass of linking.
+func (g *gen) imageSize() int {
+	n := 0
+	for _, v := range g.sizes {
+		n += v
 	}
-	if len(g.errs) > 0 {
-		return nil, g.errs
+	for _, d := range g.data {
+		if !d.writable {
+			n += len(d.bytes)
+		}
 	}
-	origin, limit := 0, 0
-	if len(d.Formats) > 0 {
-		origin, limit = d.Formats[0].Origin, d.Formats[0].MaxSize
+	return n
+}
+
+// breakdown describes the contents of the image: the code by package,
+// the constant data and the writable data.
+func (g *gen) breakdown() string {
+	code := map[string]int{}
+	for fn, n := range g.sizes {
+		pkg := fn
+		if i := strings.LastIndexByte(pkg, '/'); i >= 0 {
+			if j := strings.IndexByte(pkg[i:], '.'); j >= 0 {
+				pkg = pkg[:i+j]
+			}
+		} else if j := strings.IndexByte(pkg, '.'); j >= 0 {
+			pkg = pkg[:j]
+		}
+		code[pkg] += n
 	}
-	image, err := g.link(origin)
-	if err != nil {
-		return nil, []error{err}
+	pkgs := make([]string, 0, len(code))
+	for p := range code {
+		pkgs = append(pkgs, p)
 	}
-	if limit > 0 && len(image) > limit {
-		return nil, []error{fmt.Errorf("the image is %d bytes, more than the %d bytes of format %s (target.format.size)", len(image), limit, d.Formats[0].Type)}
+	sort.Slice(pkgs, func(i, j int) bool { return code[pkgs[i]] > code[pkgs[j]] })
+	var parts []string
+	for _, p := range pkgs {
+		parts = append(parts, fmt.Sprintf("%s %d", p, code[p]))
 	}
-	return image, nil
+	consts, static := 0, 0
+	for _, d := range g.data {
+		if d.writable {
+			static += len(d.bytes)
+		} else {
+			consts += len(d.bytes)
+		}
+	}
+	return fmt.Sprintf("code by package: %s; constants %d; static data %d", strings.Join(parts, ", "), consts, static)
+}
+
+// writableSize returns the size of the writable data, which the entry
+// code clears.
+func (g *gen) writableSize() int {
+	n := 0
+	for _, d := range g.data {
+		if d.writable {
+			n = roundUp(n, d.align) + len(d.bytes)
+		}
+	}
+	return n
 }
 
 // label returns a new label.
@@ -225,10 +370,8 @@ func (g *gen) text(o operand, part int) string {
 		size += " "
 	}
 	switch o.kind {
-	case opSlot:
-		return fmt.Sprintf("%s[%s%+d]", size, g.frame, off)
-	case opArg:
-		return fmt.Sprintf("%s[%s\x01A%d\x01]", size, g.frame, off)
+	case opSlot, opArg:
+		return fmt.Sprintf("%s[%s%s]", size, g.frame, g.offset(o.kind, off))
 	case opImm:
 		v := o.imm
 		if part >= 0 {
@@ -254,6 +397,35 @@ func (g *gen) text(o operand, part int) string {
 	panic("codegen: bad operand")
 }
 
+// offset returns the text of the offset of a slot from the frame
+// register, with its sign: a slot of the frame is at off from the frame
+// base, a slot of the argument area at off from the bottom of the frame.
+// Offsets that depend on the frame size are tokens that finish replaces.
+func (g *gen) offset(kind operandKind, off int) string {
+	switch {
+	case kind == opSlot && g.bottom:
+		return fmt.Sprintf("+\x01S%d\x01", off)
+	case kind == opSlot:
+		return fmt.Sprintf("%+d", off)
+	case g.bottom:
+		return fmt.Sprintf("%+d", off)
+	}
+	return fmt.Sprintf("\x01A%d\x01", off)
+}
+
+// half returns the text of 16-bit half h of an operand: of a constant,
+// the bits; of a label, a reference to the half of its address. Halves of
+// slots do not assemble in the templates that use them.
+func (g *gen) half(o operand, h int) string {
+	switch o.kind {
+	case opImm:
+		return strconv.FormatUint(o.imm>>uint(16*h)&0xFFFF, 10)
+	case opSym:
+		return fmt.Sprintf("<%s%+d:h%d>", o.sym, o.add, h)
+	}
+	return g.text(o, -1)
+}
+
 func sizeKeyword(width int) string {
 	switch width {
 	case 8:
@@ -268,7 +440,7 @@ func sizeKeyword(width int) string {
 	return ""
 }
 
-var placeholder = regexp.MustCompile(`\{([A-Za-z]+)(?:\.(\d+))?\}|@[A-Za-z0-9_]+`)
+var placeholder = regexp.MustCompile(`\{([A-Za-z]+)(?:\.(\d+|h\d|off))?\}|@[A-Za-z0-9_]+`)
 
 // expand substitutes the operands and labels into template code and
 // returns its lines.
@@ -288,9 +460,21 @@ func (g *gen) expand(code string, ops map[string]operand, labels map[string]stri
 			return "<" + l + "+0>"
 		}
 		o, ok := ops[name]
+		if !ok && sm[2] == "" && g.arch.Register(name) != nil {
+			return m // a register list of one register, such as {LR}
+		}
 		if !ok {
 			err = fmt.Errorf("the template uses {%s}, which operation has no", name)
 			return m
+		}
+		switch {
+		case strings.HasPrefix(sm[2], "h"):
+			return g.half(o, int(sm[2][1]-'0'))
+		case sm[2] == "off":
+			if !o.isMem() {
+				return "?"
+			}
+			return strings.TrimPrefix(g.offset(o.kind, o.off), "+")
 		}
 		part := -1
 		if sm[2] != "" {
@@ -321,8 +505,9 @@ func (g *gen) expand(code string, ops map[string]operand, labels map[string]stri
 }
 
 var (
-	symRef   = regexp.MustCompile(`<([A-Za-z0-9_.]+)([+-]\d+)>`)
+	symRef   = regexp.MustCompile(`<([A-Za-z0-9_.]+)([+-]\d+)(?::h(\d))?>`)
 	argRef   = regexp.MustCompile("\x01A(-?\\d+)\x01")
+	slotTok  = regexp.MustCompile("\x01S(-?\\d+)\x01")
 	localRef = regexp.MustCompile("\x02(L\\d+)\x02")
 )
 
@@ -335,8 +520,9 @@ func (g *gen) assembles(lines []string) bool {
 		}
 		l = symRef.ReplaceAllString(l, "4096")
 		l = argRef.ReplaceAllString(l, "-100")
+		l = slotTok.ReplaceAllString(l, "100")
 		l = strings.ReplaceAll(l, "\x01F\x01", "100")
-		if _, err := g.arch.AsmAt(l, 0x1000); err != nil {
+		if _, err := g.assemble(l, 0x1000); err != nil {
 			return false
 		}
 	}
@@ -398,9 +584,35 @@ func (g *gen) hasRule(op string, width, from int) bool {
 // ---------------------------------------------------------------------
 // Linking (comp.gen.link).
 
-// link places the code and the data at origin and assembles the code
-// until the lengths of the instructions do not change.
-func (g *gen) link(origin int) ([]byte, error) {
+// assemble assembles one line of code at address pc: an instruction, or
+// the directive ".word v", which stores v in a word, where v is a sum of
+// numbers.
+func (g *gen) assemble(text string, pc uint64) ([]byte, error) {
+	arg, ok := strings.CutPrefix(text, ".word ")
+	if !ok {
+		return g.arch.AsmAt(text, pc)
+	}
+	var v int64
+	for _, t := range strings.Split(strings.ReplaceAll(arg, " ", ""), "+") {
+		n, err := strconv.ParseInt(t, 0, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid .word %q", arg)
+		}
+		v += n
+	}
+	b := make([]byte, g.word)
+	for k := range b {
+		b[k] = byte(v >> uint(8*k))
+	}
+	return b, nil
+}
+
+// link places the code and the constant data at origin, and the writable
+// data after them or, if ram is not negative, at address ram; it
+// assembles the code until the lengths of the instructions do not change.
+// The image holds the code and the constant data, and the writable data
+// unless it is placed at ram.
+func (g *gen) link(origin, ram int) ([]byte, error) {
 	sizes := make([]int, len(g.code))
 	addrs := map[string]int{}
 	resolve := func(text string) (string, error) {
@@ -412,9 +624,22 @@ func (g *gen) link(origin int) ([]byte, error) {
 				err = fmt.Errorf("codegen: undefined label %s", sm[1])
 			}
 			add, _ := strconv.Atoi(sm[2])
-			return strconv.Itoa(a + add)
+			v := a + add
+			if sm[3] != "" {
+				v = v >> (16 * int(sm[3][0]-'0')) & 0xFFFF
+			}
+			return strconv.Itoa(v)
 		})
 		return s, err
+	}
+	// The data in the order placed: the constant data, then the writable.
+	var data []*dataItem
+	for _, w := range []bool{false, true} {
+		for _, d := range g.data {
+			if d.writable == w {
+				data = append(data, d)
+			}
+		}
 	}
 	var codes [][]byte
 	for pass := 0; ; pass++ {
@@ -429,7 +654,10 @@ func (g *gen) link(origin int) ([]byte, error) {
 			}
 			pc += sizes[i]
 		}
-		for _, d := range g.data {
+		for _, d := range data {
+			if d.writable && ram >= 0 && pc < ram {
+				pc = ram
+			}
 			pc = roundUp(pc, d.align)
 			addrs[d.label] = pc
 			pc += len(d.bytes)
@@ -441,14 +669,16 @@ func (g *gen) link(origin int) ([]byte, error) {
 					continue
 				}
 				text, _ := resolve(it.text)
-				code, err := g.arch.AsmAt(text, uint64(origin))
+				code, err := g.assemble(text, uint64(origin))
 				if err != nil {
-					code, err = g.arch.AsmAt(symRef.ReplaceAllString(it.text, "4660"), uint64(origin))
+					code, err = g.assemble(symRef.ReplaceAllString(it.text, "4660"), uint64(origin))
 				}
-				if err != nil {
-					return nil, fmt.Errorf("%s: %q: %v", it.fn, it.text, err)
+				// An instruction that assembles at no address of this
+				// placement, such as a short branch forward, gets its length
+				// in the next passes.
+				if err == nil {
+					sizes[i] = len(code)
 				}
-				sizes[i] = len(code)
 			}
 			continue
 		}
@@ -468,7 +698,7 @@ func (g *gen) link(origin int) ([]byte, error) {
 			if err != nil {
 				return nil, err
 			}
-			code, err := g.arch.AsmAt(text, uint64(pc))
+			code, err := g.assemble(text, uint64(pc))
 			if err != nil {
 				if firstErr == nil {
 					firstErr = fmt.Errorf("%s: %q: %v", it.fn, text, err)
@@ -482,6 +712,10 @@ func (g *gen) link(origin int) ([]byte, error) {
 			codes = append(codes, code)
 			pc += sizes[i]
 		}
+		g.sizes = map[string]int{}
+		for i, it := range g.code {
+			g.sizes[it.fn] += sizes[i]
+		}
 		if !changed {
 			if firstErr != nil {
 				return nil, firstErr
@@ -494,7 +728,10 @@ func (g *gen) link(origin int) ([]byte, error) {
 	for _, c := range codes {
 		image = append(image, c...)
 	}
-	for _, d := range g.data {
+	for _, d := range data {
+		if d.writable && ram >= 0 {
+			break
+		}
 		for len(image)+origin < addrs[d.label] {
 			image = append(image, 0)
 		}

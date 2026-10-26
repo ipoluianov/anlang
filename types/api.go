@@ -1,6 +1,10 @@
 package types
 
-import "an/syntax"
+import (
+	"math/big"
+
+	"an/syntax"
+)
 
 // SelectionKind is the kind of a selector expression.
 type SelectionKind int
@@ -191,3 +195,19 @@ type IfaceValue struct {
 	Type  Type
 	Value any
 }
+
+// IntBounds returns the range of the values of integer type t on the
+// target of the package, or false if t is not an integer type.
+func (info *Info) IntBounds(t Type) (lo, hi *big.Int, ok bool) {
+	c := info.api()
+	if info.intBits != 0 {
+		c.intBits, c.addrBits = info.intBits, info.addrBits
+	}
+	return c.typeBounds(t)
+}
+
+// IsWrap reports whether t is a wrap type (expr.wrap.ops).
+func IsWrap(t Type) bool { return isWrapping(t) }
+
+// ExprString returns the source form of an expression, for diagnostics.
+func ExprString(e syntax.Expr) string { return exprString(e) }

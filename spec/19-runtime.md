@@ -67,13 +67,13 @@ The behavior of each component is specified elsewhere: memory in [06-memory](06-
 
 ## 19.5 Task stacks
 
-**rt.stack.static** — For each task, interrupt handler and `main`, the compiler MUST compute the maximum stack depth when it is bounded: no recursion, and indirect calls resolved to a known set of functions. The stack of such a task MUST have exactly that size, rounded to the target's alignment.
+**rt.stack.static** — For each task, interrupt handler and `main`, the compiler MUST compute the maximum stack depth when it is bounded: no recursion without a proven bound on its depth, and indirect calls resolved to a known set of functions. The stack of such a task MUST have exactly that size, rounded to the target's alignment.
 
-**rt.stack.reserve** — In the `app` and `ui` profiles, a task whose maximum stack depth cannot be computed (recursion, unbounded depth) MUST receive a reserve of virtual memory with a guard page. Physical memory is committed on use. A stack overflow MUST be detected and reported as a panic; it MUST NOT corrupt memory.
+**rt.stack.reserve** — In the `app` and `ui` profiles, a task whose maximum stack depth cannot be computed (recursion, unbounded depth) MUST receive a reserve of virtual memory with a guard page. Physical memory is committed on use. A stack overflow MUST be detected and reported as a panic; it MUST NOT corrupt memory. On the target `web`, the stack of `main` is the `Stack` of the target in the memory of the module; until the panic message of a stack overflow (roadmap step 25), an overflow is detected by `enter` (**comp.gen.stack**) and ends the program with a WebAssembly trap.
 
 **rt.stack.report** — The compiler MUST report every task that needed a reserve under **rt.stack.reserve**, as part of `anlang size` and of the `-json` build report (see [20-toolchain](20-toolchain.md)).
 
-**rt.stack.core-recursion** — In the `core` profile, recursion in a task, an interrupt handler or `main` without a proven bound on depth MUST be rejected at compile time (see [14-embedded](14-embedded.md) for the stack analysis against the target's `Stack` size).
+**rt.stack.core-recursion** — In the `core` profile, recursion in a task, an interrupt handler or `main` without a proven bound on depth MUST be rejected at compile time (see [14-embedded](14-embedded.md) for the stack analysis against the target's `Stack` size). The bound is proven for a function that calls itself directly and is in no other cycle of calls, when one of its integer parameters p decreases: at each call of the function in its own body, the solver proves the argument for p smaller than the value of p at entry. The value of p at entry lies in [lo, hi], the range of its type narrowed by the preconditions of the forms `p op c` and `c op p` with a constant c and op one of `<`, `<=`, `>`, `>=` and `==`, alone or as operands of `&&`; the depth is at most hi − lo + 1, and the stack analysis uses at most 2²⁰. A call of the function to itself through a function value has no bound.
 
 ## 19.6 Development-only components
 

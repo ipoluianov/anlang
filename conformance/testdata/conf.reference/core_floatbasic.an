@@ -1,0 +1,23 @@
+// want: ok
+
+// Basic floating-point arithmetic and printing, small enough for the
+// 64 KiB of a DOS .COM program with floating point in software.
+package main
+
+profile core
+
+import "an/fmt"
+
+func main() {
+	x, y := 1.5, 0.1
+	fmt.Println(x+y, x-y, x*y, x/y, -x)
+	fmt.Println(x < y, x == 1.5, y*3 == 0.3)
+	n := 7
+	f := f64(n) / 2
+	fmt.Println(f, int(f), int(-f))
+	var s f32 = 1
+	for range 10 {
+		s /= 3
+	}
+	fmt.Println(s, f64(s))
+}

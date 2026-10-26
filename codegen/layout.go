@@ -98,8 +98,9 @@ func (g *gen) computeLayout(t types.Type) (int, int) {
 			return g.ptr + g.intBits/8, g.scalarAlign(g.ptr)
 		case u.Kind() == types.UntypedNil:
 			return g.ptr, g.scalarAlign(g.ptr)
+		case u.Kind() == types.F32:
+			return 4, g.scalarAlign(4)
 		case u.Info()&types.IsFloat != 0:
-			g.unsupported(15, "floating-point types")
 			return 8, g.scalarAlign(8)
 		}
 		g.fail("codegen: no layout for type %s", t)
