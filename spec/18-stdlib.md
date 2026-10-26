@@ -106,7 +106,10 @@ The specification refers to further standard library packages. They are part of 
 | `an/secret` | `New`, `Equal`, `Expose`, `Map`, `ConstantTime`; effect `ExposeSecret` | [11-data-safety](11-data-safety.md) |
 | `an/untrusted` | `Accept` | [11-data-safety](11-data-safety.md) |
 | `an/interrupts` | `Enable` | [14-embedded](14-embedded.md) |
-| `an/bios` | `BootDrive` | [15-os](15-os.md) |
+| `an/bios` | `BootDrive`; `ClearScreen`, `SetCursor`, `Cursor`, `PutChar`, `WriteChar` (int 10h), `ReadKey`, `KeyReady` (int 16h), `Ticks` (int 1Ah) | [15-os](15-os.md), [20-toolchain](20-toolchain.md) |
+| `an/dos` | `Print`, `PrintChar`, `Write`, `ReadChar`, `CharReady`, `Now`, `Time`, `Exit` (int 21h) | [20-toolchain](20-toolchain.md) |
+| `an/encoding` | `CP866` | [10-compile-time](10-compile-time.md) |
+| `an/unsafe` | `Map`, `Data`; `Flat`, `Near`, `Far`, `Program` | [06-memory](06-memory.md) |
 | `an/mm` | `PhysAddr`, `VirtAddr` | [15-os](15-os.md) |
 | `an/sched`, `an/kernel` | kernel thread type with declared stack size, per-CPU data (*provisional* names) | [15-os](15-os.md) |
 | `an/gpu` | `Out[T]` with a constructor taking a length and a read-back method (*provisional* names), `Dispatch`, `GlobalID`, `GlobalSize`; `Atomic[T]`, `Shared[T]` as future work | [16-gpu](16-gpu.md) |

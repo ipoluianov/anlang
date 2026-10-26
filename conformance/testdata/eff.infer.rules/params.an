@@ -1,0 +1,76 @@
+// want: ok
+// checks: eff.attr.own
+
+package main
+
+import "an/fmt"
+
+type Handler interface {
+	Handle(n int)
+}
+
+type Logger struct{}
+
+func (l Logger) Handle(n int) { fmt.Println(n) }
+
+type Quiet struct{}
+
+func (q Quiet) Handle(n int) {}
+
+// each calls its parameter: the effects of f are not its own.
+// effects: each none
+func each(xs [3]int, f func(int)) {
+	for _, x := range xs {
+		f(x)
+	}
+}
+
+// effects: dispatch none
+func dispatch(h Handler, n int) {
+	if h != nil {
+		h.Handle(n)
+	}
+}
+
+// The effect of the function passed is attributed to the caller.
+// effects: printAll Console Panic
+func printAll() {
+	each([3]int{1, 2, 3}, func(n int) { fmt.Println(n) })
+}
+
+// effects: quietAll none
+func quietAll() {
+	each([3]int{}, func(n int) {})
+}
+
+// effects: viaParam none
+func viaParam(f func(int)) {
+	each([3]int{}, f)
+}
+
+// effects: logIt Console Panic
+func logIt() {
+	dispatch(Logger{}, 1)
+}
+
+// effects: quiet none
+func quiet() {
+	dispatch(Quiet{}, 1)
+}
+
+func show(n int) { fmt.Println(n) }
+
+// A named function passed as an argument.
+// effects: named Console Panic
+func named() {
+	each([3]int{}, show)
+}
+
+func main() {
+	printAll()
+	quietAll()
+	viaParam(show)
+	logIt()
+	quiet()
+	named()
+}

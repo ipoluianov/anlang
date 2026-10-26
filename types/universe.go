@@ -27,6 +27,38 @@ const (
 	_FmtPrintln
 	_FmtSprint
 	_FmtSprintln
+	_FmtPrintf
+	_FmtSprintf
+
+	// Functions of an/bits implemented by the compiler (expr.bits.functions).
+	_BitsWrappingAdd
+	_BitsWrappingSub
+	_BitsWrappingMul
+	_BitsSaturatingAdd
+	_BitsSaturatingSub
+	_BitsSaturatingMul
+	_BitsCheckedAdd
+	_BitsCheckedSub
+	_BitsCheckedMul
+
+	// Compiler-known functions of an/effect (spec/07-effects.md).
+	_EffectMark
+	_EffectDefer
+	_EffectDeclare
+	_EffectWithout
+
+	// Compile-time functions of an/meta (spec/10-compile-time.md §10.4).
+	_MetaName
+	_MetaFields
+	_MetaVariants
+	_MetaReject
+
+	// Functions of an/unsafe (spec/06-memory.md §11).
+	_UnsafeMap
+	_UnsafeData
+
+	// Compile-time functions of an/encoding (spec/10-compile-time.md §10.7).
+	_EncodingCP866
 )
 
 var builtinNames = map[builtinID]string{
@@ -34,6 +66,13 @@ var builtinNames = map[builtinID]string{
 	_Delete: "delete", _Len: "len", _Make: "make", _Max: "max", _Min: "min",
 	_Panic: "panic", _Print: "print", _Println: "println",
 	_FmtPrint: "Print", _FmtPrintln: "Println", _FmtSprint: "Sprint", _FmtSprintln: "Sprintln",
+	_FmtPrintf: "Printf", _FmtSprintf: "Sprintf",
+	_BitsWrappingAdd: "WrappingAdd", _BitsWrappingSub: "WrappingSub", _BitsWrappingMul: "WrappingMul",
+	_BitsSaturatingAdd: "SaturatingAdd", _BitsSaturatingSub: "SaturatingSub", _BitsSaturatingMul: "SaturatingMul",
+	_BitsCheckedAdd: "CheckedAdd", _BitsCheckedSub: "CheckedSub", _BitsCheckedMul: "CheckedMul",
+	_EffectMark: "Mark", _EffectDefer: "Defer", _EffectDeclare: "Declare", _EffectWithout: "Without",
+	_MetaName: "Name", _MetaFields: "Fields", _MetaVariants: "Variants", _MetaReject: "Reject",
+	_UnsafeMap: "Map", _UnsafeData: "Data", _EncodingCP866: "CP866",
 }
 
 // Universe is the universe block (type.universe).
@@ -80,7 +119,7 @@ var removed = map[string]struct{ rule, instead string }{
 
 func init() {
 	for _, t := range Typ {
-		if t.kind == Invalid || t.info&IsUntyped != 0 {
+		if t.kind == Invalid || t.info&(IsUntyped|IsWrapping) != 0 {
 			continue
 		}
 		Universe.Insert(&TypeName{object{name: t.name, typ: t}})
@@ -105,9 +144,9 @@ func init() {
 	cmpObj.typ = &Named{Obj: cmpObj, underlying: &Interface{isComparable: true}}
 	Universe.Insert(cmpObj)
 
-	Universe.Insert(&Const{object{name: "true", typ: Typ[UntypedBool]}, constant.MakeBool(true)})
-	Universe.Insert(&Const{object{name: "false", typ: Typ[UntypedBool]}, constant.MakeBool(false)})
-	universeIota = &Const{object{name: "iota", typ: Typ[UntypedInt]}, constant.MakeInt64(0)}
+	Universe.Insert(&Const{object: object{name: "true", typ: Typ[UntypedBool]}, Val: constant.MakeBool(true)})
+	Universe.Insert(&Const{object: object{name: "false", typ: Typ[UntypedBool]}, Val: constant.MakeBool(false)})
+	universeIota = &Const{object: object{name: "iota", typ: Typ[UntypedInt]}, Val: constant.MakeInt64(0)}
 	Universe.Insert(universeIota)
 	Universe.Insert(&Nil{object{name: "nil", typ: Typ[UntypedNil]}})
 
@@ -122,11 +161,94 @@ func init() {
 // Temporary: an/fmt is built into the compiler until the standard library
 // is compiled from Anlang source (roadmap steps 9–10).
 var stdPackages = map[string]*Package{
-	"an/fmt": newStdPackage("an/fmt", _FmtPrint, _FmtPrintln, _FmtSprint, _FmtSprintln),
+	"an/fmt":    newStdPackage("an/fmt", _FmtPrint, _FmtPrintln, _FmtSprint, _FmtSprintln, _FmtPrintf, _FmtSprintf),
+	"an/wrap":   newWrapPackage(),
+	"an/effect": newEffectPackage(),
+	"an/meta":   newMetaPackage(),
+	"an/unsafe": newUnsafePackage(),
+	// Temporary: the functions of an/encoding are built into the compiler
+	// until compile-time evaluation can run functions that allocate in
+	// packages of the core profile.
+	"an/encoding": newStdPackage("an/encoding", _EncodingCP866),
+	"an/bits": newStdPackage("an/bits", _BitsWrappingAdd, _BitsWrappingSub, _BitsWrappingMul,
+		_BitsSaturatingAdd, _BitsSaturatingSub, _BitsSaturatingMul, _BitsCheckedAdd, _BitsCheckedSub, _BitsCheckedMul),
+}
+
+// BaseEffects are the base effects of package an/effect (eff.base.set),
+// with the hardware classes known before device descriptions (step 16).
+var BaseEffects = []string{
+	"Alloc", "StaticAlloc", "Console", "File", "Network", "Video", "Keyboard",
+	"Panic", "Block", "Tasks", "Interrupts", "Gpio", "Uart", "Timers",
+	"Clock", "Random", "Global", "Foreign",
+}
+
+// EffectType is the type effect.Effect. The value of an effect constant
+// is a string "IDENTITY#NAME": the identity is the qualified name of the
+// declaring constant (eff.model.identity), NAME the bare name
+// (eff.model.names).
+var EffectType *Named
+
+// newEffectPackage returns package an/effect: the type Effect, the base
+// effects and the compiler-known functions.
+func newEffectPackage() *Package {
+	pkg := newStdPackage("an/effect", _EffectMark, _EffectDefer, _EffectDeclare, _EffectWithout)
+	obj := &TypeName{object{name: "Effect", pkg: pkg}}
+	EffectType = &Named{Obj: obj, underlying: Typ[String]}
+	obj.typ = EffectType
+	pkg.Scope.Insert(obj)
+	for _, name := range BaseEffects {
+		pkg.Scope.Insert(&Const{object: object{name: name, typ: EffectType, pkg: pkg}, Val: constant.MakeString("an/effect." + name + "#" + name)})
+	}
+	return pkg
+}
+
+// UnsafeKinds are the pointer kind types of package an/unsafe
+// (mem.unsafe.kinds): Flat and Near have the width of usize, Far and
+// Program 32 bits.
+var UnsafeKinds = map[string]*Named{}
+
+// newUnsafePackage returns package an/unsafe (spec/06-memory.md §11):
+// the pointer kinds, Map and Data. Only packages of the core profile
+// import it (decl.import.unsafe).
+func newUnsafePackage() *Package {
+	pkg := newStdPackage("an/unsafe", _UnsafeMap, _UnsafeData)
+	pkg.Profiles = []string{"core"}
+	for _, k := range []struct {
+		name string
+		u    BasicKind
+	}{{"Flat", Usize}, {"Near", Usize}, {"Far", U32}, {"Program", U32}} {
+		obj := &TypeName{object{name: k.name, pkg: pkg}}
+		t := &Named{Obj: obj, underlying: Typ[k.u]}
+		obj.typ = t
+		pkg.Scope.Insert(obj)
+		UnsafeKinds[k.name] = t
+	}
+	return pkg
+}
+
+// IsPointerKind reports whether t is a pointer kind of an/unsafe.
+func IsPointerKind(t Type) bool {
+	for _, k := range UnsafeKinds {
+		if t == Type(k) {
+			return true
+		}
+	}
+	return false
+}
+
+// newWrapPackage returns package an/wrap with its wrapping integer types
+// (type.known.wrap).
+func newWrapPackage() *Package {
+	pkg := newStdPackage("an/wrap")
+	for k := WrapU8; k <= WrapI64; k++ {
+		t := Typ[k]
+		pkg.Scope.Insert(&TypeName{object{name: t.name[len("wrap."):], typ: t, pkg: pkg}})
+	}
+	return pkg
 }
 
 func newStdPackage(path string, funcs ...builtinID) *Package {
-	pkg := &Package{Path: path, Name: path[len("an/"):], Scope: NewScope(nil)}
+	pkg := &Package{Path: path, Name: path[len("an/"):], Scope: NewScope(nil), Profiles: []string{"core", "app", "ui"}}
 	for _, id := range funcs {
 		pkg.Scope.Insert(&Builtin{object: object{name: builtinNames[id], typ: Typ[Invalid]}, id: id, pkg: path})
 	}

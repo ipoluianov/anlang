@@ -15,13 +15,13 @@ func (m *machine) intSize(t types.Type) (int, bool) {
 	b := t.Underlying().(*types.Basic)
 	signed := b.Info()&types.IsUnsigned == 0
 	switch b.Kind() {
-	case types.I8, types.U8:
+	case types.I8, types.U8, types.WrapI8, types.WrapU8:
 		return 8, signed
-	case types.I16, types.U16, types.I16le, types.I16be, types.U16le, types.U16be:
+	case types.I16, types.U16, types.I16le, types.I16be, types.U16le, types.U16be, types.WrapI16, types.WrapU16:
 		return 16, signed
-	case types.I32, types.U32, types.I32le, types.I32be, types.U32le, types.U32be:
+	case types.I32, types.U32, types.I32le, types.I32be, types.U32le, types.U32be, types.WrapI32, types.WrapU32:
 		return 32, signed
-	case types.I64, types.U64, types.I64le, types.I64be, types.U64le, types.U64be:
+	case types.I64, types.U64, types.I64le, types.I64be, types.U64le, types.U64be, types.WrapI64, types.WrapU64:
 		return 64, signed
 	}
 	return m.intBits, signed // int, uint, usize
@@ -64,6 +64,9 @@ func (m *machine) binop(op syntax.Kind, t types.Type, x, y value) value {
 		return m.equal(x, y, t)
 	case syntax.Neq:
 		return !m.equal(x, y, t)
+	}
+	if isWrapping(t) {
+		return m.wrapOp(op, t, x, y)
 	}
 	switch x := x.(type) {
 	case int64:
@@ -137,6 +140,67 @@ func (m *machine) binop(op syntax.Kind, t types.Type, x, y value) value {
 	panic(fmt.Sprintf("interp: operator %s on %T", op, x))
 }
 
+func isWrapping(t types.Type) bool {
+	b, ok := t.Underlying().(*types.Basic)
+	return ok && b.Info()&types.IsWrapping != 0
+}
+
+// wrapOp computes an operation on a wrapping type: the result is reduced
+// modulo 2ⁿ and only division by zero panics (expr.wrap.ops,
+// expr.wrap.other-ops).
+func (m *machine) wrapOp(op syntax.Kind, t types.Type, x, y value) value {
+	n, signed := m.intSize(t)
+	if op == syntax.Shl || op == syntax.Shr {
+		if signed {
+			return shiftSigned(op, x.(int64), shiftCount(y), n)
+		}
+		s := shiftCount(y)
+		if s >= 64 {
+			return uint64(0)
+		}
+		if op == syntax.Shl {
+			return truncUnsigned(x.(uint64)<<s, n)
+		}
+		return x.(uint64) >> s
+	}
+	if signed {
+		a, b := x.(int64), y.(int64)
+		switch op {
+		case syntax.Add:
+			return truncSigned(a+b, n)
+		case syntax.Sub:
+			return truncSigned(a-b, n)
+		case syntax.Mul:
+			return truncSigned(a*b, n)
+		case syntax.Quo, syntax.Rem:
+			if b == 0 {
+				panic(runtimeError("integer divide by zero"))
+			}
+			if b == -1 {
+				if op == syntax.Rem {
+					return int64(0)
+				}
+				return truncSigned(-a, n) // the minimum value wraps to itself
+			}
+			if op == syntax.Quo {
+				return a / b
+			}
+			return a % b
+		}
+		return m.signedOp(op, a, b, n)
+	}
+	a, b := x.(uint64), y.(uint64)
+	switch op {
+	case syntax.Add:
+		return truncUnsigned(a+b, n)
+	case syntax.Sub:
+		return truncUnsigned(a-b, n)
+	case syntax.Mul:
+		return truncUnsigned(a*b, n)
+	}
+	return m.unsignedOp(op, a, b, n)
+}
+
 func shiftCount(y value) uint64 {
 	switch y := y.(type) {
 	case int64:
@@ -195,10 +259,7 @@ func (m *machine) signedOp(op syntax.Kind, x, y int64, n int) value {
 			panic(runtimeError("integer divide by zero"))
 		}
 		if y == -1 && x == truncSigned(int64(-1)<<(n-1), n) {
-			if op == syntax.Rem {
-				return int64(0)
-			}
-			panic(overflow()) // expr.int.div
+			panic(overflow()) // x / -1 and x % -1 overflow (expr.int.div)
 		}
 		if op == syntax.Quo {
 			return x / y
@@ -274,6 +335,15 @@ func (m *machine) unsignedOp(op syntax.Kind, x, y uint64, n int) value {
 }
 
 func (m *machine) unop(op syntax.Kind, t types.Type, x value) value {
+	if op == syntax.Sub && isWrapping(t) {
+		n, _ := m.intSize(t)
+		switch x := x.(type) {
+		case int64:
+			return truncSigned(-x, n)
+		case uint64:
+			return truncUnsigned(-x, n)
+		}
+	}
 	switch x := x.(type) {
 	case int64:
 		n, _ := m.intSize(t)

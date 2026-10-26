@@ -1,0 +1,7 @@
+// want: ok
+
+package main
+
+profile core
+
+func main() {}

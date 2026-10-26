@@ -1,0 +1,19 @@
+// want: eff.without.check
+
+package main
+
+import "an/effect"
+
+func grow(s []int) []int {
+	return append(s, 0)
+}
+
+func handle(s []int) []int {
+	ensures effect.Without(effect.Alloc)
+
+	return grow(s)
+}
+
+func main() {
+	_ = handle(nil)
+}

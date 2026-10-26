@@ -1,0 +1,95 @@
+// Package target describes build targets (spec/13-targets.md): an
+// architecture, a platform and binary formats. A target package declares
+// a constant Description of type Desc.
+package target
+
+profile core, app, ui
+
+import (
+	"an/arch"
+	"an/effect"
+	"an/platform"
+)
+
+// Desc is a target description (target.desc.types). A field at its zero
+// value takes its default: Word, Pointers and Floats from Arch, OnPanic
+// from Platform.
+type Desc struct {
+	Arch     arch.Arch
+	Platform platform.Platform
+	// Word is the width of int and uint in bits.
+	Word     int
+	Pointers Pointers
+	// Formats are the output formats; one file is written for each.
+	Formats []Format
+	Floats  FloatSupport
+	// Memory are the memory regions of a bare target.
+	Memory []Region
+	// Stack is the stack size of main in bytes.
+	Stack int
+	// Provides and Lacks are the environment effects that the target
+	// provides and that it explicitly lacks.
+	Provides []effect.Effect
+	Lacks    []effect.Effect
+	OnPanic  PanicAction
+	// Clock is the clock frequency in Hz, for timing analysis.
+	Clock int
+}
+
+// Pointers are the widths of the pointer kinds (target.pointers.kinds).
+type Pointers = arch.Pointers
+
+// PanicAction is what a panic does (target.panic.action).
+type PanicAction = platform.PanicAction
+
+// The panic actions.
+const (
+	DefaultPanic = panicAction(platform.DefaultPanic)
+	PrintAndExit = panicAction(platform.PrintAndExit)
+	Reset        = panicAction(platform.Reset)
+	Halt         = panicAction(platform.Halt)
+)
+
+func panicAction(a PanicAction) PanicAction { return a }
+
+// FloatSupport is how the target computes with floating-point types
+// (spec/13-targets.md §13.7).
+type FloatSupport enum {
+	DefaultFloats
+	HardFloat
+	SoftFloat
+	NoFloat
+}
+
+// Region is a memory region of a bare target (target.memory.region).
+type Region struct {
+	Name string
+	At   int
+	Size int
+	Exec bool
+}
+
+// Format is a binary format (target.format.interface). Until compile-time
+// evaluation can call methods on the linked image, the toolchain writes
+// each kind of format itself (target.format.kind).
+type Format interface {
+	Kind() string
+}
+
+// Flat is a raw image without header or relocations, loaded at Origin,
+// that starts at its first byte and holds at most MaxSize bytes.
+type Flat struct {
+	Origin  int
+	MaxSize int
+}
+
+func (Flat) Kind() string { return "flat" }
+
+// BootSector is a BIOS boot sector: an image loaded at 0x7C00, padded to
+// 510 bytes and followed by the boot signature.
+type BootSector struct{}
+
+func (BootSector) Kind() string { return "boot" }
+
+// KiB is 1024 bytes, for sizes of regions and stacks.
+const KiB = 1024

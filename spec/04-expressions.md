@@ -79,11 +79,13 @@ These functions never panic and have no effects.
 
 **expr.wrap.ops** — For operands of a type of the package `an/wrap` (`wrap.U8` … `wrap.U64`, `wrap.I8` … `wrap.I64`), the operators `+`, `-`, `*`, unary `-` and `<<`, and the corresponding assignment operations and `++`, `--`, produce the mathematical result reduced modulo 2ⁿ and interpreted in the operand type. These operations never panic.
 
-**expr.wrap.other-ops** — The operators `&`, `|`, `^`, `&^`, `>>`, `/`, `%` and comparisons on wrapping types behave as on the integer type of the same size and signedness. Division by zero panics.
+**expr.wrap.other-ops** — The operators `&`, `|`, `^`, `&^`, `>>`, `/`, `%` and comparisons on wrapping types behave as on the integer type of the same size and signedness, except that `x / -1` with `x` equal to the minimum value of a signed wrapping type wraps to that minimum value and `x % -1` is 0, as in Go. Division by zero panics; it is the only panic of wrapping arithmetic.
 
 **expr.wrap.mixing** — Both operands of a binary operator on a wrapping type MUST have the same wrapping type. An untyped constant operand is converted to that type and MUST be representable in the integer type of the same size and signedness. Mixing a wrapping type with any other integer type requires an explicit conversion.
 
 **expr.wrap.convert** — A wrapping type and the integer type of the same size and signedness convert to each other explicitly without a range check; the bit pattern is preserved.
+
+**expr.wrap.const** — A constant expression of a wrapping type is evaluated exactly and then reduced modulo 2ⁿ into the range of the type, so it never overflows. A constant conversion to a wrapping type truncates as **type.conv.wrap** prescribes for values: `wrap.U8(300)` is 44 and `wrap.U8(-1)` is 255. An untyped constant used where a wrapping type is expected without a conversion — in an assignment or as an operand — MUST still be representable in the integer type of the same size and signedness (**type.assign.go**, **expr.wrap.mixing**).
 
 ```go
 var h wrap.U64 = 0xcbf29ce484222325

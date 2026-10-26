@@ -1,0 +1,51 @@
+// want: ok
+
+package main
+
+import "an/fmt"
+
+type Stringer interface {
+	String() string
+}
+
+type Loud struct{}
+
+func (l Loud) String() string {
+	fmt.Println("calling String")
+	return "loud"
+}
+
+type Calm struct{}
+
+func (c Calm) String() string { return "calm" }
+
+// effects: describe none
+func describe[T Stringer](x T) string {
+	return x.String()
+}
+
+// effects: loud Console Panic
+func loud() string {
+	return describe(Loud{})
+}
+
+// effects: calm none
+func calm() string {
+	return describe(Calm{})
+}
+
+// effects: forward none
+func forward[U Stringer](x U) string {
+	return describe(x)
+}
+
+// effects: viaForward Console Panic
+func viaForward() string {
+	return forward(Loud{})
+}
+
+func main() {
+	_ = loud()
+	_ = calm()
+	_ = viaForward()
+}

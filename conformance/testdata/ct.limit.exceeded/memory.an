@@ -1,0 +1,9 @@
+// want: ct.limit.exceeded
+
+package main
+
+const huge = make([]u8, 1<<30)
+
+func main() {
+	_ = huge
+}

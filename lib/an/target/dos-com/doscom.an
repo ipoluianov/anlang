@@ -1,0 +1,24 @@
+// Package doscom is the target dos-com: DOS .COM programs for the 8086.
+package doscom
+
+profile core, app, ui
+
+import (
+	"an/arch"
+	"an/effect"
+	"an/platform"
+	"an/target"
+)
+
+// Description is the target description (target.pkg.description).
+const Description = target.Desc{
+	Arch:     arch.I8086,
+	Platform: platform.DOS,
+	Word:     16,
+	Pointers: target.Pointers{Near: 16, Far: 32},
+	Formats:  []target.Format{target.Flat{Origin: 0x100, MaxSize: 65280}},
+	Floats:   target.SoftFloat,
+	Provides: []effect.Effect{effect.Console, effect.Video, effect.File, effect.Keyboard, effect.Clock, effect.StaticAlloc},
+	Lacks:    []effect.Effect{effect.Network},
+	OnPanic:  target.PrintAndExit,
+}

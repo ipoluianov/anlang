@@ -1,0 +1,15 @@
+// want: ok
+// checks: decl.var.package-kinds
+
+// A hardware mapping is a package-level variable of the core profile.
+package main
+
+profile core
+
+import "an/unsafe"
+
+var regs = unsafe.Map[[4]u16](unsafe.Flat(0x1000))
+
+func main() {
+	_ = len(regs)
+}

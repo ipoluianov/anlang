@@ -1,0 +1,36 @@
+// want: ok
+
+// The timer follows the executed clock cycles from midnight.
+package main
+
+profile core
+
+import (
+	"an/bios"
+	"an/dos"
+)
+
+func spin(n u16) u16 {
+	var x u16
+	for i := range n {
+		x ^= i
+	}
+	return x
+}
+
+func main() {
+	t0 := bios.Ticks()
+	now := dos.Now()
+	if now.Hour == 0 && now.Minute == 0 {
+		dos.Print("midnight\r\n")
+	}
+	spin(20000)
+	t1 := bios.Ticks()
+	if t1 > t0 {
+		dos.Print("the timer advances\r\n")
+	}
+	later := dos.Now()
+	if later.Second > now.Second || later.Hundredth > now.Hundredth {
+		dos.Print("the clock advances\r\n")
+	}
+}

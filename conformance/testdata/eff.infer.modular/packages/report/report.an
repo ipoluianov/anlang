@@ -1,0 +1,12 @@
+package report
+
+import (
+	"an/fmt"
+	"conf/store"
+)
+
+// Rows prints every row: the effect of printing belongs to Rows, the
+// effect SQL comes from store.Each.
+func Rows() {
+	store.Each(func(row int) { fmt.Println(row) })
+}

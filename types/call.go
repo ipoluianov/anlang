@@ -9,6 +9,15 @@ import (
 )
 
 func (c *checker) callExpr(x *operand, e *syntax.CallExpr) {
+	if c.descCall(x, e) {
+		return
+	}
+	if ix, ok := unparen(e.Fun).(*syntax.IndexExpr); ok && c.isMapCall(e) {
+		var f operand
+		c.rawExpr(&f, ix.X, nil)
+		c.unsafeMap(x, e, ix)
+		return
+	}
 	var fun operand
 	savedCallee := c.callee
 	c.callee = unparen(e.Fun)
@@ -46,18 +55,52 @@ func (c *checker) callExpr(x *operand, e *syntax.CallExpr) {
 		return
 	}
 	var args []*operand
+	savedOK := c.tupleOK
+	c.tupleOK = e.Ellipsis.IsValid() // forwarding a tuple: f(args...) (ct.any.use)
 	if len(sig.TypeParams) > 0 {
 		args = c.args(e.Args, nil)
 	} else {
 		args = c.args(e.Args, sig)
 	}
+	c.tupleOK = savedOK
+	for i, a := range args {
+		if _, ok := a.typ.(*TupleType); ok && (i != len(args)-1 || !sig.AnyTuple) {
+			c.errorf(a.expr.Pos(), "ct.any.use", "a ...any parameter may be passed only as the final argument of a call of a function with a ...any parameter, written with ...")
+			x.invalidate()
+			return
+		}
+	}
 	if len(sig.TypeParams) > 0 {
-		if sig = c.inferCall(e, sig, fun.targs, args); sig == nil {
+		if sig.AnyTuple {
+			// The tuple does not take part in inference.
+			n := sig.Params.Len() - 1
+			fixed := *sig
+			fixed.Params = &Tuple{Vars: sig.Params.Vars[:n]}
+			fixed.AnyTuple = false
+			iargs := args
+			if len(iargs) > n {
+				iargs = iargs[:n]
+			}
+			inst := c.inferCall(e, &fixed, fun.targs, iargs)
+			if inst == nil {
+				x.invalidate()
+				return
+			}
+			full := *inst
+			full.Params = &Tuple{Vars: append(append([]*Var(nil), inst.Params.Vars...), sig.Params.Vars[n])}
+			full.AnyTuple = true
+			sig = &full
+		} else if sig = c.inferCall(e, sig, fun.targs, args); sig == nil {
 			x.invalidate()
 			return
 		}
 	}
 	c.arguments(e, sig, args)
+	if sig.AnyTuple {
+		c.templateCall(e, sig, args)
+	} else if len(c.templates) > 0 {
+		c.templateCall(e, sig, args)
+	}
 	c.inoutOverlap(c.inoutAccesses(e, sig))
 	switch sig.Results.Len() {
 	case 0:
@@ -140,6 +183,19 @@ func (c *checker) arguments(e *syntax.CallExpr, sig *Signature, args []*operand)
 	name := exprString(e.Fun)
 	params := sig.Params.Vars
 	nparams := len(params)
+	if sig.AnyTuple {
+		// The fixed parameters; the other arguments form the tuple.
+		if len(args) < nparams-1 {
+			c.argCountError(e, sig, args)
+			return
+		}
+		for i, a := range args {
+			if i < nparams-1 {
+				c.paramArg(a, params[i], "argument to "+name)
+			}
+		}
+		return
+	}
 	if e.Ellipsis.IsValid() {
 		if !sig.Variadic {
 			c.errorf(e.Ellipsis, "expr.go", "have ... argument in call to non-variadic %s", name)
@@ -250,6 +306,11 @@ func (c *checker) conversionCall(x *operand, e *syntax.CallExpr, t Type) {
 
 // conversion checks the conversion of x to type t (spec/02-types.md §2.14).
 func (c *checker) conversion(x *operand, t Type) {
+	if t == EffectType && x.mode != invalid && !Identical(x.typ, EffectType) {
+		c.errorf(x.expr.Pos(), "eff.model.identity", "cannot convert %s to effect.Effect: effects are declared, not converted", x)
+		x.invalidate()
+		return
+	}
 	tb, tBasic := t.Underlying().(*Basic)
 	if x.mode == constant_ && tBasic && isConstType(tb) || x.mode == constant_ && tBasic && tb.info&IsTerminated != 0 {
 		c.constConversion(x, t, tb)
@@ -278,7 +339,7 @@ func (c *checker) conversion(x *operand, t Type) {
 			return
 		}
 	}
-	if rule, ok := c.convertible(x.typ, t); !ok {
+	if rule, ok := c.convertible(x.typ, t); !ok && !(rule == "type.conv.int-narrow" && c.provenFits(x.expr, t)) {
 		switch rule {
 		case "type.conv.int-narrow":
 			c.errorf(x.expr.Pos(), rule, "cannot convert %s to type %s: the value may not fit and it is not proven to (use conv.Narrow[%s] to get (%s, bool))", x, t, t, t)
@@ -319,6 +380,8 @@ func (c *checker) constConversion(x *operand, t Type, tb *Basic) {
 			r = rune(n)
 		}
 		val = constant.MakeString(string(r))
+	case tb.info&IsWrapping != 0 && isInteger(x.typ):
+		val = wrapConst(val, tb) // truncates (type.conv.wrap)
 	case tb.info&IsNumeric != 0 && isNumeric(x.typ):
 		v, ok := c.representable(val, tb)
 		if !ok || tb.info&IsInteger != 0 && constant.ToInt(val).Kind() != constant.Int {
@@ -377,7 +440,8 @@ func (c *checker) convertible(v, t Type) (string, bool) {
 	tb, tBasic := tu.(*Basic)
 	switch {
 	case vBasic && tBasic && vb.info&IsInteger != 0 && tb.info&IsInteger != 0:
-		if c.widens(vb, tb) {
+		if tb.info&IsWrapping != 0 || c.widens(vb, tb) {
+			// A conversion to a wrapping type truncates (type.conv.wrap).
 			return "", true
 		}
 		return "type.conv.int-narrow", false
@@ -403,6 +467,22 @@ func (c *checker) convertible(v, t Type) (string, bool) {
 		}
 	}
 	return "type.conv.go", false
+}
+
+// provenFits reports whether the value of integer expression e is proven
+// to be representable in integer type t (type.conv.int-narrow-facts).
+func (c *checker) provenFits(e syntax.Expr, t Type) bool {
+	tb, ok := core(t).(*Basic)
+	if !ok || tb.info&IsInteger == 0 {
+		return false
+	}
+	lo, hi, ok := c.interval(e)
+	if !ok {
+		return false
+	}
+	_, fitsLo := c.representable(lo, tb)
+	_, fitsHi := c.representable(hi, tb)
+	return fitsLo && fitsHi
 }
 
 // isByteOrRune reports whether t is u8 or i32, the element types of the
@@ -431,12 +511,29 @@ func (c *checker) widens(from, to *Basic) bool {
 func (c *checker) builtinCall(x *operand, e *syntax.CallExpr, id builtinID) {
 	name := exprString(e.Fun)
 	x.mode, x.typ, x.val = novalue, Typ[Invalid], nil
-	if e.Ellipsis.IsValid() && id >= _FmtPrint {
-		// Forwarding ...any arguments is compile-time expansion.
-		c.notSupported(e.Ellipsis, 10, "passing ...any arguments on to "+name)
-		c.useArgs(e.Args)
-		x.invalidate()
+	if id >= _MetaName && id <= _MetaReject {
+		c.metaBuiltin(x, e, id)
 		return
+	}
+	var spread []*operand // the elements of a tuple forwarded to an/fmt
+	if e.Ellipsis.IsValid() && id >= _FmtPrint && id <= _FmtSprintf && len(e.Args) > 0 {
+		// Forwarding ...any arguments (ct.any.use 2).
+		var last operand
+		c.tupleOK = true
+		c.expr(&last, e.Args[len(e.Args)-1])
+		c.tupleOK = false
+		tt, ok := last.typ.(*TupleType)
+		if last.mode != invalid && !ok {
+			c.errorf(last.expr.Pos(), "ct.any.no-slice", "cannot pass %s with ... to %s: each argument is an element of the tuple", &last, name)
+		}
+		if !ok {
+			x.invalidate()
+			return
+		}
+		for _, t := range tt.Elems {
+			spread = append(spread, &operand{mode: value, expr: last.expr, typ: t})
+		}
+		e = &syntax.CallExpr{Fun: e.Fun, Lparen: e.Lparen, Args: e.Args[:len(e.Args)-1], Rparen: e.Rparen}
 	}
 	if e.Ellipsis.IsValid() && id != _Append {
 		c.errorf(e.Ellipsis, "expr.go", "invalid use of ... with built-in %s", name)
@@ -449,7 +546,10 @@ func (c *checker) builtinCall(x *operand, e *syntax.CallExpr, id builtinID) {
 		c.makeCall(x, e)
 		return
 	}
+	c.tupleOK = id == _Len
 	args := c.args(e.Args, nil)
+	c.tupleOK = false
+	args = append(args, spread...)
 	for _, a := range args {
 		if a.mode == invalid {
 			x.invalidate()
@@ -478,6 +578,12 @@ func (c *checker) builtinCall(x *operand, e *syntax.CallExpr, id builtinID) {
 		a := args[0]
 		var val constant.Value
 		ok := false
+		if tt, isTuple := a.typ.(*TupleType); isTuple && id == _Len {
+			// The length of a tuple is a constant (ct.any.use 3).
+			x.mode, x.typ, x.val = constant_, Typ[Int], constant.MakeInt64(int64(len(tt.Elems)))
+			x.expr = e
+			return
+		}
 		switch t := core(a.typ).(type) {
 		case *Basic:
 			if t.info&IsString != 0 && id == _Len {
@@ -613,6 +719,123 @@ func (c *checker) builtinCall(x *operand, e *syntax.CallExpr, id builtinID) {
 		}
 		x.expr = e
 
+	case _BitsWrappingAdd, _BitsWrappingSub, _BitsWrappingMul,
+		_BitsSaturatingAdd, _BitsSaturatingSub, _BitsSaturatingMul,
+		_BitsCheckedAdd, _BitsCheckedSub, _BitsCheckedMul:
+		if !nargs(2, 2) {
+			return
+		}
+		a, b := args[0], args[1]
+		c.matchTypes(a, b)
+		if a.mode == invalid || b.mode == invalid {
+			x.invalidate()
+			return
+		}
+		if !Identical(a.typ, b.typ) {
+			c.errorf(b.expr.Pos(), "expr.bits.functions", "invalid argument: mismatched types %s and %s in call to %s", a.typ, b.typ, name)
+			x.invalidate()
+			return
+		}
+		c.defaultUntyped(a)
+		c.defaultUntyped(b)
+		t := a.typ
+		checked := func(t Type) bool { return isInteger(t) && !isWrapping(t) }
+		if tp, ok := t.(*TypeParam); ok && !c.allTerms(tp, checked) || !isTypeParam(t) && !checked(t) {
+			c.errorf(a.expr.Pos(), "expr.bits.functions", "invalid argument: %s must have a checked integer type", a)
+			x.invalidate()
+			return
+		}
+		x.mode, x.typ = value, t
+		if id >= _BitsCheckedAdd {
+			x.typ = NewTuple(t, Typ[Bool])
+		}
+		x.expr = e
+
+	case _EffectMark, _EffectDefer, _EffectWithout:
+		if id == _EffectMark && !nargs(1, 1) || id != _EffectMark && !nargs(1, -1) {
+			return
+		}
+		rule := map[builtinID]string{_EffectMark: "eff.custom.mark", _EffectDefer: "eff.deferred.declare", _EffectWithout: "eff.without.form"}[id]
+		for _, a := range args {
+			if a.mode != constant_ || !Identical(a.typ, EffectType) {
+				c.errorf(a.expr.Pos(), rule, "argument %s of %s must be a constant of type effect.Effect", a, name)
+				x.invalidate()
+				return
+			}
+		}
+		if id == _EffectWithout {
+			if !c.inEnsures {
+				c.errorf(e.Pos(), "eff.without.form", "%s may appear only as the whole expression of an ensures clause", name)
+				x.invalidate()
+				return
+			}
+			x.mode, x.typ = value, Typ[Bool]
+		}
+		x.expr = e
+
+	case _UnsafeData:
+		if !nargs(1, 1) {
+			return
+		}
+		a := args[0]
+		_, isSlice := core(a.typ).(*Slice)
+		b, isBasic := a.typ.Underlying().(*Basic)
+		if !isString(a.typ) && !isSlice && !(isBasic && b.info&IsTerminated != 0) {
+			c.errorf(a.expr.Pos(), "mem.unsafe.data", "unsafe.Data takes a string or a slice, not %s", a)
+			x.invalidate()
+			return
+		}
+		x.mode, x.typ, x.expr = value, Typ[Usize], e
+
+	case _UnsafeMap:
+		c.errorf(e.Pos(), "mem.unsafe.map", "unsafe.Map takes a type argument: unsafe.Map[T](addr)")
+		x.invalidate()
+
+	case _EncodingCP866:
+		if !nargs(1, 1) {
+			return
+		}
+		a := args[0]
+		if a.mode != constant_ || !isString(a.typ) {
+			c.errorf(a.expr.Pos(), "ct.encoding.const", "the argument of %s must be a constant string", name)
+			x.invalidate()
+			return
+		}
+		b, bad := encodeCP866(constant.StringVal(a.val))
+		if bad != "" {
+			c.errorf(a.expr.Pos(), "ct.encoding.unmappable", "%s cannot represent %q", name, bad)
+			x.invalidate()
+			return
+		}
+		x.mode, x.typ, x.expr, x.bytes = value, NewSlice(Typ[U8]), e, b
+		c.info.Bytes[e] = b
+
+	case _EffectDeclare:
+		if !nargs(1, 1) {
+			return
+		}
+		if c.declConst == nil || unparen(c.declInit) != e {
+			c.errorf(e.Pos(), "eff.custom.declare", "%s may appear only as the initializer of a package-level constant", name)
+			x.invalidate()
+			return
+		}
+		a := args[0]
+		if a.mode != constant_ || !isString(a.typ) {
+			c.errorf(a.expr.Pos(), "eff.custom.declare", "the name of an effect must be a constant string; found %s", a)
+			x.invalidate()
+			return
+		}
+		bare := constant.StringVal(a.val)
+		if bare == "" || strings.ContainsAny(bare, "#\n") {
+			c.errorf(a.expr.Pos(), "eff.custom.declare", "invalid effect name %q", bare)
+			x.invalidate()
+			return
+		}
+		c.updateExprType(a.expr, Typ[String], true)
+		x.mode, x.typ = constant_, EffectType
+		x.val = constant.MakeString(c.pkg.Path + "." + c.declConst.name + "#" + bare)
+		x.expr = e
+
 	case _Panic:
 		if !nargs(1, 1) {
 			return
@@ -631,6 +854,18 @@ func (c *checker) builtinCall(x *operand, e *syntax.CallExpr, id builtinID) {
 			c.defaultUntyped(a)
 		}
 		x.mode, x.typ = value, Typ[String]
+
+	case _FmtPrintf, _FmtSprintf:
+		if !nargs(1, -1) {
+			return
+		}
+		for _, a := range args[1:] {
+			c.defaultUntyped(a)
+		}
+		c.checkPrintf(name, args)
+		if id == _FmtSprintf {
+			x.mode, x.typ = value, Typ[String]
+		}
 
 	case _Clear:
 		if !nargs(1, 1) {

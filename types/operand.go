@@ -1,6 +1,7 @@
 package types
 
 import (
+	"bytes"
 	"go/constant"
 
 	"an/syntax"
@@ -30,6 +31,7 @@ type operand struct {
 	id     builtinID // for builtin
 	targs  []Type    // type arguments of a partially instantiated generic function
 	second bool      // a second-class closure (expr.closure.capture-inout)
+	bytes  []byte    // a []u8 constant made at compile time (ct.encoding.const)
 }
 
 func (x *operand) invalidate() { x.mode = invalid }
@@ -312,6 +314,11 @@ func (c *checker) assignment(x *operand, t Type, context string) {
 		c.secondClassError(x, "in "+context)
 		return
 	}
+	if t == EffectType && x.mode != invalid && isUntyped(x.typ) {
+		c.errorf(x.expr.Pos(), "eff.model.identity", "cannot use %s as effect.Effect value in %s: effects are declared, not written as strings", x, context)
+		x.invalidate()
+		return
+	}
 	switch x.mode {
 	case invalid:
 		return
@@ -343,6 +350,20 @@ func (c *checker) assignment(x *operand, t Type, context string) {
 	}
 	if !isValid(x.typ) {
 		x.invalidate()
+		return
+	}
+	if tb, ok := t.Underlying().(*Basic); ok && x.bytes != nil && tb.info&IsTerminated != 0 {
+		// A []u8 constant is assignable to cstring and dstring; the
+		// terminator is appended (type.string.terminator-const,
+		// ct.encoding.dstring).
+		term, rule := byte(0), "type.string.terminator-const"
+		if tb.kind == Dstring {
+			term, rule = '$', "ct.encoding.dstring"
+		}
+		if bytes.IndexByte(x.bytes, term) >= 0 {
+			c.errorf(x.expr.Pos(), rule, "cannot use %s as %s value in %s: it contains the terminator %q", x, t, context, term)
+			x.invalidate()
+		}
 		return
 	}
 	if !c.assignableTo(x.typ, t) {

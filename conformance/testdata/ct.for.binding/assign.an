@@ -1,0 +1,13 @@
+// want: ct.for.binding
+
+package main
+
+func clear1(args ...any) {
+	for const a := range args {
+		a = a
+	}
+}
+
+func main() {
+	clear1(1)
+}

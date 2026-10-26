@@ -51,6 +51,16 @@ const (
 	U64le
 	U64be
 
+	// Wrapping integers of package an/wrap (type.known.wrap).
+	WrapU8
+	WrapU16
+	WrapU32
+	WrapU64
+	WrapI8
+	WrapI16
+	WrapI32
+	WrapI64
+
 	F32
 	F64
 
@@ -78,6 +88,7 @@ const (
 	IsString
 	IsTerminated // cstring and dstring
 	IsUntyped
+	IsWrapping // types of package an/wrap
 
 	IsOrdered   = IsInteger | IsFloat | IsString
 	IsNumeric   = IsInteger | IsFloat
@@ -129,6 +140,15 @@ var Typ = [...]*Basic{
 	U32be: {U32be, IsInteger | IsUnsigned, 32, "u32be"},
 	U64le: {U64le, IsInteger | IsUnsigned, 64, "u64le"},
 	U64be: {U64be, IsInteger | IsUnsigned, 64, "u64be"},
+
+	WrapU8:  {WrapU8, IsInteger | IsUnsigned | IsWrapping, 8, "wrap.U8"},
+	WrapU16: {WrapU16, IsInteger | IsUnsigned | IsWrapping, 16, "wrap.U16"},
+	WrapU32: {WrapU32, IsInteger | IsUnsigned | IsWrapping, 32, "wrap.U32"},
+	WrapU64: {WrapU64, IsInteger | IsUnsigned | IsWrapping, 64, "wrap.U64"},
+	WrapI8:  {WrapI8, IsInteger | IsWrapping, 8, "wrap.I8"},
+	WrapI16: {WrapI16, IsInteger | IsWrapping, 16, "wrap.I16"},
+	WrapI32: {WrapI32, IsInteger | IsWrapping, 32, "wrap.I32"},
+	WrapI64: {WrapI64, IsInteger | IsWrapping, 64, "wrap.I64"},
 
 	F32: {F32, IsFloat, 32, "f32"},
 	F64: {F64, IsFloat, 64, "f64"},
@@ -207,6 +227,7 @@ type Signature struct {
 	Params   *Tuple
 	Results  *Tuple
 	Variadic bool
+	AnyTuple bool // the final parameter is ...any, a compile-time tuple (ct.any.tuple)
 
 	TypeParams     []*TypeParam // type parameters of a generic function
 	RecvTypeParams []*TypeParam // type parameters of the receiver of a method of a generic type

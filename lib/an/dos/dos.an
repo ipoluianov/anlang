@@ -1,0 +1,11 @@
+// Package dos provides the services of DOS that programs of the dos
+// targets reach through int 21h (spec/18-stdlib.md): console input and
+// output, the time of day and the exit of the program.
+package dos
+
+profile core
+
+// Time is a time of day.
+type Time struct {
+	Hour, Minute, Second, Hundredth u8
+}

@@ -9,9 +9,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
+	"an/arch/desc"
 	"an/build"
+	_ "an/codegen" // the code generator of the targets with target packages
+	"an/effects"
+	"an/emu/dos"
 	"an/format"
 	"an/interp"
 	"an/modfile"
@@ -38,6 +43,8 @@ func main() {
 		os.Exit(runRun(args))
 	case "fmt":
 		os.Exit(runFmt(args))
+	case "query":
+		os.Exit(runQuery(args))
 	case "help", "-h", "-help", "--help":
 		usage()
 	default:
@@ -54,12 +61,18 @@ Commands:
   build [-target t1,t2] [-ir]
                           build the program in the current project,
                           or print its IR with -ir
-  run   [-target t] [-emu ir] [-- args]
-                          build and run the program on this machine,
-                          or in the IR interpreter with -emu ir
+  run   [-target t] [-emu ir|builtin] [-screen] [-- args]
+                          build and run the program on this machine, in
+                          the built-in emulator of a target that cannot
+                          run here (or with -emu builtin), or in the IR
+                          interpreter with -emu ir
   fmt   [-check] [files]  rewrite Anlang files and anlang.mod in canonical form
+  query [-target t] effects [symbol]
+                          print the effects of the functions of the program
+                          or of one function, with the call chain to the
+                          source of each
 
-Only the target linux-x86_64 is implemented so far.
+Implemented targets: linux-x86_64 (a walking skeleton) and dos-com.
 `)
 }
 
@@ -104,22 +117,31 @@ func runBuild(args []string) int {
 
 func runRun(args []string) int {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
-	target := fs.String("target", build.HostTarget(), "target to build and run")
-	emu := fs.String("emu", "", "emulator to run in: ir (the IR interpreter)")
+	target := fs.String("target", "", "target to build and run (default: the first target in anlang.mod)")
+	emu := fs.String("emu", "", "emulator to run in: ir (the IR interpreter) or builtin (the emulator of the target)")
+	screen := fs.Bool("screen", false, "write the text screen of the built-in emulator after the program ends")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
+	}
+	if *target == "" {
+		p, status := load()
+		if p == nil {
+			return status
+		}
+		*target = p.DefaultTargets()[0]
 	}
 	switch *emu {
 	case "":
 	case "ir":
 		return runIR(*target)
+	case "builtin":
+		return runBuiltin(*target, *screen)
 	default:
 		fmt.Fprintf(os.Stderr, "anlang run: unknown emulator %s\n", *emu)
 		return exitUsage
 	}
 	if *target != build.HostTarget() {
-		fmt.Fprintf(os.Stderr, "anlang run: target %s cannot run on this machine (%s); emulators arrive later (anlang run -emu)\n", *target, build.HostTarget())
-		return exitUsage
+		return runBuiltin(*target, *screen)
 	}
 	p, status := load()
 	if p == nil {
@@ -143,6 +165,59 @@ func runRun(args []string) int {
 	return exitOK
 }
 
+// runBuiltin builds the program and runs it in the built-in emulator of
+// the target (tool.emu.target).
+func runBuiltin(target string, screen bool) int {
+	t, ok := build.LookupTarget(target)
+	if !ok {
+		fmt.Fprintf(os.Stderr, "anlang run: unknown target %q\n", target)
+		return exitUsage
+	}
+	d, errs := t.Description()
+	if len(errs) > 0 {
+		report(errs)
+		return exitProblems
+	}
+	if d == nil || d.Platform.Name != "dos" {
+		fmt.Fprintf(os.Stderr, "anlang run: target %s has no built-in emulator yet\n", target)
+		return exitUsage
+	}
+	p, status := load()
+	if p == nil {
+		return status
+	}
+	out, errs := p.Build(target)
+	if len(errs) > 0 {
+		report(errs)
+		return exitProblems
+	}
+	image, err := os.ReadFile(out)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "anlang run:", err)
+		return exitUsage
+	}
+	a, errs := desc.ForName(d.Arch.Name)
+	if len(errs) > 0 {
+		report(errs)
+		return exitProblems
+	}
+	m, err := dos.Load(a, image)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "anlang run:", err)
+		return exitUsage
+	}
+	m.Stdout, m.Stderr, m.Stdin = os.Stdout, os.Stderr, os.Stdin
+	code, err := m.Run()
+	if screen {
+		fmt.Print(m.Screen())
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "anlang run: emulation stopped:", err)
+		return exitUsage
+	}
+	return code
+}
+
 // runIR runs the program in the IR interpreter (tool.emu.ir).
 func runIR(target string) int {
 	p, status := load()
@@ -158,6 +233,67 @@ func runIR(target string) int {
 		return 2 // the status of a panicking program (tool.emu.ir)
 	}
 	return exitOK
+}
+
+// runQuery answers a query of the semantic API (tool.cmd.query).
+func runQuery(args []string) int {
+	fs := flag.NewFlagSet("query", flag.ContinueOnError)
+	target := fs.String("target", build.HostTarget(), "target")
+	if err := fs.Parse(args); err != nil {
+		return exitUsage
+	}
+	if fs.NArg() < 1 || fs.NArg() > 2 || fs.Arg(0) != "effects" {
+		fmt.Fprintln(os.Stderr, "usage: anlang query [-target t] effects [symbol]")
+		return exitUsage
+	}
+	p, status := load()
+	if p == nil {
+		return status
+	}
+	prog, errs := p.Effects(*target, nil)
+	if len(errs) > 0 {
+		report(errs)
+		return exitProblems
+	}
+	symbol := fs.Arg(1)
+	found := false
+	for _, key := range prog.Keys() {
+		if symbol != "" && key != symbol && !strings.HasSuffix(key, "/"+symbol) && !strings.HasSuffix(key, "."+symbol) {
+			continue
+		}
+		found = true
+		printEffects(prog, key)
+	}
+	if !found {
+		fmt.Fprintf(os.Stderr, "anlang query: no function %s\n", symbol)
+		return exitProblems
+	}
+	return exitOK
+}
+
+// printEffects prints the effects of a function: its own effects, its
+// parametric and open references, and the further effects of executing
+// it, each with the call chain to its source (eff.report.tools).
+func printEffects(prog *effects.Program, key string) {
+	s := prog.Summary(key)
+	fmt.Printf("%s (%s)\n", key, s.Pos)
+	for _, e := range s.Own() {
+		fmt.Printf("\t%s: %s\n", e.Name(), strings.Join(prog.Chain(key, e, false), " → "))
+	}
+	for _, line := range strings.Split(strings.TrimPrefix(s.String(), s.Key+":"), ";")[1:] {
+		fmt.Printf("\t%s\n", strings.TrimSpace(line))
+	}
+	exec := prog.Exec(key)
+	var more []string
+	for e := range exec {
+		if _, own := s.C[e]; !own {
+			more = append(more, fmt.Sprintf("\texecutes %s: %s", e.Name(), strings.Join(prog.Chain(key, e, true), " → ")))
+		}
+	}
+	sort.Strings(more)
+	for _, line := range more {
+		fmt.Println(line)
+	}
 }
 
 func load() (*build.Project, int) {

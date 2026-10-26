@@ -1,0 +1,9 @@
+// want: target.effects.provides eff.profile.allowed
+
+package main
+
+import "an/effect"
+
+func main() {
+	effect.Mark(effect.Gpio)
+}

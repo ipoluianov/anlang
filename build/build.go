@@ -4,9 +4,14 @@
 package build
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"go/constant"
+	"io/fs"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -15,8 +20,11 @@ import (
 	"strings"
 
 	"an/arch/x86_64"
+	"an/ct"
+	"an/effects"
 	"an/format"
 	"an/ir"
+	"an/lib"
 	"an/link/elf"
 	"an/lower"
 	"an/modfile"
@@ -76,6 +84,14 @@ var (
 	architectures = []string{"i8086", "x86_64", "armv6m", "armv7m", "avr", "msp430", "riscv32", "riscv64", "arm64", "wasm32"}
 	platforms     = []string{"dos", "bare", "linux", "windows", "macos", "ios", "android", "web"}
 )
+
+// wordBits returns the width of int on the target (type.int.word).
+func (t Target) wordBits() int {
+	if d, _ := t.Description(); d != nil {
+		return d.Word
+	}
+	return wordBits[t.Arch]
+}
 
 // LookupTarget finds a standard target by name.
 func LookupTarget(name string) (Target, bool) {
@@ -151,6 +167,11 @@ func (p *Project) Build(target string) (string, []error) {
 	if !ok {
 		return "", []error{fmt.Errorf("unknown target %q (target.select.resolve)", target)}
 	}
+	if d, errs := t.Description(); len(errs) > 0 {
+		return "", errs
+	} else if d != nil && Backend != nil {
+		return p.buildImage(t, d)
+	}
 	if !implemented[target] {
 		return "", []error{fmt.Errorf("target %s is not supported yet by this compiler (spec/24-roadmap.md, step %d)", target, t.Step)}
 	}
@@ -176,25 +197,107 @@ func (p *Project) Build(target string) (string, []error) {
 	return out, nil
 }
 
+// buildImage builds the program with the code generator and writes one
+// file for each format of the target (target.format.all).
+func (p *Project) buildImage(t Target, d *TargetDesc) (string, []error) {
+	prog, errs := p.BackendProgram(t.Name)
+	if len(errs) > 0 {
+		return "", errs
+	}
+	image, errs := Backend(prog, d)
+	if len(errs) > 0 {
+		return "", errs
+	}
+	var first string
+	for _, f := range d.Formats {
+		out := p.Output(t.Name) + f.Ext(d)
+		if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+			return "", []error{err}
+		}
+		if err := os.WriteFile(out, image, 0o644); err != nil {
+			return "", []error{err}
+		}
+		if first == "" {
+			first = out
+		}
+	}
+	return first, nil
+}
+
 // Check checks the program in the project root for one target: package
 // main and the project packages it imports, each checked after the
 // packages it imports. Diagnostics are returned as *syntax.Error; other
 // errors (an unknown target, unreadable files) as plain errors.
 func (p *Project) Check(target string) ([]*types.Info, []error) {
+	order, _, errs := p.check(target, nil)
+	if len(errs) > 0 {
+		return nil, errs
+	}
+	var infos []*types.Info // root, package main, is last
+	for _, lp := range order {
+		infos = append(infos, lp.info)
+	}
+	return infos, nil
+}
+
+// Effects checks the program for one target and infers its effects
+// (spec/07-effects.md). Package results are reused from cache, which may
+// be nil.
+func (p *Project) Effects(target string, cache *effects.Cache) (*effects.Program, []error) {
+	_, prog, errs := p.check(target, cache)
+	return prog, errs
+}
+
+// check loads and checks the packages of the program, each after the
+// packages it imports, infers their effects and checks the effects
+// against the constraints.
+func (p *Project) check(target string, cache *effects.Cache) ([]*loadedPkg, *effects.Program, []error) {
+	return p.checkFrom(p.Mod.Module, target, cache)
+}
+
+// RuntimePath is the import path of the runtime package, which the code
+// generator links into programs (comp.gen.runtime).
+const RuntimePath = "an/runtime"
+
+// Library checks the standard library package path with the packages it
+// imports for a target, evaluates its computed constants and returns the
+// type information of the packages, path last. It is used to read the
+// descriptions of architectures, platforms and targets.
+func Library(path, target string) ([]*types.Info, []error) {
+	p := &Project{Mod: &modfile.File{Module: "anlang_library"}}
+	order, _, errs := p.checkFrom(path, target, nil)
+	if len(errs) > 0 {
+		return nil, errs
+	}
+	var infos []*types.Info
+	for _, lp := range order {
+		infos = append(infos, lp.info)
+	}
+	return infos, nil
+}
+
+// checkFrom checks package rootPath with the packages it imports, and
+// the packages extra, which are loaded first.
+func (p *Project) checkFrom(rootPath, target string, cache *effects.Cache, extra ...string) ([]*loadedPkg, *effects.Program, []error) {
 	t, ok := LookupTarget(target)
 	if !ok {
-		return nil, []error{fmt.Errorf("unknown target %q (target.select.resolve)", target)}
+		return nil, nil, []error{fmt.Errorf("unknown target %q (target.select.resolve)", target)}
 	}
 	l := &loader{p: p, t: t, pkgs: map[string]*loadedPkg{}}
-	root, err := l.load(p.Mod.Module, nil)
+	for _, path := range extra {
+		if _, err := l.load(path, nil); err != nil {
+			return nil, nil, []error{err}
+		}
+	}
+	root, err := l.load(rootPath, nil)
 	if err != nil {
-		return nil, []error{err}
+		return nil, nil, []error{err}
 	}
 	if root == nil {
-		return nil, []error{fmt.Errorf("%s: no Anlang source files for target %s", p.Root, target)}
+		return nil, nil, []error{fmt.Errorf("%s: no Anlang source files for target %s", p.Root, target)}
 	}
 	if len(l.errs) > 0 {
-		return nil, asErrors(l.errs)
+		return nil, nil, asErrors(l.errs)
 	}
 	var errs []*syntax.Error
 	checked := map[string]*types.Package{}
@@ -211,13 +314,31 @@ func (p *Project) Check(target string) ([]*types.Info, []error) {
 		lp.info = info
 	}
 	if len(errs) > 0 {
-		return nil, asErrors(errs)
+		return nil, nil, asErrors(errs)
 	}
-	var infos []*types.Info // root, package main, is last
+	desc, derrs := t.Description()
+	if len(derrs) > 0 {
+		return nil, nil, derrs
+	}
+	if perrs := checkPlatformProfile(l.order[len(l.order)-1], desc, t.Name); len(perrs) > 0 {
+		return nil, nil, asErrors(perrs)
+	}
+	var in []effects.Input
+	for _, lp := range l.order {
+		in = append(in, effects.Input{Info: lp.info, SourceHash: lp.hash, Imports: lp.imports})
+	}
+	prog, eerrs := checkEffects(in, p.Mod.Module, "anlang.mod", p.Mod.Effects, t, desc, cache)
+	if len(eerrs) > 0 {
+		return nil, nil, asErrors(eerrs)
+	}
+	var infos []*types.Info
 	for _, lp := range l.order {
 		infos = append(infos, lp.info)
 	}
-	return infos, nil
+	if cerrs := ct.Evaluate(infos, prog, t.wordBits(), ct.DefaultLimits); len(cerrs) > 0 {
+		return nil, nil, asErrors(cerrs)
+	}
+	return l.order, prog, nil
 }
 
 // Program checks the program in the project root for one target and
@@ -232,7 +353,35 @@ func (p *Project) Program(target string) (*ir.Program, []error) {
 	if len(lerrs) > 0 {
 		return nil, asErrors(lerrs)
 	}
-	prog.IntBits = wordBits[t.Arch]
+	prog.IntBits = t.wordBits()
+	return prog, nil
+}
+
+// Backend generates the image of a program for a target that has a
+// target package (spec/22-compiler.md §22.11). Package codegen sets it.
+var Backend func(prog *ir.Program, d *TargetDesc) ([]byte, []error)
+
+// BackendProgram checks the program for a target and translates it to
+// IR together with the runtime package (comp.gen.runtime).
+func (p *Project) BackendProgram(target string) (*ir.Program, []error) {
+	order, _, errs := p.checkFrom(p.Mod.Module, target, nil, RuntimePath)
+	if len(errs) > 0 {
+		return nil, errs
+	}
+	var infos []*types.Info
+	var extra []*types.Func
+	for _, lp := range order {
+		infos = append(infos, lp.info)
+		if lp.path == RuntimePath {
+			extra = append(extra, lp.info.Funcs...)
+		}
+	}
+	t, _ := LookupTarget(target)
+	prog, lerrs := lower.ProgramWith(extra, infos...)
+	if len(lerrs) > 0 {
+		return nil, asErrors(lerrs)
+	}
+	prog.IntBits = t.wordBits()
 	return prog, nil
 }
 
@@ -248,6 +397,7 @@ type loader struct {
 
 type loadedPkg struct {
 	path    string
+	hash    string // hash of the source files
 	files   []*syntax.File
 	imports []string // project packages imported
 	info    *types.Info
@@ -269,38 +419,72 @@ func (l *loader) load(path string, from *syntax.ImportSpec) (*loadedPkg, error) 
 		}
 		return lp, nil
 	}
-	rel := strings.TrimPrefix(strings.TrimPrefix(path, l.p.Mod.Module), "/")
-	dir := filepath.Join(l.p.Root, filepath.FromSlash(rel))
-	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
-		return nil, nil
+	// A project package, or a standard library package of the embedded
+	// sources.
+	var fsys fs.FS
+	var dir, rel string
+	var generated []byte
+	if strings.HasPrefix(path, "an/arch/") && InstructionPackage != nil && !isLibPackage(path) {
+		src, ok := InstructionPackage(strings.TrimPrefix(path, "an/arch/"))
+		if !ok {
+			return nil, nil
+		}
+		generated = src
+	} else if isLibPackage(path) {
+		fsys, dir, rel = lib.FS, path, path
+	} else {
+		rel = strings.TrimPrefix(strings.TrimPrefix(path, l.p.Mod.Module), "/")
+		fsys, dir = os.DirFS(l.p.Root), rel
+		if dir == "" {
+			dir = "."
+		}
+		if fi, err := fs.Stat(fsys, dir); err != nil || !fi.IsDir() {
+			return nil, nil
+		}
 	}
-	names, err := SelectFiles(dir, l.t)
-	if err != nil {
-		return nil, err
-	}
-	if len(names) == 0 {
-		return nil, nil
-	}
-	var srcs []Source
-	for _, name := range names {
-		data, err := os.ReadFile(filepath.Join(dir, name))
+	var names []string
+	if generated == nil {
+		var err error
+		names, err = selectFiles(fsys, dir, l.t)
 		if err != nil {
 			return nil, err
 		}
-		srcs = append(srcs, Source{Name: filepath.ToSlash(filepath.Join(rel, name)), Data: data})
+		if len(names) == 0 {
+			return nil, nil
+		}
+	}
+	var srcs []Source
+	if generated != nil {
+		srcs = append(srcs, Source{Name: path + "/" + pathpkg.Base(path) + ".an", Data: generated})
+	}
+	for _, name := range names {
+		data, err := fs.ReadFile(fsys, pathpkg.Join(dir, name))
+		if err != nil {
+			return nil, err
+		}
+		srcs = append(srcs, Source{Name: pathpkg.Join(rel, name), Data: data})
 	}
 	files, errs := parseSources(srcs)
 	l.errs = append(l.errs, errs...)
 
-	lp := &loadedPkg{path: path, files: files}
+	h := sha256.New()
+	for _, src := range srcs {
+		fmt.Fprintf(h, "%s\x00%d\x00", src.Name, len(src.Data))
+		h.Write(src.Data)
+	}
+	lp := &loadedPkg{path: path, files: files, hash: hex.EncodeToString(h.Sum(nil))}
 	l.pkgs[path] = lp
 	l.stack = append(l.stack, lp)
 	module := l.p.Mod.Module
 	for _, f := range files {
 		for _, spec := range f.Imports {
 			ipath, err := strconv.Unquote(spec.Path.Value)
-			if err != nil || !strings.HasPrefix(ipath, module+"/") {
+			if err != nil || !strings.HasPrefix(ipath, module+"/") && !isLibPackage(ipath) && !strings.HasPrefix(ipath, "an/arch/") {
 				continue // the root package and other paths are reported by the checker
+			}
+			if ipath == "an/runtime" && !strings.HasPrefix(path, "an/") {
+				l.errs = append(l.errs, &syntax.Error{Pos: spec.Path.Pos(), Rule: "rt.lang.not-importable", Msg: "the runtime package an/runtime cannot be imported"})
+				continue
 			}
 			if _, err := l.load(ipath, spec); err != nil {
 				return nil, err
@@ -316,6 +500,21 @@ func (l *loader) load(path string, from *syntax.ImportSpec) (*loadedPkg, error) 
 	return lp, nil
 }
 
+// InstructionPackage returns the generated source of the instruction
+// package of an architecture, an/arch/<name> (target.arch.instr-package),
+// or false if there is no such architecture. Package arch/desc sets it.
+var InstructionPackage func(arch string) ([]byte, bool)
+
+// isLibPackage reports whether path is a standard library package with
+// Anlang sources in the embedded library.
+func isLibPackage(path string) bool {
+	if !strings.HasPrefix(path, "an/") {
+		return false
+	}
+	fi, err := fs.Stat(lib.FS, path)
+	return err == nil && fi.IsDir()
+}
+
 // Source is a source file: its name for diagnostics and its contents.
 type Source struct {
 	Name string
@@ -329,7 +528,78 @@ func CheckSources(module string, t Target, srcs []Source) (*types.Info, []*synta
 	if len(errs) > 0 {
 		return nil, errs
 	}
-	return checkFiles(module, module, t, nil, files)
+	info, errs := checkFiles(module, module, t, nil, files)
+	if len(errs) > 0 {
+		return info, errs
+	}
+	desc, derrs := t.Description()
+	for _, err := range derrs {
+		errs = append(errs, &syntax.Error{Msg: err.Error()})
+	}
+	errs = append(errs, checkPlatformProfile(&loadedPkg{info: info, files: files}, desc, t.Name)...)
+	if len(errs) > 0 {
+		return info, errs
+	}
+	prog, errs := checkEffects([]effects.Input{{Info: info}}, module, "anlang.mod", nil, t, desc, nil)
+	if len(errs) > 0 {
+		return info, errs
+	}
+	return info, ct.Evaluate([]*types.Info{info}, prog, t.wordBits(), ct.DefaultLimits)
+}
+
+// targetEffects are the environment effects that targets provide and
+// lack (target.effects.provides, target.effects.lacks), for the targets
+// without a target package yet whose descriptions the specification
+// shows. Temporary: they come from the target packages of the roadmap
+// steps that introduce the targets.
+var targetEffects = map[string]struct{ provides, lacks []string }{
+	"linux-x86_64":   {provides: hostEffects},
+	"linux-arm64":    {provides: hostEffects},
+	"macos-arm64":    {provides: hostEffects},
+	"windows-x86_64": {provides: hostEffects},
+	"stm32f103c8":    {provides: []string{"Gpio", "Uart", "Timers", "Interrupts", "StaticAlloc", "Tasks"}, lacks: []string{"File"}},
+}
+
+var hostEffects = []string{"Alloc", "StaticAlloc", "Console", "File", "Network", "Keyboard", "Tasks", "Clock", "Random"}
+
+// checkEffects infers the effects of the checked packages, given each
+// after the packages it imports with package main last, and checks them
+// against the profiles, anlang.mod and the target (spec/07-effects.md
+// §7.6).
+func checkEffects(in []effects.Input, module, modName string, rules []modfile.EffectRule, t Target, desc *TargetDesc, cache *effects.Cache) (*effects.Program, []*syntax.Error) {
+	prog := effects.NewProgram(effects.AnalyzeAll(in, cache))
+	c := effects.Constraints{
+		Module:   module,
+		ModFile:  modName,
+		Rules:    rules,
+		Profiles: map[string][]string{},
+		Known:    map[string]bool{},
+		Target:   t.Name,
+	}
+	for _, name := range types.BaseEffects {
+		c.Known[name] = true
+	}
+	for _, name := range effects.LibraryEffects {
+		c.Known[name] = true
+	}
+	for _, x := range in {
+		c.Profiles[x.Info.Pkg.Path] = x.Info.Pkg.Profiles
+		for _, name := range x.Info.Scope.Names() {
+			if k, ok := x.Info.Scope.Lookup(name).(*types.Const); ok && k.Type() == types.EffectType && k.Val != nil {
+				v := constant.StringVal(k.Val)
+				c.Known[v[strings.LastIndexByte(v, '#')+1:]] = true
+			}
+		}
+	}
+	if main := in[len(in)-1].Info.Main; main != nil {
+		c.Main = in[len(in)-1].Info.Pkg.Path + ".main"
+	}
+	if desc != nil {
+		c.HasDesc, c.Provides, c.Lacks = true, desc.Provides, desc.Lacks
+	} else if te, ok := targetEffects[t.Name]; ok {
+		c.HasDesc, c.Provides, c.Lacks = true, te.provides, te.lacks
+	}
+	return prog, prog.Check(c)
 }
 
 // parseSources parses srcs and checks that they are in canonical form
@@ -353,14 +623,18 @@ func parseSources(srcs []Source) ([]*syntax.File, []*syntax.Error) {
 // checkFiles type-checks the files of package path for target t.
 func checkFiles(module, path string, t Target, imports map[string]*types.Package, files []*syntax.File) (*types.Info, []*syntax.Error) {
 	word := wordBits[t.Arch]
-	return types.Check(&types.Config{Module: module, Path: path, Imports: imports, IntBits: word, AddrBits: word}, files)
+	return types.Check(&types.Config{Module: module, Path: path, Imports: imports, IntBits: word, AddrBits: word, Arch: t.Arch}, files)
 }
 
 // SelectFiles returns the names of the source files in dir that belong
 // to a build for target t, sorted (decl.file.ext, decl.file.ignored,
 // decl.file.suffix). Test files are excluded.
 func SelectFiles(dir string, t Target) ([]string, error) {
-	entries, err := os.ReadDir(dir)
+	return selectFiles(os.DirFS(dir), ".", t)
+}
+
+func selectFiles(fsys fs.FS, dir string, t Target) ([]string, error) {
+	entries, err := fs.ReadDir(fsys, dir)
 	if err != nil {
 		return nil, err
 	}

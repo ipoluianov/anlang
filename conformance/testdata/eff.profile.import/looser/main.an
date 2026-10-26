@@ -1,0 +1,11 @@
+// want: eff.profile.import
+
+package main
+
+profile core
+
+import "conf/lib"
+
+func main() {
+	_ = lib.Twice(2)
+}

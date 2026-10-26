@@ -106,7 +106,10 @@
 | `an/secret` | `New`, `Equal`, `Expose`, `Map`, `ConstantTime`; эффект `ExposeSecret` | [11-data-safety](11-data-safety.ru.md) |
 | `an/untrusted` | `Accept` | [11-data-safety](11-data-safety.ru.md) |
 | `an/interrupts` | `Enable` | [14-embedded](14-embedded.ru.md) |
-| `an/bios` | `BootDrive` | [15-os](15-os.ru.md) |
+| `an/bios` | `BootDrive`; `ClearScreen`, `SetCursor`, `Cursor`, `PutChar`, `WriteChar` (int 10h), `ReadKey`, `KeyReady` (int 16h), `Ticks` (int 1Ah) | [15-os](15-os.ru.md), [20-toolchain](20-toolchain.ru.md) |
+| `an/dos` | `Print`, `PrintChar`, `Write`, `ReadChar`, `CharReady`, `Now`, `Time`, `Exit` (int 21h) | [20-toolchain](20-toolchain.ru.md) |
+| `an/encoding` | `CP866` | [10-compile-time](10-compile-time.ru.md) |
+| `an/unsafe` | `Map`, `Data`; `Flat`, `Near`, `Far`, `Program` | [06-memory](06-memory.ru.md) |
 | `an/mm` | `PhysAddr`, `VirtAddr` | [15-os](15-os.ru.md) |
 | `an/sched`, `an/kernel` | тип потока ядра с объявленным размером стека, данные на процессор (*предварительно*, имена не заданы) | [15-os](15-os.ru.md) |
 | `an/gpu` | `Out[T]` с конструктором по длине и методом чтения результата (*предварительно*, имена не заданы), `Dispatch`, `GlobalID`, `GlobalSize`; `Atomic[T]`, `Shared[T]` — на будущее | [16-gpu](16-gpu.ru.md) |

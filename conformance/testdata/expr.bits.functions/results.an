@@ -1,0 +1,24 @@
+// want: ok
+
+package main
+
+import (
+	"an/bits"
+	"an/fmt"
+)
+
+func Mean[T ~i32 | ~u32](a, b T) T {
+	return bits.SaturatingAdd(a, b) / 2
+}
+
+func main() {
+	var a i8 = 100
+	var u u8 = 10
+	fmt.Println(bits.WrappingAdd(a, 100), bits.WrappingSub(u, 20), bits.WrappingMul(a, a))
+	fmt.Println(bits.SaturatingAdd(a, 100), bits.SaturatingSub(a, -100), bits.SaturatingSub(u, 20), bits.SaturatingMul(a, -2))
+	v, ok := bits.CheckedMul(a, 2)
+	w, ok2 := bits.CheckedSub(a, -27)
+	fmt.Println(v, ok, w, ok2)
+	var big u64 = 1 << 63
+	fmt.Println(bits.WrappingAdd(big, big), bits.SaturatingMul(big, 3), Mean(i32(2147483647), 1), Mean(u32(10), 20))
+}

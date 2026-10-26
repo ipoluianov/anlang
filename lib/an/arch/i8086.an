@@ -1,0 +1,2311 @@
+// The architecture description of the Intel 8086 (spec/13-targets.md
+// §13.5): the instruction set of real-mode 8086 programs, such as DOS
+// .COM programs.
+package arch
+
+// I8086 describes the Intel 8086.
+const I8086 = Arch{
+	Name:        "i8086",
+	Word:        16,
+	Endian:      Little,
+	Unit:        8,
+	AddressBits: 20,
+	Pointers:    Pointers{Near: 16, Far: 32},
+	Address:     "linear(seg, off)",
+	PC:          "IP",
+	Fetch:       "linear(CS, IP)",
+	Registers: []Register{
+		{Name: "AX", Width: 16, Class: "r16"},
+		{Name: "CX", Width: 16, Class: "r16"},
+		{Name: "DX", Width: 16, Class: "r16"},
+		{Name: "BX", Width: 16, Class: "r16"},
+		{Name: "SP", Width: 16, Class: "r16"},
+		{Name: "BP", Width: 16, Class: "r16"},
+		{Name: "SI", Width: 16, Class: "r16"},
+		{Name: "DI", Width: 16, Class: "r16"},
+		{Name: "AL", Width: 8, Class: "r8", Parent: "AX"},
+		{Name: "CL", Width: 8, Class: "r8", Parent: "CX"},
+		{Name: "DL", Width: 8, Class: "r8", Parent: "DX"},
+		{Name: "BL", Width: 8, Class: "r8", Parent: "BX"},
+		{Name: "AH", Width: 8, Class: "r8", Parent: "AX", Offset: 8},
+		{Name: "CH", Width: 8, Class: "r8", Parent: "CX", Offset: 8},
+		{Name: "DH", Width: 8, Class: "r8", Parent: "DX", Offset: 8},
+		{Name: "BH", Width: 8, Class: "r8", Parent: "BX", Offset: 8},
+		{Name: "ES", Width: 16, Class: "sreg"},
+		{Name: "CS", Width: 16, Class: "sreg"},
+		{Name: "SS", Width: 16, Class: "sreg"},
+		{Name: "DS", Width: 16, Class: "sreg"},
+		{Name: "IP", Width: 16},
+		{Name: "FLAGS", Width: 16, Fixed: 0xF002},
+		{Name: "CF", Width: 1, Class: "flag", Parent: "FLAGS"},
+		{Name: "PF", Width: 1, Class: "flag", Parent: "FLAGS", Offset: 2},
+		{Name: "AF", Width: 1, Class: "flag", Parent: "FLAGS", Offset: 4},
+		{Name: "ZF", Width: 1, Class: "flag", Parent: "FLAGS", Offset: 6},
+		{Name: "SF", Width: 1, Class: "flag", Parent: "FLAGS", Offset: 7},
+		{Name: "TF", Width: 1, Class: "flag", Parent: "FLAGS", Offset: 8},
+		{Name: "IF", Width: 1, Class: "flag", Parent: "FLAGS", Offset: 9},
+		{Name: "DF", Width: 1, Class: "flag", Parent: "FLAGS", Offset: 10},
+		{Name: "OF", Width: 1, Class: "flag", Parent: "FLAGS", Offset: 11},
+		{Name: "SEGOV", Width: 1, Class: "prefix"},
+		{Name: "SEG", Width: 16, Class: "prefix"},
+		{Name: "REP", Width: 2, Class: "prefix"},
+		{Name: "LOCK", Width: 1, Class: "prefix"},
+	},
+	Operands: []Operand{
+		{Name: "r8", Class: "r8"},
+		{Name: "r16", Class: "r16"},
+		{Name: "sreg", Class: "sreg"},
+		{Name: "r/m8", Class: "r8", Memory: 8, Fragment: "rm"},
+		{Name: "r/m16", Class: "r16", Memory: 16, Fragment: "rm"},
+		{Name: "m", Memory: -1, Fragment: "rm"},
+		{Name: "m16:16", Memory: 32, Fragment: "rm"},
+		{Name: "moffs8", Memory: 8, Fragment: "moffs"},
+		{Name: "moffs16", Memory: 16, Fragment: "moffs"},
+		{Name: "imm8", Imm: 8},
+		{Name: "imm16", Imm: 16},
+		{Name: "simm8", Imm: 8, Signed: true, Width: 16},
+		{Name: "rel8", Imm: 8, Signed: true, Relative: true, Width: 16},
+		{Name: "rel16", Imm: 16, Relative: true},
+		{Name: "ptr16:16", Imm: 32},
+		{Name: "AL", Register: "AL"},
+		{Name: "AX", Register: "AX"},
+		{Name: "CL", Register: "CL"},
+		{Name: "DX", Register: "DX"},
+		{Name: "1", Value: 1, Constant: true},
+		{Name: "3", Value: 3, Constant: true},
+	},
+	Fragments: []Fragment{
+		{
+			Name: "rm",
+			Alternatives: []Alternative{
+				{Encoding: "%11 reg:3 r:3", Register: "r"},
+				{Encoding: "%00 reg:3 %000", Address: "BX + SI", Segment: "seg(DS)", Cycles: 7},
+				{Encoding: "%00 reg:3 %001", Address: "BX + DI", Segment: "seg(DS)", Cycles: 8},
+				{Encoding: "%00 reg:3 %010", Address: "BP + SI", Segment: "seg(SS)", Cycles: 8},
+				{Encoding: "%00 reg:3 %011", Address: "BP + DI", Segment: "seg(SS)", Cycles: 7},
+				{Encoding: "%00 reg:3 %100", Address: "SI", Segment: "seg(DS)", Cycles: 5},
+				{Encoding: "%00 reg:3 %101", Address: "DI", Segment: "seg(DS)", Cycles: 5},
+				{Encoding: "%00 reg:3 %110 disp:16", Address: "disp", Segment: "seg(DS)", Cycles: 6},
+				{Encoding: "%00 reg:3 %111", Address: "BX", Segment: "seg(DS)", Cycles: 5},
+				{Encoding: "%01 reg:3 %000 disp:8", Address: "BX + SI + sx(disp, 16)", Segment: "seg(DS)", Cycles: 11},
+				{Encoding: "%01 reg:3 %001 disp:8", Address: "BX + DI + sx(disp, 16)", Segment: "seg(DS)", Cycles: 12},
+				{Encoding: "%01 reg:3 %010 disp:8", Address: "BP + SI + sx(disp, 16)", Segment: "seg(SS)", Cycles: 12},
+				{Encoding: "%01 reg:3 %011 disp:8", Address: "BP + DI + sx(disp, 16)", Segment: "seg(SS)", Cycles: 11},
+				{Encoding: "%01 reg:3 %100 disp:8", Address: "SI + sx(disp, 16)", Segment: "seg(DS)", Cycles: 9},
+				{Encoding: "%01 reg:3 %101 disp:8", Address: "DI + sx(disp, 16)", Segment: "seg(DS)", Cycles: 9},
+				{Encoding: "%01 reg:3 %110 disp:8", Address: "BP + sx(disp, 16)", Segment: "seg(SS)", Cycles: 9},
+				{Encoding: "%01 reg:3 %111 disp:8", Address: "BX + sx(disp, 16)", Segment: "seg(DS)", Cycles: 9},
+				{Encoding: "%10 reg:3 %000 disp:16", Address: "BX + SI + disp", Segment: "seg(DS)", Cycles: 11},
+				{Encoding: "%10 reg:3 %001 disp:16", Address: "BX + DI + disp", Segment: "seg(DS)", Cycles: 12},
+				{Encoding: "%10 reg:3 %010 disp:16", Address: "BP + SI + disp", Segment: "seg(SS)", Cycles: 12},
+				{Encoding: "%10 reg:3 %011 disp:16", Address: "BP + DI + disp", Segment: "seg(SS)", Cycles: 11},
+				{Encoding: "%10 reg:3 %100 disp:16", Address: "SI + disp", Segment: "seg(DS)", Cycles: 9},
+				{Encoding: "%10 reg:3 %101 disp:16", Address: "DI + disp", Segment: "seg(DS)", Cycles: 9},
+				{Encoding: "%10 reg:3 %110 disp:16", Address: "BP + disp", Segment: "seg(SS)", Cycles: 9},
+				{Encoding: "%10 reg:3 %111 disp:16", Address: "BX + disp", Segment: "seg(DS)", Cycles: 9},
+			},
+		},
+		{
+			Name: "moffs",
+			Alternatives: []Alternative{
+				{Encoding: "addr:16", Address: "addr", Segment: "seg(DS)", Cycles: 6},
+			},
+		},
+	},
+	Prefixes: []Prefix{
+		{Name: "ES", Encoding: "26", Semantics: "SEGOV = 1; SEG = ES;"},
+		{Name: "CS", Encoding: "2E", Semantics: "SEGOV = 1; SEG = CS;"},
+		{Name: "SS", Encoding: "36", Semantics: "SEGOV = 1; SEG = SS;"},
+		{Name: "DS", Encoding: "3E", Semantics: "SEGOV = 1; SEG = DS;"},
+		{Name: "LOCK", Encoding: "F0", Semantics: "LOCK = 1;"},
+		{Name: "REPNE", Encoding: "F2", Semantics: "REP = 2;"},
+		{Name: "REP", Encoding: "F3", Semantics: "REP = 1;"},
+	},
+	Instructions: []Instruction{
+		{
+			Mnemonic:  "ADD",
+			Operands:  []string{"r/m8", "r8"},
+			Encoding:  "00 <rm a reg=b>",
+			Semantics: "a = add(a, b, 0);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "ADD",
+			Operands:  []string{"r/m16", "r16"},
+			Encoding:  "01 <rm a reg=b>",
+			Semantics: "a = add(a, b, 0);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "ADD",
+			Operands:  []string{"r8", "r/m8"},
+			Encoding:  "02 <rm b reg=a>",
+			Semantics: "a = add(a, b, 0);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "ADD",
+			Operands:  []string{"r16", "r/m16"},
+			Encoding:  "03 <rm b reg=a>",
+			Semantics: "a = add(a, b, 0);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "ADD",
+			Operands:  []string{"AL", "imm8"},
+			Encoding:  "04 b:8",
+			Semantics: "a = add(a, b, 0);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "ADD",
+			Operands:  []string{"AX", "imm16"},
+			Encoding:  "05 b:16",
+			Semantics: "a = add(a, b, 0);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "ADD",
+			Operands:  []string{"r/m8", "imm8"},
+			Encoding:  "80 <rm a reg=0> b:8",
+			Semantics: "a = add(a, b, 0);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "ADD",
+			Operands:  []string{"r/m16", "imm16"},
+			Encoding:  "81 <rm a reg=0> b:16",
+			Semantics: "a = add(a, b, 0);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "ADD",
+			Operands:  []string{"r/m16", "simm8"},
+			Encoding:  "83 <rm a reg=0> b:8",
+			Semantics: "a = add(a, b, 0);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "OR",
+			Operands:  []string{"r/m8", "r8"},
+			Encoding:  "08 <rm a reg=b>",
+			Semantics: "a = logic(a | b);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "OR",
+			Operands:  []string{"r/m16", "r16"},
+			Encoding:  "09 <rm a reg=b>",
+			Semantics: "a = logic(a | b);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "OR",
+			Operands:  []string{"r8", "r/m8"},
+			Encoding:  "0A <rm b reg=a>",
+			Semantics: "a = logic(a | b);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "OR",
+			Operands:  []string{"r16", "r/m16"},
+			Encoding:  "0B <rm b reg=a>",
+			Semantics: "a = logic(a | b);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "OR",
+			Operands:  []string{"AL", "imm8"},
+			Encoding:  "0C b:8",
+			Semantics: "a = logic(a | b);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "OR",
+			Operands:  []string{"AX", "imm16"},
+			Encoding:  "0D b:16",
+			Semantics: "a = logic(a | b);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "OR",
+			Operands:  []string{"r/m8", "imm8"},
+			Encoding:  "80 <rm a reg=1> b:8",
+			Semantics: "a = logic(a | b);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "OR",
+			Operands:  []string{"r/m16", "imm16"},
+			Encoding:  "81 <rm a reg=1> b:16",
+			Semantics: "a = logic(a | b);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "OR",
+			Operands:  []string{"r/m16", "simm8"},
+			Encoding:  "83 <rm a reg=1> b:8",
+			Semantics: "a = logic(a | b);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "ADC",
+			Operands:  []string{"r/m8", "r8"},
+			Encoding:  "10 <rm a reg=b>",
+			Semantics: "a = add(a, b, CF);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "ADC",
+			Operands:  []string{"r/m16", "r16"},
+			Encoding:  "11 <rm a reg=b>",
+			Semantics: "a = add(a, b, CF);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "ADC",
+			Operands:  []string{"r8", "r/m8"},
+			Encoding:  "12 <rm b reg=a>",
+			Semantics: "a = add(a, b, CF);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "ADC",
+			Operands:  []string{"r16", "r/m16"},
+			Encoding:  "13 <rm b reg=a>",
+			Semantics: "a = add(a, b, CF);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "ADC",
+			Operands:  []string{"AL", "imm8"},
+			Encoding:  "14 b:8",
+			Semantics: "a = add(a, b, CF);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "ADC",
+			Operands:  []string{"AX", "imm16"},
+			Encoding:  "15 b:16",
+			Semantics: "a = add(a, b, CF);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "ADC",
+			Operands:  []string{"r/m8", "imm8"},
+			Encoding:  "80 <rm a reg=2> b:8",
+			Semantics: "a = add(a, b, CF);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "ADC",
+			Operands:  []string{"r/m16", "imm16"},
+			Encoding:  "81 <rm a reg=2> b:16",
+			Semantics: "a = add(a, b, CF);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "ADC",
+			Operands:  []string{"r/m16", "simm8"},
+			Encoding:  "83 <rm a reg=2> b:8",
+			Semantics: "a = add(a, b, CF);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "SBB",
+			Operands:  []string{"r/m8", "r8"},
+			Encoding:  "18 <rm a reg=b>",
+			Semantics: "a = sub(a, b, CF);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "SBB",
+			Operands:  []string{"r/m16", "r16"},
+			Encoding:  "19 <rm a reg=b>",
+			Semantics: "a = sub(a, b, CF);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "SBB",
+			Operands:  []string{"r8", "r/m8"},
+			Encoding:  "1A <rm b reg=a>",
+			Semantics: "a = sub(a, b, CF);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "SBB",
+			Operands:  []string{"r16", "r/m16"},
+			Encoding:  "1B <rm b reg=a>",
+			Semantics: "a = sub(a, b, CF);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "SBB",
+			Operands:  []string{"AL", "imm8"},
+			Encoding:  "1C b:8",
+			Semantics: "a = sub(a, b, CF);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "SBB",
+			Operands:  []string{"AX", "imm16"},
+			Encoding:  "1D b:16",
+			Semantics: "a = sub(a, b, CF);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "SBB",
+			Operands:  []string{"r/m8", "imm8"},
+			Encoding:  "80 <rm a reg=3> b:8",
+			Semantics: "a = sub(a, b, CF);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "SBB",
+			Operands:  []string{"r/m16", "imm16"},
+			Encoding:  "81 <rm a reg=3> b:16",
+			Semantics: "a = sub(a, b, CF);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "SBB",
+			Operands:  []string{"r/m16", "simm8"},
+			Encoding:  "83 <rm a reg=3> b:8",
+			Semantics: "a = sub(a, b, CF);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "AND",
+			Operands:  []string{"r/m8", "r8"},
+			Encoding:  "20 <rm a reg=b>",
+			Semantics: "a = logic(a & b);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "AND",
+			Operands:  []string{"r/m16", "r16"},
+			Encoding:  "21 <rm a reg=b>",
+			Semantics: "a = logic(a & b);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "AND",
+			Operands:  []string{"r8", "r/m8"},
+			Encoding:  "22 <rm b reg=a>",
+			Semantics: "a = logic(a & b);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "AND",
+			Operands:  []string{"r16", "r/m16"},
+			Encoding:  "23 <rm b reg=a>",
+			Semantics: "a = logic(a & b);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "AND",
+			Operands:  []string{"AL", "imm8"},
+			Encoding:  "24 b:8",
+			Semantics: "a = logic(a & b);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "AND",
+			Operands:  []string{"AX", "imm16"},
+			Encoding:  "25 b:16",
+			Semantics: "a = logic(a & b);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "AND",
+			Operands:  []string{"r/m8", "imm8"},
+			Encoding:  "80 <rm a reg=4> b:8",
+			Semantics: "a = logic(a & b);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "AND",
+			Operands:  []string{"r/m16", "imm16"},
+			Encoding:  "81 <rm a reg=4> b:16",
+			Semantics: "a = logic(a & b);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "AND",
+			Operands:  []string{"r/m16", "simm8"},
+			Encoding:  "83 <rm a reg=4> b:8",
+			Semantics: "a = logic(a & b);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "SUB",
+			Operands:  []string{"r/m8", "r8"},
+			Encoding:  "28 <rm a reg=b>",
+			Semantics: "a = sub(a, b, 0);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "SUB",
+			Operands:  []string{"r/m16", "r16"},
+			Encoding:  "29 <rm a reg=b>",
+			Semantics: "a = sub(a, b, 0);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "SUB",
+			Operands:  []string{"r8", "r/m8"},
+			Encoding:  "2A <rm b reg=a>",
+			Semantics: "a = sub(a, b, 0);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "SUB",
+			Operands:  []string{"r16", "r/m16"},
+			Encoding:  "2B <rm b reg=a>",
+			Semantics: "a = sub(a, b, 0);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "SUB",
+			Operands:  []string{"AL", "imm8"},
+			Encoding:  "2C b:8",
+			Semantics: "a = sub(a, b, 0);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "SUB",
+			Operands:  []string{"AX", "imm16"},
+			Encoding:  "2D b:16",
+			Semantics: "a = sub(a, b, 0);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "SUB",
+			Operands:  []string{"r/m8", "imm8"},
+			Encoding:  "80 <rm a reg=5> b:8",
+			Semantics: "a = sub(a, b, 0);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "SUB",
+			Operands:  []string{"r/m16", "imm16"},
+			Encoding:  "81 <rm a reg=5> b:16",
+			Semantics: "a = sub(a, b, 0);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "SUB",
+			Operands:  []string{"r/m16", "simm8"},
+			Encoding:  "83 <rm a reg=5> b:8",
+			Semantics: "a = sub(a, b, 0);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "XOR",
+			Operands:  []string{"r/m8", "r8"},
+			Encoding:  "30 <rm a reg=b>",
+			Semantics: "a = logic(a ^ b);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "XOR",
+			Operands:  []string{"r/m16", "r16"},
+			Encoding:  "31 <rm a reg=b>",
+			Semantics: "a = logic(a ^ b);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "XOR",
+			Operands:  []string{"r8", "r/m8"},
+			Encoding:  "32 <rm b reg=a>",
+			Semantics: "a = logic(a ^ b);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "XOR",
+			Operands:  []string{"r16", "r/m16"},
+			Encoding:  "33 <rm b reg=a>",
+			Semantics: "a = logic(a ^ b);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "XOR",
+			Operands:  []string{"AL", "imm8"},
+			Encoding:  "34 b:8",
+			Semantics: "a = logic(a ^ b);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "XOR",
+			Operands:  []string{"AX", "imm16"},
+			Encoding:  "35 b:16",
+			Semantics: "a = logic(a ^ b);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "XOR",
+			Operands:  []string{"r/m8", "imm8"},
+			Encoding:  "80 <rm a reg=6> b:8",
+			Semantics: "a = logic(a ^ b);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "XOR",
+			Operands:  []string{"r/m16", "imm16"},
+			Encoding:  "81 <rm a reg=6> b:16",
+			Semantics: "a = logic(a ^ b);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "XOR",
+			Operands:  []string{"r/m16", "simm8"},
+			Encoding:  "83 <rm a reg=6> b:8",
+			Semantics: "a = logic(a ^ b);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "CMP",
+			Operands:  []string{"r/m8", "r8"},
+			Encoding:  "38 <rm a reg=b>",
+			Semantics: "let r = sub(a, b, 0);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "CMP",
+			Operands:  []string{"r/m16", "r16"},
+			Encoding:  "39 <rm a reg=b>",
+			Semantics: "let r = sub(a, b, 0);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "CMP",
+			Operands:  []string{"r8", "r/m8"},
+			Encoding:  "3A <rm b reg=a>",
+			Semantics: "let r = sub(a, b, 0);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "CMP",
+			Operands:  []string{"r16", "r/m16"},
+			Encoding:  "3B <rm b reg=a>",
+			Semantics: "let r = sub(a, b, 0);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "CMP",
+			Operands:  []string{"AL", "imm8"},
+			Encoding:  "3C b:8",
+			Semantics: "let r = sub(a, b, 0);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "CMP",
+			Operands:  []string{"AX", "imm16"},
+			Encoding:  "3D b:16",
+			Semantics: "let r = sub(a, b, 0);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "CMP",
+			Operands:  []string{"r/m8", "imm8"},
+			Encoding:  "80 <rm a reg=7> b:8",
+			Semantics: "let r = sub(a, b, 0);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "CMP",
+			Operands:  []string{"r/m16", "imm16"},
+			Encoding:  "81 <rm a reg=7> b:16",
+			Semantics: "let r = sub(a, b, 0);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "CMP",
+			Operands:  []string{"r/m16", "simm8"},
+			Encoding:  "83 <rm a reg=7> b:8",
+			Semantics: "let r = sub(a, b, 0);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "PUSH",
+			Operands:  []string{"sreg"},
+			Encoding:  "%000 a:2 %110",
+			Semantics: "push16(a);",
+			Cycles:    10,
+		},
+		{
+			Mnemonic:  "POP",
+			Operands:  []string{"sreg"},
+			Encoding:  "%000 a:2 %111",
+			Semantics: "a = pop16();",
+			Cycles:    8,
+		},
+		{
+			Mnemonic:  "DAA",
+			Encoding:  "27",
+			Semantics: "daa();",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "DAS",
+			Encoding:  "2F",
+			Semantics: "das();",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "AAA",
+			Encoding:  "37",
+			Semantics: "aaa();",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "AAS",
+			Encoding:  "3F",
+			Semantics: "aas();",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "INC",
+			Operands:  []string{"r16"},
+			Encoding:  "%01000 a:3",
+			Semantics: "a = inc(a);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "DEC",
+			Operands:  []string{"r16"},
+			Encoding:  "%01001 a:3",
+			Semantics: "a = dec(a);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic: "PUSH",
+			Operands: []string{"r16"},
+			Encoding: "%01010 a:3",
+			Semantics: `SP = SP - 2;
+wr16(SS, SP, a);`,
+			Cycles: 11,
+		},
+		{
+			Mnemonic:  "POP",
+			Operands:  []string{"r16"},
+			Encoding:  "%01011 a:3",
+			Semantics: "a = pop16();",
+			Cycles:    8,
+		},
+		{
+			Mnemonic: "JO",
+			Operands: []string{"rel8"},
+			Encoding: "70 a:8",
+			Semantics: `if OF {
+	IP = a;
+}`,
+			Cycles: 4,
+		},
+		{
+			Mnemonic: "JNO",
+			Operands: []string{"rel8"},
+			Encoding: "71 a:8",
+			Semantics: `if !OF {
+	IP = a;
+}`,
+			Cycles: 4,
+		},
+		{
+			Mnemonic: "JB",
+			Operands: []string{"rel8"},
+			Encoding: "72 a:8",
+			Semantics: `if CF {
+	IP = a;
+}`,
+			Cycles: 4,
+		},
+		{
+			Mnemonic: "JAE",
+			Operands: []string{"rel8"},
+			Encoding: "73 a:8",
+			Semantics: `if !CF {
+	IP = a;
+}`,
+			Cycles: 4,
+		},
+		{
+			Mnemonic: "JE",
+			Operands: []string{"rel8"},
+			Encoding: "74 a:8",
+			Semantics: `if ZF {
+	IP = a;
+}`,
+			Cycles: 4,
+		},
+		{
+			Mnemonic: "JNE",
+			Operands: []string{"rel8"},
+			Encoding: "75 a:8",
+			Semantics: `if !ZF {
+	IP = a;
+}`,
+			Cycles: 4,
+		},
+		{
+			Mnemonic: "JBE",
+			Operands: []string{"rel8"},
+			Encoding: "76 a:8",
+			Semantics: `if CF | ZF {
+	IP = a;
+}`,
+			Cycles: 4,
+		},
+		{
+			Mnemonic: "JA",
+			Operands: []string{"rel8"},
+			Encoding: "77 a:8",
+			Semantics: `if !(CF | ZF) {
+	IP = a;
+}`,
+			Cycles: 4,
+		},
+		{
+			Mnemonic: "JS",
+			Operands: []string{"rel8"},
+			Encoding: "78 a:8",
+			Semantics: `if SF {
+	IP = a;
+}`,
+			Cycles: 4,
+		},
+		{
+			Mnemonic: "JNS",
+			Operands: []string{"rel8"},
+			Encoding: "79 a:8",
+			Semantics: `if !SF {
+	IP = a;
+}`,
+			Cycles: 4,
+		},
+		{
+			Mnemonic: "JP",
+			Operands: []string{"rel8"},
+			Encoding: "7A a:8",
+			Semantics: `if PF {
+	IP = a;
+}`,
+			Cycles: 4,
+		},
+		{
+			Mnemonic: "JNP",
+			Operands: []string{"rel8"},
+			Encoding: "7B a:8",
+			Semantics: `if !PF {
+	IP = a;
+}`,
+			Cycles: 4,
+		},
+		{
+			Mnemonic: "JL",
+			Operands: []string{"rel8"},
+			Encoding: "7C a:8",
+			Semantics: `if SF != OF {
+	IP = a;
+}`,
+			Cycles: 4,
+		},
+		{
+			Mnemonic: "JGE",
+			Operands: []string{"rel8"},
+			Encoding: "7D a:8",
+			Semantics: `if SF == OF {
+	IP = a;
+}`,
+			Cycles: 4,
+		},
+		{
+			Mnemonic: "JLE",
+			Operands: []string{"rel8"},
+			Encoding: "7E a:8",
+			Semantics: `if ZF | (SF != OF) {
+	IP = a;
+}`,
+			Cycles: 4,
+		},
+		{
+			Mnemonic: "JG",
+			Operands: []string{"rel8"},
+			Encoding: "7F a:8",
+			Semantics: `if !ZF & (SF == OF) {
+	IP = a;
+}`,
+			Cycles: 4,
+		},
+		{
+			Mnemonic:  "TEST",
+			Operands:  []string{"r/m8", "r8"},
+			Encoding:  "84 <rm a reg=b>",
+			Semantics: "let r = logic(a & b);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "TEST",
+			Operands:  []string{"r/m16", "r16"},
+			Encoding:  "85 <rm a reg=b>",
+			Semantics: "let r = logic(a & b);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic: "XCHG",
+			Operands: []string{"r8", "r/m8"},
+			Encoding: "86 <rm b reg=a>",
+			Semantics: `let t = a;
+a = b;
+b = t;`,
+			Cycles: 4,
+		},
+		{
+			Mnemonic: "XCHG",
+			Operands: []string{"r16", "r/m16"},
+			Encoding: "87 <rm b reg=a>",
+			Semantics: `let t = a;
+a = b;
+b = t;`,
+			Cycles: 4,
+		},
+		{
+			Mnemonic:  "MOV",
+			Operands:  []string{"r/m8", "r8"},
+			Encoding:  "88 <rm a reg=b>",
+			Semantics: "a = b;",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "MOV",
+			Operands:  []string{"r/m16", "r16"},
+			Encoding:  "89 <rm a reg=b>",
+			Semantics: "a = b;",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "MOV",
+			Operands:  []string{"r8", "r/m8"},
+			Encoding:  "8A <rm b reg=a>",
+			Semantics: "a = b;",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "MOV",
+			Operands:  []string{"r16", "r/m16"},
+			Encoding:  "8B <rm b reg=a>",
+			Semantics: "a = b;",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "MOV",
+			Operands:  []string{"r/m16", "sreg"},
+			Encoding:  "8C <rm a reg=b>",
+			Semantics: "a = b;",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "LEA",
+			Operands:  []string{"r16", "m"},
+			Encoding:  "8D <rm b reg=a>",
+			Semantics: "a = ea(b);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "MOV",
+			Operands:  []string{"sreg", "r/m16"},
+			Encoding:  "8E <rm b reg=a>",
+			Semantics: "a = b;",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "POP",
+			Operands:  []string{"r/m16"},
+			Encoding:  "8F <rm a reg=_>",
+			Semantics: "a = pop16();",
+			Cycles:    8,
+		},
+		{
+			Mnemonic: "NOP",
+			Encoding: "90",
+			Cycles:   3,
+		},
+		{
+			Mnemonic: "XCHG",
+			Operands: []string{"AX", "r16"},
+			Encoding: "%10010 b:3",
+			Semantics: `let t = a;
+a = b;
+b = t;`,
+			Cycles: 3,
+		},
+		{
+			Mnemonic:  "CBW",
+			Encoding:  "98",
+			Semantics: "AX = sx(AL, 16);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "CWD",
+			Encoding:  "99",
+			Semantics: "DX = sx(AX, 32)[31:16];",
+			Cycles:    5,
+		},
+		{
+			Mnemonic: "CALL",
+			Operands: []string{"ptr16:16"},
+			Encoding: "9A a:32",
+			Semantics: `push16(CS);
+push16(IP);
+CS = a[31:16];
+IP = a[15:0];`,
+			Cycles: 28,
+		},
+		{
+			Mnemonic: "WAIT",
+			Encoding: "9B",
+			Cycles:   3,
+		},
+		{
+			Mnemonic:  "PUSHF",
+			Encoding:  "9C",
+			Semantics: "push16(FLAGS);",
+			Cycles:    10,
+		},
+		{
+			Mnemonic:  "POPF",
+			Encoding:  "9D",
+			Semantics: "FLAGS = pop16() & 0xFFD7;",
+			Cycles:    8,
+			Effects:   []string{"Interrupts"},
+		},
+		{
+			Mnemonic:  "SAHF",
+			Encoding:  "9E",
+			Semantics: "FLAGS = (FLAGS & 0xFF2A) | (zx(AH, 16) & 0xD5);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "LAHF",
+			Encoding:  "9F",
+			Semantics: "AH = tr(FLAGS, 8);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "MOV",
+			Operands:  []string{"AL", "moffs8"},
+			Encoding:  "A0 <moffs b>",
+			Semantics: "a = b;",
+			Cycles:    10,
+		},
+		{
+			Mnemonic:  "MOV",
+			Operands:  []string{"AX", "moffs16"},
+			Encoding:  "A1 <moffs b>",
+			Semantics: "a = b;",
+			Cycles:    10,
+		},
+		{
+			Mnemonic:  "MOV",
+			Operands:  []string{"moffs8", "AL"},
+			Encoding:  "A2 <moffs a>",
+			Semantics: "a = b;",
+			Cycles:    10,
+		},
+		{
+			Mnemonic:  "MOV",
+			Operands:  []string{"moffs16", "AX"},
+			Encoding:  "A3 <moffs a>",
+			Semantics: "a = b;",
+			Cycles:    10,
+		},
+		{
+			Mnemonic: "MOVSB",
+			Encoding: "A4",
+			Semantics: `if REP == 0 {
+	movs8();
+} else {
+	while CX != 0 {
+		movs8();
+		CX = CX - 1;
+	}
+}`,
+			Cycles: 18,
+		},
+		{
+			Mnemonic: "MOVSW",
+			Encoding: "A5",
+			Semantics: `if REP == 0 {
+	movs16();
+} else {
+	while CX != 0 {
+		movs16();
+		CX = CX - 1;
+	}
+}`,
+			Cycles: 18,
+		},
+		{
+			Mnemonic: "CMPSB",
+			Encoding: "A6",
+			Semantics: `if REP == 0 {
+	cmps8();
+} else {
+	while CX != 0 {
+		cmps8();
+		CX = CX - 1;
+		if REP == 1 && !ZF || REP == 2 && ZF {
+			break;
+		}
+	}
+}`,
+			Cycles: 22,
+		},
+		{
+			Mnemonic: "CMPSW",
+			Encoding: "A7",
+			Semantics: `if REP == 0 {
+	cmps16();
+} else {
+	while CX != 0 {
+		cmps16();
+		CX = CX - 1;
+		if REP == 1 && !ZF || REP == 2 && ZF {
+			break;
+		}
+	}
+}`,
+			Cycles: 22,
+		},
+		{
+			Mnemonic: "STOSB",
+			Encoding: "AA",
+			Semantics: `if REP == 0 {
+	stos8();
+} else {
+	while CX != 0 {
+		stos8();
+		CX = CX - 1;
+	}
+}`,
+			Cycles: 11,
+		},
+		{
+			Mnemonic: "STOSW",
+			Encoding: "AB",
+			Semantics: `if REP == 0 {
+	stos16();
+} else {
+	while CX != 0 {
+		stos16();
+		CX = CX - 1;
+	}
+}`,
+			Cycles: 11,
+		},
+		{
+			Mnemonic: "LODSB",
+			Encoding: "AC",
+			Semantics: `if REP == 0 {
+	lods8();
+} else {
+	while CX != 0 {
+		lods8();
+		CX = CX - 1;
+	}
+}`,
+			Cycles: 12,
+		},
+		{
+			Mnemonic: "LODSW",
+			Encoding: "AD",
+			Semantics: `if REP == 0 {
+	lods16();
+} else {
+	while CX != 0 {
+		lods16();
+		CX = CX - 1;
+	}
+}`,
+			Cycles: 12,
+		},
+		{
+			Mnemonic: "SCASB",
+			Encoding: "AE",
+			Semantics: `if REP == 0 {
+	scas8();
+} else {
+	while CX != 0 {
+		scas8();
+		CX = CX - 1;
+		if REP == 1 && !ZF || REP == 2 && ZF {
+			break;
+		}
+	}
+}`,
+			Cycles: 15,
+		},
+		{
+			Mnemonic: "SCASW",
+			Encoding: "AF",
+			Semantics: `if REP == 0 {
+	scas16();
+} else {
+	while CX != 0 {
+		scas16();
+		CX = CX - 1;
+		if REP == 1 && !ZF || REP == 2 && ZF {
+			break;
+		}
+	}
+}`,
+			Cycles: 15,
+		},
+		{
+			Mnemonic:  "TEST",
+			Operands:  []string{"AL", "imm8"},
+			Encoding:  "A8 b:8",
+			Semantics: "let r = logic(a & b);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "TEST",
+			Operands:  []string{"AX", "imm16"},
+			Encoding:  "A9 b:16",
+			Semantics: "let r = logic(a & b);",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "MOV",
+			Operands:  []string{"r8", "imm8"},
+			Encoding:  "%10110 a:3 b:8",
+			Semantics: "a = b;",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "MOV",
+			Operands:  []string{"r16", "imm16"},
+			Encoding:  "%10111 a:3 b:16",
+			Semantics: "a = b;",
+			Cycles:    4,
+		},
+		{
+			Mnemonic: "RET",
+			Operands: []string{"imm16"},
+			Encoding: "C2 a:16",
+			Semantics: `IP = pop16();
+SP = SP + a;`,
+			Cycles: 20,
+		},
+		{
+			Mnemonic:  "RET",
+			Encoding:  "C3",
+			Semantics: "IP = pop16();",
+			Cycles:    16,
+		},
+		{
+			Mnemonic: "LES",
+			Operands: []string{"r16", "m16:16"},
+			Encoding: "C4 <rm b reg=a>",
+			Semantics: `a = b[15:0];
+ES = b[31:16];`,
+			Cycles: 16,
+		},
+		{
+			Mnemonic: "LDS",
+			Operands: []string{"r16", "m16:16"},
+			Encoding: "C5 <rm b reg=a>",
+			Semantics: `a = b[15:0];
+DS = b[31:16];`,
+			Cycles: 16,
+		},
+		{
+			Mnemonic:  "MOV",
+			Operands:  []string{"r/m8", "imm8"},
+			Encoding:  "C6 <rm a reg=_> b:8",
+			Semantics: "a = b;",
+			Cycles:    4,
+		},
+		{
+			Mnemonic:  "MOV",
+			Operands:  []string{"r/m16", "imm16"},
+			Encoding:  "C7 <rm a reg=_> b:16",
+			Semantics: "a = b;",
+			Cycles:    4,
+		},
+		{
+			Mnemonic: "RETF",
+			Operands: []string{"imm16"},
+			Encoding: "CA a:16",
+			Semantics: `IP = pop16();
+CS = pop16();
+SP = SP + a;`,
+			Cycles: 25,
+		},
+		{
+			Mnemonic: "RETF",
+			Encoding: "CB",
+			Semantics: `IP = pop16();
+CS = pop16();`,
+			Cycles: 26,
+		},
+		{
+			Mnemonic:  "INT",
+			Operands:  []string{"3"},
+			Encoding:  "CC",
+			Semantics: "interrupt(3);",
+			Cycles:    52,
+		},
+		{
+			Mnemonic:  "INT",
+			Operands:  []string{"imm8"},
+			Encoding:  "CD a:8",
+			Semantics: "interrupt(a);",
+			Cycles:    51,
+		},
+		{
+			Mnemonic: "INTO",
+			Encoding: "CE",
+			Semantics: `if OF {
+	interrupt(4);
+}`,
+			Cycles: 53,
+		},
+		{
+			Mnemonic: "IRET",
+			Encoding: "CF",
+			Semantics: `IP = pop16();
+CS = pop16();
+FLAGS = pop16() & 0xFFD7;`,
+			Cycles:  24,
+			Effects: []string{"Interrupts"},
+		},
+		{
+			Mnemonic:  "ROL",
+			Operands:  []string{"r/m8", "1"},
+			Encoding:  "D0 <rm a reg=0>",
+			Semantics: "a = rol(a, 1);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "ROL",
+			Operands:  []string{"r/m16", "1"},
+			Encoding:  "D1 <rm a reg=0>",
+			Semantics: "a = rol(a, 1);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "ROL",
+			Operands:  []string{"r/m8", "CL"},
+			Encoding:  "D2 <rm a reg=0>",
+			Semantics: "a = rol(a, b);",
+			Cycles:    8,
+		},
+		{
+			Mnemonic:  "ROL",
+			Operands:  []string{"r/m16", "CL"},
+			Encoding:  "D3 <rm a reg=0>",
+			Semantics: "a = rol(a, b);",
+			Cycles:    8,
+		},
+		{
+			Mnemonic:  "ROR",
+			Operands:  []string{"r/m8", "1"},
+			Encoding:  "D0 <rm a reg=1>",
+			Semantics: "a = ror(a, 1);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "ROR",
+			Operands:  []string{"r/m16", "1"},
+			Encoding:  "D1 <rm a reg=1>",
+			Semantics: "a = ror(a, 1);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "ROR",
+			Operands:  []string{"r/m8", "CL"},
+			Encoding:  "D2 <rm a reg=1>",
+			Semantics: "a = ror(a, b);",
+			Cycles:    8,
+		},
+		{
+			Mnemonic:  "ROR",
+			Operands:  []string{"r/m16", "CL"},
+			Encoding:  "D3 <rm a reg=1>",
+			Semantics: "a = ror(a, b);",
+			Cycles:    8,
+		},
+		{
+			Mnemonic:  "RCL",
+			Operands:  []string{"r/m8", "1"},
+			Encoding:  "D0 <rm a reg=2>",
+			Semantics: "a = rcl(a, 1);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "RCL",
+			Operands:  []string{"r/m16", "1"},
+			Encoding:  "D1 <rm a reg=2>",
+			Semantics: "a = rcl(a, 1);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "RCL",
+			Operands:  []string{"r/m8", "CL"},
+			Encoding:  "D2 <rm a reg=2>",
+			Semantics: "a = rcl(a, b);",
+			Cycles:    8,
+		},
+		{
+			Mnemonic:  "RCL",
+			Operands:  []string{"r/m16", "CL"},
+			Encoding:  "D3 <rm a reg=2>",
+			Semantics: "a = rcl(a, b);",
+			Cycles:    8,
+		},
+		{
+			Mnemonic:  "RCR",
+			Operands:  []string{"r/m8", "1"},
+			Encoding:  "D0 <rm a reg=3>",
+			Semantics: "a = rcr(a, 1);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "RCR",
+			Operands:  []string{"r/m16", "1"},
+			Encoding:  "D1 <rm a reg=3>",
+			Semantics: "a = rcr(a, 1);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "RCR",
+			Operands:  []string{"r/m8", "CL"},
+			Encoding:  "D2 <rm a reg=3>",
+			Semantics: "a = rcr(a, b);",
+			Cycles:    8,
+		},
+		{
+			Mnemonic:  "RCR",
+			Operands:  []string{"r/m16", "CL"},
+			Encoding:  "D3 <rm a reg=3>",
+			Semantics: "a = rcr(a, b);",
+			Cycles:    8,
+		},
+		{
+			Mnemonic:  "SHL",
+			Operands:  []string{"r/m8", "1"},
+			Encoding:  "D0 <rm a reg=4>",
+			Semantics: "a = shl(a, 1);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "SHL",
+			Operands:  []string{"r/m16", "1"},
+			Encoding:  "D1 <rm a reg=4>",
+			Semantics: "a = shl(a, 1);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "SHL",
+			Operands:  []string{"r/m8", "CL"},
+			Encoding:  "D2 <rm a reg=4>",
+			Semantics: "a = shl(a, b);",
+			Cycles:    8,
+		},
+		{
+			Mnemonic:  "SHL",
+			Operands:  []string{"r/m16", "CL"},
+			Encoding:  "D3 <rm a reg=4>",
+			Semantics: "a = shl(a, b);",
+			Cycles:    8,
+		},
+		{
+			Mnemonic:  "SHR",
+			Operands:  []string{"r/m8", "1"},
+			Encoding:  "D0 <rm a reg=5>",
+			Semantics: "a = shr(a, 1);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "SHR",
+			Operands:  []string{"r/m16", "1"},
+			Encoding:  "D1 <rm a reg=5>",
+			Semantics: "a = shr(a, 1);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "SHR",
+			Operands:  []string{"r/m8", "CL"},
+			Encoding:  "D2 <rm a reg=5>",
+			Semantics: "a = shr(a, b);",
+			Cycles:    8,
+		},
+		{
+			Mnemonic:  "SHR",
+			Operands:  []string{"r/m16", "CL"},
+			Encoding:  "D3 <rm a reg=5>",
+			Semantics: "a = shr(a, b);",
+			Cycles:    8,
+		},
+		{
+			Mnemonic:  "SAR",
+			Operands:  []string{"r/m8", "1"},
+			Encoding:  "D0 <rm a reg=7>",
+			Semantics: "a = sar(a, 1);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "SAR",
+			Operands:  []string{"r/m16", "1"},
+			Encoding:  "D1 <rm a reg=7>",
+			Semantics: "a = sar(a, 1);",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "SAR",
+			Operands:  []string{"r/m8", "CL"},
+			Encoding:  "D2 <rm a reg=7>",
+			Semantics: "a = sar(a, b);",
+			Cycles:    8,
+		},
+		{
+			Mnemonic:  "SAR",
+			Operands:  []string{"r/m16", "CL"},
+			Encoding:  "D3 <rm a reg=7>",
+			Semantics: "a = sar(a, b);",
+			Cycles:    8,
+		},
+		{
+			Mnemonic:  "AAM",
+			Operands:  []string{"imm8"},
+			Encoding:  "D4 a:8",
+			Semantics: "aam(a);",
+			Cycles:    83,
+		},
+		{
+			Mnemonic:  "AAD",
+			Operands:  []string{"imm8"},
+			Encoding:  "D5 a:8",
+			Semantics: "aad(a);",
+			Cycles:    60,
+		},
+		{
+			Mnemonic:  "XLAT",
+			Encoding:  "D7",
+			Semantics: "AL = mem8[linear(seg(DS), BX + zx(AL, 16))];",
+			Cycles:    11,
+		},
+		{
+			Mnemonic: "LOOPNE",
+			Operands: []string{"rel8"},
+			Encoding: "E0 a:8",
+			Semantics: `CX = CX - 1;
+if CX != 0 && !ZF {
+	IP = a;
+}`,
+			Cycles: 5,
+		},
+		{
+			Mnemonic: "LOOPE",
+			Operands: []string{"rel8"},
+			Encoding: "E1 a:8",
+			Semantics: `CX = CX - 1;
+if CX != 0 && ZF {
+	IP = a;
+}`,
+			Cycles: 5,
+		},
+		{
+			Mnemonic: "LOOP",
+			Operands: []string{"rel8"},
+			Encoding: "E2 a:8",
+			Semantics: `CX = CX - 1;
+if CX != 0 {
+	IP = a;
+}`,
+			Cycles: 5,
+		},
+		{
+			Mnemonic: "JCXZ",
+			Operands: []string{"rel8"},
+			Encoding: "E3 a:8",
+			Semantics: `if CX == 0 {
+	IP = a;
+}`,
+			Cycles: 5,
+		},
+		{
+			Mnemonic:  "IN",
+			Operands:  []string{"AL", "imm8"},
+			Encoding:  "E4 b:8",
+			Semantics: "a = in8(zx(b, 16));",
+			Cycles:    10,
+		},
+		{
+			Mnemonic:  "IN",
+			Operands:  []string{"AX", "imm8"},
+			Encoding:  "E5 b:8",
+			Semantics: "a = in16(zx(b, 16));",
+			Cycles:    10,
+		},
+		{
+			Mnemonic:  "OUT",
+			Operands:  []string{"imm8", "AL"},
+			Encoding:  "E6 a:8",
+			Semantics: "out8(zx(a, 16), b);",
+			Cycles:    10,
+		},
+		{
+			Mnemonic:  "OUT",
+			Operands:  []string{"imm8", "AX"},
+			Encoding:  "E7 a:8",
+			Semantics: "out16(zx(a, 16), b);",
+			Cycles:    10,
+		},
+		{
+			Mnemonic: "CALL",
+			Operands: []string{"rel16"},
+			Encoding: "E8 a:16",
+			Semantics: `push16(IP);
+IP = a;`,
+			Cycles: 19,
+		},
+		{
+			Mnemonic:  "JMP",
+			Operands:  []string{"rel16"},
+			Encoding:  "E9 a:16",
+			Semantics: "IP = a;",
+			Cycles:    15,
+		},
+		{
+			Mnemonic: "JMP",
+			Operands: []string{"ptr16:16"},
+			Encoding: "EA a:32",
+			Semantics: `CS = a[31:16];
+IP = a[15:0];`,
+			Cycles: 15,
+		},
+		{
+			Mnemonic:  "JMP",
+			Operands:  []string{"rel8"},
+			Encoding:  "EB a:8",
+			Semantics: "IP = a;",
+			Cycles:    15,
+		},
+		{
+			Mnemonic:  "IN",
+			Operands:  []string{"AL", "DX"},
+			Encoding:  "EC",
+			Semantics: "a = in8(b);",
+			Cycles:    8,
+		},
+		{
+			Mnemonic:  "IN",
+			Operands:  []string{"AX", "DX"},
+			Encoding:  "ED",
+			Semantics: "a = in16(b);",
+			Cycles:    8,
+		},
+		{
+			Mnemonic:  "OUT",
+			Operands:  []string{"DX", "AL"},
+			Encoding:  "EE",
+			Semantics: "out8(a, b);",
+			Cycles:    8,
+		},
+		{
+			Mnemonic:  "OUT",
+			Operands:  []string{"DX", "AX"},
+			Encoding:  "EF",
+			Semantics: "out16(a, b);",
+			Cycles:    8,
+		},
+		{
+			Mnemonic:  "HLT",
+			Encoding:  "F4",
+			Semantics: "halt();",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "CMC",
+			Encoding:  "F5",
+			Semantics: "CF = !CF;",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "TEST",
+			Operands:  []string{"r/m8", "imm8"},
+			Encoding:  "F6 <rm a reg=0> b:8",
+			Semantics: "let r = logic(a & b);",
+			Cycles:    5,
+		},
+		{
+			Mnemonic:  "TEST",
+			Operands:  []string{"r/m16", "imm16"},
+			Encoding:  "F7 <rm a reg=0> b:16",
+			Semantics: "let r = logic(a & b);",
+			Cycles:    5,
+		},
+		{
+			Mnemonic:  "NOT",
+			Operands:  []string{"r/m8"},
+			Encoding:  "F6 <rm a reg=2>",
+			Semantics: "a = ~a;",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "NOT",
+			Operands:  []string{"r/m16"},
+			Encoding:  "F7 <rm a reg=2>",
+			Semantics: "a = ~a;",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "NEG",
+			Operands:  []string{"r/m8"},
+			Encoding:  "F6 <rm a reg=3>",
+			Semantics: "a = neg(a);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "NEG",
+			Operands:  []string{"r/m16"},
+			Encoding:  "F7 <rm a reg=3>",
+			Semantics: "a = neg(a);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "MUL",
+			Operands:  []string{"r/m8"},
+			Encoding:  "F6 <rm a reg=4>",
+			Semantics: "mul(a);",
+			Cycles:    70,
+		},
+		{
+			Mnemonic:  "MUL",
+			Operands:  []string{"r/m16"},
+			Encoding:  "F7 <rm a reg=4>",
+			Semantics: "mul(a);",
+			Cycles:    70,
+		},
+		{
+			Mnemonic:  "IMUL",
+			Operands:  []string{"r/m8"},
+			Encoding:  "F6 <rm a reg=5>",
+			Semantics: "imul(a);",
+			Cycles:    80,
+		},
+		{
+			Mnemonic:  "IMUL",
+			Operands:  []string{"r/m16"},
+			Encoding:  "F7 <rm a reg=5>",
+			Semantics: "imul(a);",
+			Cycles:    80,
+		},
+		{
+			Mnemonic:  "DIV",
+			Operands:  []string{"r/m8"},
+			Encoding:  "F6 <rm a reg=6>",
+			Semantics: "div(a);",
+			Cycles:    80,
+		},
+		{
+			Mnemonic:  "DIV",
+			Operands:  []string{"r/m16"},
+			Encoding:  "F7 <rm a reg=6>",
+			Semantics: "div(a);",
+			Cycles:    80,
+		},
+		{
+			Mnemonic:  "IDIV",
+			Operands:  []string{"r/m8"},
+			Encoding:  "F6 <rm a reg=7>",
+			Semantics: "idiv(a);",
+			Cycles:    101,
+		},
+		{
+			Mnemonic:  "IDIV",
+			Operands:  []string{"r/m16"},
+			Encoding:  "F7 <rm a reg=7>",
+			Semantics: "idiv(a);",
+			Cycles:    101,
+		},
+		{
+			Mnemonic:  "CLC",
+			Encoding:  "F8",
+			Semantics: "CF = 0;",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "STC",
+			Encoding:  "F9",
+			Semantics: "CF = 1;",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "CLI",
+			Encoding:  "FA",
+			Semantics: "IF = 0;",
+			Cycles:    2,
+			Effects:   []string{"Interrupts"},
+		},
+		{
+			Mnemonic:  "STI",
+			Encoding:  "FB",
+			Semantics: "IF = 1;",
+			Cycles:    2,
+			Effects:   []string{"Interrupts"},
+		},
+		{
+			Mnemonic:  "CLD",
+			Encoding:  "FC",
+			Semantics: "DF = 0;",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "STD",
+			Encoding:  "FD",
+			Semantics: "DF = 1;",
+			Cycles:    2,
+		},
+		{
+			Mnemonic:  "INC",
+			Operands:  []string{"r/m8"},
+			Encoding:  "FE <rm a reg=0>",
+			Semantics: "a = inc(a);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "DEC",
+			Operands:  []string{"r/m8"},
+			Encoding:  "FE <rm a reg=1>",
+			Semantics: "a = dec(a);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "INC",
+			Operands:  []string{"r/m16"},
+			Encoding:  "FF <rm a reg=0>",
+			Semantics: "a = inc(a);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic:  "DEC",
+			Operands:  []string{"r/m16"},
+			Encoding:  "FF <rm a reg=1>",
+			Semantics: "a = dec(a);",
+			Cycles:    3,
+		},
+		{
+			Mnemonic: "CALL",
+			Operands: []string{"r/m16"},
+			Encoding: "FF <rm a reg=2>",
+			Semantics: `let t = a;
+push16(IP);
+IP = t;`,
+			Cycles: 16,
+		},
+		{
+			Mnemonic: "CALL",
+			Operands: []string{"m16:16"},
+			Encoding: "FF <rm a reg=3>",
+			Semantics: `let t = a;
+push16(CS);
+push16(IP);
+CS = t[31:16];
+IP = t[15:0];`,
+			Cycles: 37,
+		},
+		{
+			Mnemonic:  "JMP",
+			Operands:  []string{"r/m16"},
+			Encoding:  "FF <rm a reg=4>",
+			Semantics: "IP = a;",
+			Cycles:    11,
+		},
+		{
+			Mnemonic: "JMP",
+			Operands: []string{"m16:16"},
+			Encoding: "FF <rm a reg=5>",
+			Semantics: `let t = a;
+CS = t[31:16];
+IP = t[15:0];`,
+			Cycles: 24,
+		},
+		{
+			Mnemonic: "PUSH",
+			Operands: []string{"r/m16"},
+			Encoding: "FF <rm a reg=6>",
+			Semantics: `SP = SP - 2;
+wr16(SS, SP, a);`,
+			Cycles: 16,
+		},
+	},
+	Semantics: `// The segment of an address: the segment register d, unless a prefix
+// overrides it.
+fn seg(d) {
+	if SEGOV {
+		return SEG;
+	}
+	return d;
+}
+
+// The physical address of offset off in segment s.
+fn linear(s, off) {
+	return (zx(s, 20) << 4) + zx(off, 20);
+}
+
+// A word at offset off of segment s: its high byte is at off + 1 within
+// the segment, which wraps around at the end of the segment.
+fn rd16(s, off) {
+	return zx(mem8[linear(s, off)], 16) | zx(mem8[linear(s, off + 1)], 16) << 8;
+}
+
+fn wr16(s, off, v) {
+	mem8[linear(s, off)] = v[7:0];
+	mem8[linear(s, off + 1)] = v[15:8];
+}
+
+fn push16(v) {
+	SP = SP - 2;
+	wr16(SS, SP, v);
+}
+
+fn pop16() {
+	let v = rd16(SS, SP);
+	SP = SP + 2;
+	return v;
+}
+
+// The interrupt sequence: the flags, CS and IP are pushed, interrupts
+// and single-stepping are disabled, and the vector of interrupt n in the
+// table at address 0 is loaded.
+fn interrupt(n) {
+	push16(FLAGS);
+	IF = 0;
+	TF = 0;
+	push16(CS);
+	push16(IP);
+	let v = zx(n, 16) << 2;
+	IP = rd16(0, v);
+	CS = rd16(0, v + 2);
+}
+
+fn parity(x) {
+	let p = x ^ (x >> 4);
+	p = p ^ (p >> 2);
+	p = p ^ (p >> 1);
+	return !p[0];
+}
+
+fn szp(r) {
+	ZF = r == 0;
+	SF = msb(r);
+	PF = parity(tr(r, 8));
+}
+
+fn add(x, y, c) {
+	let n = width(x) + 1;
+	let wide = zx(x, n) + zx(y, n) + zx(c, n);
+	let r = tr(wide, width(x));
+	CF = wide[width(x)];
+	OF = msb((x ^ r) & (y ^ r));
+	AF = (x ^ y ^ r)[4];
+	szp(r);
+	return r;
+}
+
+fn sub(x, y, c) {
+	let n = width(x) + 1;
+	let wide = zx(x, n) - zx(y, n) - zx(c, n);
+	let r = tr(wide, width(x));
+	CF = wide[width(x)];
+	OF = msb((x ^ y) & (x ^ r));
+	AF = (x ^ y ^ r)[4];
+	szp(r);
+	return r;
+}
+
+fn logic(r) {
+	CF = 0;
+	OF = 0;
+	AF = 0;
+	szp(r);
+	return r;
+}
+
+fn inc(x) {
+	let c = CF;
+	let r = add(x, zx(1, width(x)), 0);
+	CF = c;
+	return r;
+}
+
+fn dec(x) {
+	let c = CF;
+	let r = sub(x, zx(1, width(x)), 0);
+	CF = c;
+	return r;
+}
+
+fn neg(x) {
+	let r = sub(zx(0, width(x)), x, 0);
+	CF = x != 0;
+	return r;
+}
+
+// Shifts and rotations by n, one bit at a time; the 8086 does not mask
+// the count. OF is set as for a count of 1.
+fn rol(x, n) {
+	let r = x;
+	let k = n;
+	while k != 0 {
+		CF = msb(r);
+		r = (r << 1) | zx(CF, width(r));
+		k = k - 1;
+	}
+	if n != 0 {
+		OF = msb(r) ^ CF;
+	}
+	return r;
+}
+
+fn ror(x, n) {
+	let r = x;
+	let k = n;
+	while k != 0 {
+		CF = r[0];
+		r = (r >> 1) | (zx(CF, width(r)) << (width(r) - 1));
+		k = k - 1;
+	}
+	if n != 0 {
+		OF = msb(r) ^ r[width(r) - 2];
+	}
+	return r;
+}
+
+fn rcl(x, n) {
+	let r = x;
+	let k = n;
+	while k != 0 {
+		let c = CF;
+		CF = msb(r);
+		r = (r << 1) | zx(c, width(r));
+		k = k - 1;
+	}
+	if n != 0 {
+		OF = msb(r) ^ CF;
+	}
+	return r;
+}
+
+fn rcr(x, n) {
+	let r = x;
+	let k = n;
+	if n != 0 {
+		OF = msb(r) ^ CF;
+	}
+	while k != 0 {
+		let c = CF;
+		CF = r[0];
+		r = (r >> 1) | (zx(c, width(r)) << (width(r) - 1));
+		k = k - 1;
+	}
+	return r;
+}
+
+fn shl(x, n) {
+	if n == 0 {
+		return x;
+	}
+	let r = x;
+	let k = n;
+	while k != 0 {
+		CF = msb(r);
+		r = r << 1;
+		k = k - 1;
+	}
+	OF = msb(r) ^ CF;
+	szp(r);
+	return r;
+}
+
+fn shr(x, n) {
+	if n == 0 {
+		return x;
+	}
+	let r = x;
+	let k = n;
+	OF = msb(x);
+	while k != 0 {
+		CF = r[0];
+		r = r >> 1;
+		k = k - 1;
+	}
+	szp(r);
+	return r;
+}
+
+fn sar(x, n) {
+	if n == 0 {
+		return x;
+	}
+	let r = x;
+	let k = n;
+	while k != 0 {
+		CF = r[0];
+		r = r >>> 1;
+		k = k - 1;
+	}
+	OF = 0;
+	szp(r);
+	return r;
+}
+
+fn mul(x) {
+	if width(x) == 8 {
+		AX = zx(AL, 16) * zx(x, 16);
+		CF = AH != 0;
+	} else {
+		let p = zx(AX, 32) * zx(x, 32);
+		DX = p[31:16];
+		AX = p[15:0];
+		CF = DX != 0;
+	}
+	OF = CF;
+}
+
+fn imul(x) {
+	if width(x) == 8 {
+		AX = sx(AL, 16) * sx(x, 16);
+		CF = AX != sx(AL, 16);
+	} else {
+		let p = sx(AX, 32) * sx(x, 32);
+		DX = p[31:16];
+		AX = p[15:0];
+		CF = p != sx(AX, 32);
+	}
+	OF = CF;
+}
+
+// Division; a zero divisor or a quotient that does not fit raises
+// interrupt 0. The signed quotient of the 8086 lies in -127 to 127 (or
+// -32767 to 32767), and a REP prefix negates it.
+fn div(x) {
+	if x == 0 {
+		interrupt(0);
+		return;
+	}
+	if width(x) == 8 {
+		let q = divu(AX, zx(x, 16));
+		if q > 0xFF {
+			interrupt(0);
+			return;
+		}
+		AH = tr(remu(AX, zx(x, 16)), 8);
+		AL = tr(q, 8);
+	} else {
+		let d = (zx(DX, 32) << 16) | zx(AX, 32);
+		let q = divu(d, zx(x, 32));
+		if q > 0xFFFF {
+			interrupt(0);
+			return;
+		}
+		DX = tr(remu(d, zx(x, 32)), 16);
+		AX = tr(q, 16);
+	}
+}
+
+fn idiv(x) {
+	if x == 0 {
+		interrupt(0);
+		return;
+	}
+	if width(x) == 8 {
+		let q = divs(AX, sx(x, 16));
+		if REP != 0 {
+			q = zx(0, 16) - q;
+		}
+		if lts(q, 0xFF81) || gts(q, 0x7F) {
+			interrupt(0);
+			return;
+		}
+		AH = tr(rems(AX, sx(x, 16)), 8);
+		AL = tr(q, 8);
+	} else {
+		let d = (zx(DX, 32) << 16) | zx(AX, 32);
+		let q = divs(d, sx(x, 32));
+		if REP != 0 {
+			q = zx(0, 32) - q;
+		}
+		if lts(q, 0xFFFF8001) || gts(q, 0x7FFF) {
+			interrupt(0);
+			return;
+		}
+		DX = tr(rems(d, sx(x, 32)), 16);
+		AX = tr(q, 16);
+	}
+}
+
+// Decimal adjustments.
+// The 8086 compares the old AL with 9F rather than 99 when AF is set.
+fn daa() {
+	let old = AL;
+	let c = CF;
+	let limit = zx(0x99, 8);
+	if AF {
+		limit = 0x9F;
+	}
+	if (AL & 0x0F) > 9 || AF {
+		AL = AL + 6;
+		AF = 1;
+	} else {
+		AF = 0;
+	}
+	if old > limit || c {
+		AL = AL + 0x60;
+		CF = 1;
+	} else {
+		CF = 0;
+	}
+	szp(AL);
+}
+
+fn das() {
+	let old = AL;
+	let c = CF;
+	let limit = zx(0x99, 8);
+	if AF {
+		limit = 0x9F;
+	}
+	if (AL & 0x0F) > 9 || AF {
+		AL = AL - 6;
+		AF = 1;
+	} else {
+		AF = 0;
+	}
+	if old > limit || c {
+		AL = AL - 0x60;
+		CF = 1;
+	} else {
+		CF = 0;
+	}
+	szp(AL);
+}
+
+// On the 8086, AAA adds 6 to AL and 1 to AH separately.
+fn aaa() {
+	if (AL & 0x0F) > 9 || AF {
+		AL = AL + 6;
+		AH = AH + 1;
+		AF = 1;
+		CF = 1;
+	} else {
+		AF = 0;
+		CF = 0;
+	}
+	AL = AL & 0x0F;
+}
+
+fn aas() {
+	if (AL & 0x0F) > 9 || AF {
+		AL = AL - 6;
+		AH = AH - 1;
+		AF = 1;
+		CF = 1;
+	} else {
+		AF = 0;
+		CF = 0;
+	}
+	AL = AL & 0x0F;
+}
+
+fn aam(base) {
+	if base == 0 {
+		// The flags are set as for a result of 0 before the interrupt.
+		CF = 0;
+		OF = 0;
+		AF = 0;
+		szp(zx(0, 8));
+		interrupt(0);
+		return;
+	}
+	let t = AL;
+	AH = tr(divu(t, base), 8);
+	AL = tr(remu(t, base), 8);
+	szp(AL);
+}
+
+fn aad(base) {
+	AL = tr(zx(AL, 16) + zx(AH, 16) * zx(base, 16), 8);
+	AH = 0;
+	szp(AL);
+}
+
+// One step of the string instructions; SI and DI move by the operand
+// size, down if DF is set.
+fn step(n) {
+	if DF {
+		return zx(0, 16) - n;
+	}
+	return zx(n, 16);
+}
+
+fn movs8() {
+	mem8[linear(ES, DI)] = mem8[linear(seg(DS), SI)];
+	SI = SI + step(1);
+	DI = DI + step(1);
+}
+
+fn movs16() {
+	wr16(ES, DI, rd16(seg(DS), SI));
+	SI = SI + step(2);
+	DI = DI + step(2);
+}
+
+fn cmps8() {
+	let r = sub(mem8[linear(seg(DS), SI)], mem8[linear(ES, DI)], 0);
+	SI = SI + step(1);
+	DI = DI + step(1);
+}
+
+fn cmps16() {
+	let r = sub(rd16(seg(DS), SI), rd16(ES, DI), 0);
+	SI = SI + step(2);
+	DI = DI + step(2);
+}
+
+fn stos8() {
+	mem8[linear(ES, DI)] = AL;
+	DI = DI + step(1);
+}
+
+fn stos16() {
+	wr16(ES, DI, AX);
+	DI = DI + step(2);
+}
+
+fn lods8() {
+	AL = mem8[linear(seg(DS), SI)];
+	SI = SI + step(1);
+}
+
+fn lods16() {
+	AX = rd16(seg(DS), SI);
+	SI = SI + step(2);
+}
+
+fn scas8() {
+	let r = sub(AL, mem8[linear(ES, DI)], 0);
+	DI = DI + step(1);
+}
+
+fn scas16() {
+	let r = sub(AX, rd16(ES, DI), 0);
+	DI = DI + step(2);
+}
+`,
+	ABI:   ABI{Frame: "BP", Params: 4, Align: 2, Reserved: []string{"SP", "BP", "CS", "DS", "ES", "SS"}, Flags: "FLAGS"},
+	Rules: i8086Rules,
+}

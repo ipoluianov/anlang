@@ -1,0 +1,66 @@
+// want: ok
+
+// Range-over-func iterators and function values in the core profile.
+package main
+
+profile core
+
+import "an/fmt"
+
+func evens(yield func(int) bool) {
+	for i := 0; i < 20; i += 2 {
+		if !yield(i) {
+			return
+		}
+	}
+}
+
+func pairs(yield func(int, string) bool) {
+	names := [3]string{"one", "two", "three"}
+	for i, n := range names {
+		if !yield(i+1, n) {
+			return
+		}
+	}
+}
+
+type op func(int, int) int
+
+func add(a, b int) int { return a + b }
+
+func mul(a, b int) int { return a * b }
+
+func fold(xs []int, f op, init int) int {
+	acc := init
+	for _, x := range xs {
+		acc = f(acc, x)
+	}
+	return acc
+}
+
+func main() {
+	sum, count := 0, 0
+	for x := range evens {
+		if x == 4 {
+			continue
+		}
+		if x > 12 {
+			break
+		}
+		sum += x
+		count++
+	}
+	fmt.Println(sum, count)
+	for k, v := range pairs {
+		fmt.Println(k, v)
+	}
+	xs := [5]int{1, 2, 3, 4, 5}
+	ops := [2]op{add, mul}
+	for _, f := range ops {
+		if f != nil {
+			fmt.Println(fold(xs[:], f, 1))
+		}
+	}
+	var g op
+	fmt.Println(g == nil, ops[0] != nil)
+}

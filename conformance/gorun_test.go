@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"an/effects"
 	"an/interp"
 	"an/lower"
 	"an/syntax"
@@ -67,6 +68,18 @@ func goRun(path string) (r runResult) {
 	info, errs := types.Check(&types.Config{Module: "conf"}, []*syntax.File{af})
 	if len(errs) > 0 {
 		r.skip = "rejected by the checker"
+		return r
+	}
+	func() {
+		defer func() {
+			if e := recover(); e != nil {
+				r.got = fmt.Sprintf("effect inference crash: %v\n", e)
+				r.skip = ""
+			}
+		}()
+		effects.NewProgram(effects.AnalyzeAll([]effects.Input{{Info: info}}, nil))
+	}()
+	if r.got != "" {
 		return r
 	}
 	prog, errs := lower.Program(info)

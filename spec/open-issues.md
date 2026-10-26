@@ -46,6 +46,17 @@ Decisions of 2026-10-25. The rule text in the spec files is normative; these ite
 | 21 | 03, 10 | Constants of composite types | Any type built from scalars, arrays, slices, structs, maps, `enum`, `Option` and interfaces over them, without handles and functions (**decl.const.types**, **ct.const.types**) |
 | 22 | 10-compile-time | Per-type code for `...any` elements | Static type switch on type-parameter values and tuple elements (**ct.typeswitch.static**) |
 | 23 | 10-compile-time | Rejecting arguments at compile time | `meta.Reject` and compile-time evaluation of `requires` on constant arguments (**ct.reject.call**, **ct.reject.precondition**) |
+| 24 | 10-compile-time | When the body of a function with `...any`, `an/meta` or a static type switch is checked | Once per instance, on a copy with the type arguments and tuple types; an instance no call produces is not checked; constant `if` conditions select the branch that is checked and compiled; `for const` over an array constant needs a composite literal of constants, because unrolling precedes the evaluation of computed constants (**ct.instance.check**, **ct.for.sequence**); found while implementing compile-time tuples |
+| 25 | 13-targets | Format of architecture descriptions and notation of instruction semantics | A constant `arch.Arch` of package `an/arch` with registers, operand kinds, fragments, prefixes and instruction forms; encodings are bit patterns with fields and fragments with alternatives, so that the ModRM byte of the 8086 is data rather than compiler code; semantics are Sail-like statements over bit vectors in string fields, checked for widths; of several matching forms the most specific applies (**target.arch.schema**, **target.arch.encoding**, **target.arch.specific**, **target.arch.semantics**, **target.arch.widths**, **target.arch.execution**, **target.arch.check**); decided at step 11 with the i8086 description |
+| 26 | 05-statements, 13-targets | `asm` syntax and the syntax of the generated assembler | The provisional `asm(regs) `...`` form is kept; its text has one instruction per line in a uniform Intel-like syntax derived from the description: prefixes, mnemonic, operands; memory operands with `byte`/`word` size and addresses that a fragment alternative can encode; labels and `;` comments; the assembler picks the shortest encoding (**stmt.asm.syntax**, **target.arch.asm-syntax**, **target.arch.round-trip**); decided at step 12 |
+| 27 | 13-targets | The instruction package and the register parts | `Regs` holds the whole registers (`AX`, not `AH`); a function exists for each instruction form whose operands are immediates, constants and fixed registers and that does not set the program counter directly (**target.arch.instr-package**); decided at step 12 |
+| 28 | 13-targets | Field names of platform and target descriptions | `platform.Platform` has `Name`, `Provides`, `Dynamic`, `Rules`, `Formats`, `Profiles` and `OnPanic`; `target.Desc` and its field types are declared in `an/target`, and a field at its zero value takes its default (`target.DefaultFloats`, `target.DefaultPanic`) (**target.platform.schema**, **target.platform.entry**, **target.desc.types**); decided at step 13 with `platform.DOS` and `an/target/dos-com` |
+| 29 | 13-targets, 22-compiler | Form of instruction selection rules and of the code generator | A rule maps one machine operation of a given width to an instruction template: assembler text with placeholders for operands in frame slots or constants, their word-sized parts, labels and local labels; every IR value lives in a frame slot, arguments and results pass through the argument area at the bottom of the caller's frame; operations wider than a word without a rule call the runtime package; until step 22 the rules are tested in the generated interpreter, exhaustively for 8 bits (**target.arch.rule**, **target.arch.ops**, **target.arch.template**, **target.arch.select**, **target.arch.abi**, **target.arch.rules-test**, **comp.gen.layout**, **comp.gen.frame**, **comp.gen.values**, **comp.gen.lower**, **comp.gen.runtime**, **comp.gen.link**); decided at step 13 |
+| 30 | 13-targets | Binary formats before link-time evaluation | Until step 26, `target.Format` has the method `Kind`, and the toolchain writes the format of each kind (**target.format.kind**); decided at step 13 |
+| 31 | 20-toolchain | Running a program in its built-in emulator | `anlang run -target T` for a target that cannot run on the host, or `-emu builtin`; the DOS model provides `int 20h` and functions `02h`, `09h`, `40h` and `4Ch` of `int 21h` (**tool.emu.target**, **tool.emu.dos**); decided at step 13 |
+| 32 | 06-memory | API of `an/unsafe` | The pointer kinds are the types `Flat`, `Near` (of the width of `usize`), `Far` and `Program` (32 bits); `Map[T](addr)` takes an address of a pointer kind, evaluated at compile time; `Data(x)` returns the address of the bytes of a string or slice as a `usize`; an architecture package declares constructors such as `i8086.Far(segment, offset)` (**mem.unsafe.api**, **mem.unsafe.data**); decided at step 14 |
+| 33 | 13-targets, 05-statements | Registers of calls of the instruction package and of `asm` statements | The registers named by the fields are loaded except the reserved registers of the ABI and the flags, which are only stored; the immediates of a call are constants (**target.arch.instr-package**, **target.arch.abi**, **stmt.asm.syntax**); decided at step 14 |
+| 34 | 20-toolchain, 23-conformance | The DOS emulator and its observable behavior | A text screen at `0xB8000` written by `int 10h` and the console output of DOS, keys from the standard input, time from the executed cycles from midnight of 1 January 2026; `anlang run -screen`; tests with `.screen` and `.in` files, run only in the emulator if they use the architecture directly (**tool.emu.dos**, **conf.suite.layout**, **conf.backend.arch**); decided at step 14 |
 | 24 | 10-compile-time | `meta` API | `Name`, `Fields`, `Variants`, `Get`, `Set`, `Is`, `Make`, `Tag` (10.4) |
 | 25 | 11-data-safety | Where `Secret` and `Untrusted` live | Predeclared types; operations in `an/secret` and `an/untrusted` (**safe.types.predeclared**) |
 | 26 | 11-data-safety | Using a secret without exposing it | `secret.Map` with an effect-restricted function (**safe.secret.map**) |
@@ -193,6 +204,12 @@ Provisional technical choices accepted as written on 2026-10-25. The rule text i
 | 15 | 22-compiler, 20-toolchain | Form of the IR, its textual format and how to run it | SSA with storage cells for variables, explicit `copy` at logical copies and monomorphization of generics; the textual format of 22.10.2, printed by `anlang build -ir`; `anlang run -emu ir` runs the IR interpreter for any target, and a panicking program exits with status 2 (**tool.cmd.build.ir**, **tool.emu.ir**) |
 | 16 | 23-conformance | Expected behavior of reference programs and the comparison with Go | A file `<name>.out` next to a positive test holds standard output and standard error in order and a final `exit status N` line; the "run" programs of the Go distribution are compared in the IR interpreter, except programs whose behavior depends on a listed deviation of Anlang (**conf.suite.layout**, **conf.reference**, **conf.go.common-subset**) |
 | 17 | 06-memory | A non-addressable first operand of `copy`, `delete` or `clear`, such as `copy(f(), src)` | Rejected: the first operand is passed with an `inout` access and must be addressable; a map element is not (**mem.inout.builtin**, **expr.addr.map**); found while implementing the IR interpreter |
+| 18 | 04-expressions | Constant expressions of wrapping types; `x / -1` for the minimum value of a signed wrapping type | Constants of wrapping types are reduced modulo 2ⁿ and a constant conversion to a wrapping type truncates, as for values; an untyped constant without a conversion must still be representable; `min / -1` wraps to `min` and `min % -1` is 0, as in Go, so division by zero is the only panic of wrapping arithmetic (**expr.wrap.const**, **expr.wrap.other-ops**); found while implementing `an/wrap` |
+| 19 | 07-effects | Exactly which operations are sources of `Alloc`, `Panic` and `Block`, and what a parametric reference means when the argument is unknown | Closed lists of operations decided syntactically on the typed tree, so that two implementations compute the same summaries: writes into slice elements have `Alloc` because the buffer may be shared, conversions to interfaces have `Alloc` except for scalars, empty structs and enums without data, channel operations of `select` cases wait only as part of the `select`; an unknown argument closes a parametric reference to the open reference of the parameter type, and conversions between interface types let implementations flow (**eff.source.alloc-ops**, **eff.source.panic-ops**, **eff.source.wait**, **eff.source.builtin**, **eff.infer.close**, **eff.attr.flow**); found while implementing effect inference |
+| 20 | 07-effects | At which functions a violated attribution constraint is reported | At each function where the effect enters the package, from a source in its body or from a function of another package; callers in the same package are not reported again, so one source gives one diagnostic per package (**eff.constraint.report**); found while implementing profile checks |
+| 21 | 10-compile-time | Concrete compile-time evaluation limits; whether a project may raise them | 10,000,000 IR instructions and 16,777,216 values per evaluation, fixed per edition, not configurable (**ct.limit.values**) |
+| 22 | 02-types, 07-effects, 08-contracts | Narrowing conversions: compile-time rejection (**type.conv.int-narrow**) or run-time checks (**contract.check.runtime**, **eff.source.panic**) | Rejection unless proven; the run-time check lists name conversions from floating-point to integer types instead. Until the solver, proofs use a closed set of interval facts: constants, type ranges, `&` and `%` with constants, `>>` by constants, and range keys over known lengths (**type.conv.int-narrow-facts**); found while implementing compile-time evaluation, where the CRC example of 10.2 needs `u32(i)` |
+| 23 | 10-compile-time | Composite literals in constant declarations | Permitted: a composite literal makes the constant a computed constant, like a call (**ct.const.call**) |
 
 ## 2. Deferred to implementation
 
@@ -200,22 +217,18 @@ Questions that are not design decisions. Each is decided at the roadmap step giv
 
 | # | File | Question | Step |
 | --- | --- | --- | --- |
-| 1 | 05-statements | `asm` syntax | 12 |
-| 2 | 10-compile-time | Concrete compile-time evaluation limits and project override | 10 |
-| 3 | 12-ffi | Binding form for JNI table entries | 65 |
-| 4 | 13-targets | Format of architecture descriptions | 11 |
-| 5 | 13-targets | Field names of platform descriptions | 13 |
-| 6 | 14-embedded | Overriding interrupt priorities | 33 |
-| 7 | 14-embedded | Multi-core microcontrollers | 52 |
-| 8 | 14-embedded | Response-time analysis | 53 |
-| 9 | 15-os | Names and APIs of kernel thread, per-CPU and spin lock types | 54 |
-| 10 | 15-os | User memory in system calls and `Untrusted` | 54 |
-| 11 | 16-gpu | Creating and reading `gpu.Out[T]` buffers | 64 |
-| 12 | 16-gpu | Floating point guarantees and `f64` on GPUs | 64 |
-| 13 | 16-gpu | Direct3D shader targets | 64 |
-| 14 | 17-ui | Native view API | 62 |
-| 15 | 17-ui | Form of the state migration function | 63 |
-| 16 | 17-ui | `Background` on Android | 65 |
-| 17 | 22-compiler | General-purpose allocator for `app` | 25 |
-| 18 | 23-conformance | Performance thresholds | 26 |
-| 19 | 20-toolchain | Reformatting of doc comments by anlang fmt (gofmt reformats them with go/doc/comment) | 40 |
+| 1 | 12-ffi | Binding form for JNI table entries | 65 |
+| 2 | 14-embedded | Overriding interrupt priorities | 33 |
+| 3 | 14-embedded | Multi-core microcontrollers | 52 |
+| 4 | 14-embedded | Response-time analysis | 53 |
+| 5 | 15-os | Names and APIs of kernel thread, per-CPU and spin lock types | 54 |
+| 6 | 15-os | User memory in system calls and `Untrusted` | 54 |
+| 7 | 16-gpu | Creating and reading `gpu.Out[T]` buffers | 64 |
+| 8 | 16-gpu | Floating point guarantees and `f64` on GPUs | 64 |
+| 9 | 16-gpu | Direct3D shader targets | 64 |
+| 10 | 17-ui | Native view API | 62 |
+| 11 | 17-ui | Form of the state migration function | 63 |
+| 12 | 17-ui | `Background` on Android | 65 |
+| 13 | 22-compiler | General-purpose allocator for `app` | 25 |
+| 14 | 23-conformance | Performance thresholds | 26 |
+| 15 | 20-toolchain | Reformatting of doc comments by anlang fmt (gofmt reformats them with go/doc/comment) | 40 |

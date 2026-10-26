@@ -24,8 +24,9 @@ type Config struct {
 	// Imports are the checked packages of the project that the package
 	// imports, by import path.
 	Imports  map[string]*Package
-	IntBits  int // size of int and uint in bits (type.int.word); 0 means 64
-	AddrBits int // size of usize in bits (type.int.usize); 0 means IntBits
+	IntBits  int    // size of int and uint in bits (type.int.word); 0 means 64
+	AddrBits int    // size of usize in bits (type.int.usize); 0 means IntBits
+	Arch     string // the architecture of the target, for asm statements
 }
 
 // Info is the result of type checking.
@@ -53,6 +54,25 @@ type Info struct {
 	// Instances maps the identifiers of generic functions and types to
 	// their instantiations at their uses.
 	Instances map[*syntax.Name]Instance
+	// Computed lists the constants computed by function calls, in the
+	// order of their declarations (ct.const.call).
+	Computed []*Const
+	// Bytes are the []u8 constants of calls of the functions of
+	// an/encoding (ct.encoding.const).
+	Bytes map[syntax.Expr][]byte
+	// Templates are the functions checked per instance; TemplateCalls
+	// maps calls of them to the instance they use (ct.any.instance).
+	Templates         map[*Func]bool
+	TemplateCalls     map[*syntax.CallExpr]*TemplateInstance
+	TemplateInstances []*TemplateInstance
+	// Unrolled holds the instances of the bodies of for const loops
+	// (ct.for.unroll).
+	Unrolled map[*syntax.RangeStmt][]*Unrolled
+	// StaticSwitch maps a static type switch to its chosen clause
+	// (ct.typeswitch.static).
+	StaticSwitch map[*syntax.TypeSwitchStmt]int
+	// MetaCalls maps calls of descriptor methods to what they do.
+	MetaCalls map[*syntax.CallExpr]*MetaCall
 
 	ctx *checker // for the type operations of the API
 }
@@ -123,6 +143,27 @@ type checker struct {
 	iota   constant.Value
 	errPos syntax.Pos // if valid, the position of all errors // value of iota in a constant declaration; nil otherwise
 	fn     *funcContext
+
+	// The package-level constant whose initializer is checked, for
+	// effect.Declare (eff.custom.declare).
+	declConst  *Const
+	declInit   syntax.Expr
+	declMapVar *Var // the package-level variable whose unsafe.Map initializer is checked
+	inEnsures  bool // checking the expression of an ensures clause
+
+	// rangeKeys are the range key variables with a known number of
+	// iterations (type.conv.int-narrow-facts 6).
+	rangeKeys map[*Var]int64
+
+	// Templates (spec/10-compile-time.md).
+	templates map[*Func]bool
+	tmplInsts map[string]*TemplateInstance
+	instance  *TemplateInstance // the instance whose body is checked
+	instTuple []Type            // the tuple of the instance signature being computed
+	tupleOK   bool              // a tuple parameter may be used here (ct.any.use)
+	errNote   string            // appended to the errors of an instance
+	unrolling bool              // checking an instance of the body of a for const loop
+	metaSeqs  map[syntax.Expr][]*Const
 }
 
 // declInfo is the declaration of a package-level object.
@@ -155,6 +196,13 @@ func Check(conf *Config, files []*syntax.File) (*Info, []*syntax.Error) {
 
 			Selections: map[*syntax.SelectorExpr]*Selection{},
 			Instances:  map[*syntax.Name]Instance{},
+
+			Templates:     map[*Func]bool{},
+			TemplateCalls: map[*syntax.CallExpr]*TemplateInstance{},
+			Unrolled:      map[*syntax.RangeStmt][]*Unrolled{},
+			StaticSwitch:  map[*syntax.TypeSwitchStmt]int{},
+			MetaCalls:     map[*syntax.CallExpr]*MetaCall{},
+			Bytes:         map[syntax.Expr][]byte{},
 		},
 		pkgScope: NewScope(Universe),
 		decls:    map[Object]*declInfo{},
@@ -167,6 +215,10 @@ func Check(conf *Config, files []*syntax.File) (*Info, []*syntax.Error) {
 		enumVariants:    map[*TypeName][]*Variant{},
 		variantSwitches: map[*syntax.SwitchStmt]bool{},
 		untyped:         map[syntax.Expr]untypedInfo{},
+		rangeKeys:       map[*Var]int64{},
+		templates:       map[*Func]bool{},
+		tmplInsts:       map[string]*TemplateInstance{},
+		metaSeqs:        map[syntax.Expr][]*Const{},
 	}
 	if c.intBits == 0 {
 		c.intBits = 64
@@ -196,7 +248,7 @@ func (c *checker) errorf(pos syntax.Pos, rule, format string, args ...any) {
 	if c.errPos.IsValid() {
 		pos = c.errPos
 	}
-	c.errors = append(c.errors, &syntax.Error{Pos: pos, Rule: rule, Msg: fmt.Sprintf(format, args...)})
+	c.errors = append(c.errors, &syntax.Error{Pos: pos, Rule: rule, Msg: fmt.Sprintf(format, args...) + c.errNote})
 }
 
 // notSupported reports a construct that this compiler does not support
@@ -219,6 +271,19 @@ func (c *checker) check() {
 	}
 
 	for _, f := range append(c.info.Funcs, c.info.Methods...) {
+		if c.isTemplate(f) {
+			if r := f.Signature().Recv; r != nil && len(f.Signature().RecvTypeParams) > 0 {
+				c.notSupported(f.pos, 29, "methods with ...any parameters of generic types")
+				continue
+			}
+			c.templates[f] = true
+			c.info.Templates[f] = true
+		}
+	}
+	for _, f := range append(c.info.Funcs, c.info.Methods...) {
+		if c.templates[f] {
+			continue // checked per instance
+		}
 		if d := c.decls[f].fdecl; d.Body != nil {
 			scope := c.decls[f].scope
 			if scope == nil {
@@ -257,7 +322,8 @@ func (c *checker) checkPackageClauses() {
 	var profiles string
 	var profilesFrom *syntax.File
 	root := c.isRoot()
-	last := c.pkg.Path[strings.LastIndex(c.pkg.Path, "/")+1:]
+	// Hyphens of a target package's directory are dropped.
+	last := strings.ReplaceAll(c.pkg.Path[strings.LastIndex(c.pkg.Path, "/")+1:], "-", "")
 	for i, f := range c.files {
 		name := f.Name.Name
 		switch {
@@ -292,6 +358,15 @@ func (c *checker) checkPackageClauses() {
 			profiles, profilesFrom = set, f
 		} else if set != profiles {
 			c.errorf(f.Profile.Pos(), "decl.profile.package", "profile clause %s differs from %s in %s", set, profiles, profilesFrom.Name.Pos().File)
+		}
+	}
+	c.pkg.Profiles = []string{"app"}
+	if profilesFrom != nil {
+		c.pkg.Profiles = nil
+		for _, p := range []string{"core", "app", "ui"} {
+			if slices.Contains(strings.Split(profiles, ", "), p) {
+				c.pkg.Profiles = append(c.pkg.Profiles, p)
+			}
 		}
 	}
 }
@@ -456,7 +531,7 @@ func (c *checker) collectFunc(fs *Scope, d *syntax.FuncDecl) {
 		c.errorf(d.Name.Pos(), "decl.func.no-init", "func init is not allowed in Anlang: there are no package initializers")
 		return
 	}
-	obj := &Func{object: object{pos: d.Name.Pos(), name: d.Name.Name}, Decl: d}
+	obj := &Func{object: object{pos: d.Name.Pos(), name: d.Name.Name, pkg: c.pkg}, Decl: d}
 	if c.declarePkg(d.Name, obj, &declInfo{file: fs, fdecl: d}) {
 		c.info.Funcs = append(c.info.Funcs, obj)
 	}
@@ -580,14 +655,49 @@ func (c *checker) importPath(spec *syntax.ImportSpec, path string, err error) *P
 		case pkg.Name == "main":
 			c.errorf(spec.Path.Pos(), "decl.package.main", "%q is a package main and cannot be imported", path)
 			return nil
+		default:
+			c.profileImport(spec, pkg)
 		}
 		return pkg
+	}
+	if arch, ok := strings.CutPrefix(path, "an/arch/"); ok && !strings.HasPrefix(c.pkg.Path, "an/arch") {
+		// An instruction package only in files of the architecture
+		// (target.arch.import-suffix).
+		file := strings.TrimSuffix(pathBase(spec.Path.Pos().File), ".an")
+		if !strings.HasSuffix(file, "_"+arch) {
+			c.errorf(spec.Path.Pos(), "target.arch.import-suffix", "%q may be imported only in files with the suffix _%s", path, arch)
+		}
+	}
+	if pkg := c.conf.Imports[path]; pkg != nil {
+		return pkg // a standard library package compiled from source
 	}
 	pkg := stdPackages[path]
 	if pkg == nil {
 		c.notSupported(spec.Path.Pos(), 29, fmt.Sprintf("package %q", path))
 	}
+	if path == "an/unsafe" && (len(c.pkg.Profiles) != 1 || c.pkg.Profiles[0] != "core") {
+		c.errorf(spec.Path.Pos(), "decl.import.unsafe", "package an/unsafe may be imported only by a package whose profile set is exactly {core}")
+	}
 	return pkg
+}
+
+// profileImport checks that for every profile of the package, the
+// imported package declares the same or a stricter profile
+// (eff.profile.import).
+func (c *checker) profileImport(spec *syntax.ImportSpec, imported *Package) {
+	rank := map[string]int{"core": 0, "app": 1, "ui": 2}
+	for _, p := range c.pkg.Profiles {
+		ok := false
+		for _, q := range imported.Profiles {
+			if rank[q] <= rank[p] {
+				ok = true
+			}
+		}
+		if !ok {
+			c.errorf(spec.Path.Pos(), "eff.profile.import", "package %s with profile %s cannot import %s, whose profiles are %s", c.pkg.Path, p, imported.Path, strings.Join(imported.Profiles, ", "))
+			return
+		}
+	}
 }
 
 // validPathElem reports whether e is a valid import path element.
@@ -611,4 +721,11 @@ func unparen(x syntax.Expr) syntax.Expr {
 		}
 		x = p.X
 	}
+}
+
+func pathBase(p string) string {
+	if i := strings.LastIndexAny(p, "/\\"); i >= 0 {
+		return p[i+1:]
+	}
+	return p
 }

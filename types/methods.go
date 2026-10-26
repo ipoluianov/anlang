@@ -145,6 +145,7 @@ func (c *checker) receiver(recv *syntax.FieldList) (*Var, []*TypeParam) {
 		typ = c.typExpr(rt)
 	}
 	v := &Var{object: object{pos: f.Type.Pos(), typ: typ}, param: true}
+	_, v.pointerRecv = unparen(recv.List[0].Type).(*syntax.StarExpr)
 	if len(f.Names) == 1 {
 		v.pos, v.name = f.Names[0].Pos(), f.Names[0].Name
 	}

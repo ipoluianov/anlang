@@ -1,0 +1,32 @@
+// want: ok
+// checks: ct.for.control ct.for.binding
+
+package main
+
+import "an/fmt"
+
+const steps = [4]int{1, 2, 3, 4}
+
+func main() {
+	sum := 0
+	for const i := range 6 {
+		if i == 1 {
+			continue
+		}
+		if i == 4 {
+			break
+		}
+		sum += i * 10
+	}
+	fmt.Println(sum)
+	prod := 1
+	for const s := range steps {
+		prod *= s
+	}
+	fmt.Println(prod)
+	var a [3]int
+	for const i := range 3 {
+		a[i] = i * i
+	}
+	fmt.Println(a)
+}

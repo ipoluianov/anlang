@@ -206,6 +206,12 @@ func operation(in Instr) string {
 		return "panic " + name(i.X)
 	case *Defer:
 		return "defer " + operation(i.Call)
+	case *Asm:
+		in := ""
+		if i.In != nil {
+			in = name(i.In)
+		}
+		return fmt.Sprintf("asm(%s) %q", in, i.Text)
 	}
 	return fmt.Sprintf("%T", in)
 }

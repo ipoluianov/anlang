@@ -1,0 +1,14 @@
+// want: ct.encoding.dstring
+
+// A dstring cannot contain its terminator.
+package main
+
+profile core
+
+import "an/encoding"
+
+func show(s dstring) {}
+
+func main() {
+	show(encoding.CP866("price: $5"))
+}

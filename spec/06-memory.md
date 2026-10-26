@@ -231,6 +231,10 @@ var count int                           // error: ordinary mutable variable
 var screen = unsafe.Map[[2000]Cell](i8086.Far(0xB800, 0))   // DOS text video memory
 ```
 
+**mem.unsafe.api** — The package `an/unsafe` declares the pointer kinds of §11.1 as types — `Flat` and `Near` with the width of `usize`, `Far` and `Program` of 32 bits — and the functions `Map` and `Data`. The address of `Map` MUST be a value of one of these types; it is evaluated at compile time (**decl.var.package-init**). An architecture package MAY declare constructors of addresses, such as `i8086.Far(segment, offset)`.
+
+**mem.unsafe.data** — `unsafe.Data(x)` returns, as a `usize`, the address of the first byte of `x`, a string, a `cstring`, a `dstring` or a slice. It lets code pass data to the instructions of its architecture, such as `i8086.Int(0x21, i8086.Regs{AX: 0x0900, DX: u16(unsafe.Data(s))})`.
+
 **Note** — Device registers are mapped by code generated from SVD files ([14-embedded](14-embedded.md)), so user code for microcontrollers does not import `an/unsafe`.
 
 ### 11.1 Pointer kinds

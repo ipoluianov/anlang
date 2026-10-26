@@ -1,0 +1,6 @@
+11831194018420276491
+-128 127 -128 -128 0 -64 255 24464
+4294967295 -5 4
+division by zero still panics
+panic: runtime error: integer divide by zero
+exit status 2

@@ -18,6 +18,7 @@ const (
 	tokenLss    = token.LSS
 	tokenNeq    = token.NEQ
 	tokenQuoInt = token.QUO_ASSIGN // integer division in constant.BinaryOp
+	tokenRem    = token.REM
 )
 
 // constOp maps an operator of the syntax tree to the operator of

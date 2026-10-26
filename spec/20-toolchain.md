@@ -98,7 +98,7 @@ Tokens are separated by spaces or tabs; `newline` is a line feed. `decimal_digit
 
 **tool.mod.generate.unique** — Two `generate` directives MUST NOT name the same output package, and the output package MUST NOT be a directory that exists in the project.
 
-**tool.mod.format** — `anlang fmt` MUST also format `anlang.mod` canonically: directives in the order `module`, `anlang`, `targets`, `effects`, `generate`; effect rules sorted by pattern; effect names sorted; `generate` directives sorted by output path. Each single-line directive is written as its name padded with spaces to 8 columns followed by its value (`module  hello`, `anlang  1.0`, `targets linux-x86_64, macos-arm64`); target names are separated by ", ". Whole-line comments stay before the directive that follows them, trailing comments at the end of their directive's line; blank lines are removed.
+**tool.mod.format** — `anlang fmt` MUST also format `anlang.mod` canonically: directives in the order `module`, `anlang`, `targets`, `effects`, `generate`; effect rules sorted by pattern; effect names sorted; `generate` directives sorted by output path. Each single-line directive is written as its name padded with spaces to 8 columns followed by its value (`module  hello`, `anlang  1.0`, `targets linux-x86_64, macos-arm64`); target names are separated by ", ". The rules of the `effects` directive are written one per line between `effects (` and `)`, indented by a tab, with the patterns padded with spaces to the longest pattern plus one space, `deny` padded to the width of `allow`, and effect names separated by ", ". Whole-line comments stay before the directive that follows them, trailing comments at the end of their directive's line; blank lines are removed.
 
 ### 20.3.3 Example
 
@@ -110,8 +110,8 @@ anlang  1.0
 targets linux-x86_64, macos-arm64, web
 
 effects (
-    jsonparse/...  deny  {File, Network, Panic}
-    kernel/...     allow {Privileged}
+	jsonparse/... deny  {File, Network, Panic}
+	kernel/...    allow {Privileged}
 )
 ```
 
@@ -264,6 +264,18 @@ AUTH-4  After five failed attempts, login is locked for 15 minutes
 **tool.emu.generated** — The interpreter of each architecture MUST be generated from the formal instruction semantics in its architecture description, the same description from which the backend, the assembler and the architecture instruction package are built (see [13-targets](13-targets.md)).
 
 **tool.emu.ir** — `anlang run -emu ir` MUST run the program in the IR interpreter (see [22-compiler](22-compiler.md), 22.10.3) for any target, without generating machine code. Its observable behavior is the reference for the backends of all targets (see [23-conformance](23-conformance.md), **conf.backend.ir**). A program that panics MUST exit with status 2.
+
+**tool.emu.target** — `anlang run -target T` for a target that cannot run on the host, and `anlang run -emu builtin` for any target with a built-in emulator, MUST build the program and run it in the built-in emulator of the target. The program's standard output and standard error go to those of `anlang`, and `anlang` exits with the program's exit status.
+
+**tool.emu.dos** — The built-in emulator of the `dos` targets runs the 8086 interpreter with models of DOS and of the PC. It loads a `.COM` image at offset `0x100` of a segment with a program segment prefix whose first bytes are `int 20h`, sets `CS`, `DS`, `ES` and `SS` to that segment and `SP` to `0xFFFE` with a zero word on the stack, and models:
+
+1. the text screen: 80×25 cells of a character and an attribute at physical address `0xB8000`, with the cursor in the BIOS data area; output of DOS to the console is written to the screen as by the BIOS teletype, and to the standard output or standard error of `anlang`;
+2. `int 10h`: functions `00h` (set the mode: clears the screen), `01h`, `02h`, `03h` (cursor), `06h`, `07h` (scroll a window), `08h`, `09h`, `0Ah` (read and write characters at the cursor), `0Eh` (teletype) and `0Fh` (mode);
+3. the keyboard: each byte of the standard input of `anlang` is a key press, a line feed the Enter key; `int 16h` functions `00h`, `01h` (with the scan codes of a US keyboard), `02h`;
+4. the timer: time runs with the executed clock cycles of a 4.77 MHz 8086 from midnight of 1 January 2026; `int 1Ah` function `00h` returns the ticks, 18.2 per second;
+5. `int 20h` (exit with status 0) and these functions of `int 21h`: `01h`, `07h`, `08h` (read a character; the end of input reads as `1Ah`), `02h`, `06h`, `09h`, `40h` (write; handle 1 is standard output, 2 standard error), `0Bh` (input status), `2Ah`, `2Ch` (date and time), `30h` (version 5.0), `3Fh` (read from handle 0), `4Ch` (exit with the status in `AL`).
+
+`anlang run -screen` writes the text screen after the program ends: its rows without trailing spaces, without trailing empty rows (**tool.emu.observable**). Limits (**tool.emu.limits**): other interrupts and functions stop the emulation with an error; there are no hardware interrupts, graphics modes or files; timing is the cycle count of the description, not measured hardware.
 
 **tool.emu.coverage** — `anlang` MUST provide at least:
 

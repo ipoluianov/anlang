@@ -10,10 +10,12 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"testing"
 
+	"an/effects"
 	"an/syntax"
 	"an/types"
 )
@@ -68,6 +70,9 @@ var deviations = map[string]bool{
 	"mem.nil.call":                   true,
 	"mem.nil.func-param":             true,
 	"mem.inout.builtin":              true,
+	"ct.reject.precondition":         true,
+	"ct.any.use":                     true,
+	"ct.any.no-slice":                true,
 	"expr.addr.map":                  true,
 }
 
@@ -76,6 +81,7 @@ var deviations = map[string]bool{
 // here that no longer mismatches.
 var knownMismatches = map[string]string{
 	"test/fixedbugs/bug233.go": "fmt.Print as a function value: an/fmt is built into the compiler until steps 9–10",
+	"test/fixedbugs/bug051.go": "ct.const.call: a constant may be computed by a function call",
 }
 
 // goImporter provides package fmt to go/types with the signatures of
@@ -86,8 +92,11 @@ func newGoImporter() *goImporter {
 	pkg := gotypes.NewPackage("fmt", "fmt")
 	any := gotypes.NewSlice(gotypes.Universe.Lookup("any").Type())
 	str := gotypes.NewTuple(gotypes.NewParam(token.NoPos, pkg, "", gotypes.Typ[gotypes.String]))
-	for _, name := range []string{"Print", "Println", "Sprint", "Sprintln"} {
+	for _, name := range []string{"Print", "Println", "Sprint", "Sprintln", "Printf", "Sprintf"} {
 		params := gotypes.NewTuple(gotypes.NewParam(token.NoPos, pkg, "a", any))
+		if strings.HasSuffix(name, "f") {
+			params = gotypes.NewTuple(gotypes.NewParam(token.NoPos, pkg, "format", gotypes.Typ[gotypes.String]), gotypes.NewParam(token.NoPos, pkg, "a", any))
+		}
 		var results *gotypes.Tuple
 		if name[0] == 'S' {
 			results = str
@@ -220,9 +229,17 @@ func oracleCheck(path string, im *goImporter) oracleResult {
 			if e := recover(); e != nil {
 				r.mismatch = "crash"
 				r.anErrs = []string{fmt.Sprint(e)}
+				if os.Getenv("ANLANG_ORACLE") == "v" {
+					r.anErrs = append(r.anErrs, string(debug.Stack()))
+				}
 			}
 		}()
-		_, errs = types.Check(&types.Config{Module: "conf"}, []*syntax.File{af})
+		var info *types.Info
+		info, errs = types.Check(&types.Config{Module: "conf"}, []*syntax.File{af})
+		if len(errs) == 0 && info != nil {
+			// Effect inference must not fail on any accepted program.
+			effects.NewProgram(effects.AnalyzeAll([]effects.Input{{Info: info}}, nil))
+		}
 	}()
 	if r.mismatch == "crash" {
 		return r

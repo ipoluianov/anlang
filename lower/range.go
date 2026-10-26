@@ -52,7 +52,7 @@ func (fb *funcBuilder) storeRange(p *place, v ir.Value) {
 
 func (fb *funcBuilder) rangeStmt(s *syntax.RangeStmt, label string) {
 	if s.Const {
-		fb.b.errorf(s.Pos(), 10, "for const")
+		fb.forConst(s, label)
 		return
 	}
 	xt := fb.typeOf(s.X)

@@ -1,0 +1,57 @@
+package dos
+
+profile core
+
+import (
+	"an/arch/i8086"
+	"an/effect"
+	"an/unsafe"
+	"an/wrap"
+)
+
+// Print writes s to standard output (function 09h). The terminating '$'
+// is appended to constant text at compile time.
+func Print(s dstring) {
+	effect.Mark(effect.Console)
+	i8086.Int(0x21, i8086.Regs{AX: 0x0900, DX: u16(unsafe.Data(s))})
+}
+
+// PrintChar writes the character c to standard output (function 02h).
+func PrintChar(c u8) {
+	effect.Mark(effect.Console)
+	i8086.Int(0x21, i8086.Regs{AX: 0x0200, DX: u16(c)})
+}
+
+// Write writes the bytes p to standard output (function 40h).
+func Write(p []u8) {
+	effect.Mark(effect.Console)
+	i8086.Int(0x21, i8086.Regs{AX: 0x4000, BX: 1, CX: u16(wrap.U16(len(p))), DX: u16(unsafe.Data(p))})
+}
+
+// ReadChar waits for a character from standard input and returns it,
+// without writing it (function 08h).
+func ReadChar() u8 {
+	effect.Mark(effect.Keyboard)
+	r := i8086.Int(0x21, i8086.Regs{AX: 0x0800})
+	return u8(r.AX & 0xFF)
+}
+
+// CharReady reports whether a character from standard input is waiting
+// (function 0Bh).
+func CharReady() bool {
+	effect.Mark(effect.Keyboard)
+	r := i8086.Int(0x21, i8086.Regs{AX: 0x0B00})
+	return r.AX&0xFF != 0
+}
+
+// Now returns the time of day (function 2Ch).
+func Now() Time {
+	effect.Mark(effect.Clock)
+	r := i8086.Int(0x21, i8086.Regs{AX: 0x2C00})
+	return Time{Hour: u8(r.CX >> 8), Minute: u8(r.CX & 0xFF), Second: u8(r.DX >> 8), Hundredth: u8(r.DX & 0xFF)}
+}
+
+// Exit ends the program with the exit status code (function 4Ch).
+func Exit(code u8) {
+	i8086.Int(0x21, i8086.Regs{AX: 0x4C00 | u16(code)})
+}

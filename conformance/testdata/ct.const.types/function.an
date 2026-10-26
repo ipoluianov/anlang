@@ -1,0 +1,13 @@
+// want: ct.const.types
+
+package main
+
+const f = pick()
+
+func pick() func() int {
+	return func() int { return 1 }
+}
+
+func main() {
+	_ = f
+}

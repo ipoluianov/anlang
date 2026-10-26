@@ -172,21 +172,16 @@ defer func() { _ = f.Close() }()              // permitted
 1. in a package of the `core` profile;
 2. in a file whose name has an architecture suffix ([03-declarations](03-declarations.md)); the instruction text uses the syntax of that architecture.
 
-**stmt.asm.syntax** — Provisional syntax: `asm` is a contextual word that begins an `asm` statement when it is followed by `(` at the start of a statement:
+**stmt.asm.syntax** — `asm` is a contextual word that begins an `asm` statement when it is followed by `(` at the start of a statement:
 
 ```
-AsmStmt = [ ExpressionList "=" ] "asm" "(" [ Expression ] ")" raw_string_lit .   (new, provisional)
+AsmStmt = [ ExpressionList "=" ] "asm" "(" [ Expression ] ")" raw_string_lit .   (new)
 ```
 
-The optional expression is a struct value whose fields name the input registers. The optional left-hand side receives a struct value whose fields name the output registers. The instruction text is a raw string literal parsed by the assembler generated from the architecture description ([13-targets](13-targets.md)).
+The optional expression is a struct value whose fields name the input registers, such as a value of type `Regs` of the instruction package. The optional left-hand side receives a struct value whose fields name the output registers. The instruction text is a raw string literal with one instruction per line in the assembler syntax of the architecture ([13-targets](13-targets.md), **target.arch.asm-syntax**); a line `name:` declares a label that relative operands may name, and `;` starts a comment. The fields name registers of the architecture; as for calls of the instruction package, the reserved registers and the flags register of the ABI are not loaded (**target.arch.instr-package**). The IR interpreter does not execute `asm` statements (**tool.emu.ir**).
 
 **stmt.asm.effects** — The effects of an `asm` statement are the effects of its instructions as given by the architecture description ([07-effects](07-effects.md)).
 
 ## 11. No `unsafe` blocks
 
 **stmt.unsafe.none** — Anlang has no `unsafe` block statement. Unsafe operations are functions of the package `an/unsafe` ([06-memory](06-memory.md), **mem.unsafe.package**).
-
-## Open issues
-
-
-1. **`asm` syntax.** Deferred to implementation — step 12. The block form of **stmt.asm.syntax** is provisional until the assembler is generated from the first architecture description.

@@ -1,0 +1,19 @@
+// want: ct.meta.field-access
+
+package main
+
+import "an/meta"
+
+type A struct {
+	X int
+}
+
+type B struct {
+	X int
+}
+
+func main() {
+	for const f := range meta.Fields(A) {
+		_ = f.Get(B{})
+	}
+}

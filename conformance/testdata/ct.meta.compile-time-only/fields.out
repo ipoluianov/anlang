@@ -1,0 +1,4 @@
+User{Name(json:"name",0,true)=ann;Age(json:"age",1,true)=30;email(,2,false)=a@x;}
+Rect w=2 h=3 Dot
+{ 0 }
+Circle{5}

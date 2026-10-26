@@ -1,0 +1,231 @@
+// Package arch describes architectures (spec/13-targets.md §13.5). An
+// architecture description is a constant of type Arch: its machine
+// model, its operand kinds and encodings, its instructions with their
+// formal semantics and timing, and the definitions that the semantics of
+// the instructions share. The toolchain derives the assembler, the
+// disassembler, the instruction package and the interpreter of the
+// architecture from it; nothing about an architecture is built into the
+// compiler (target.arch.no-compiler-change).
+package arch
+
+profile core, app, ui
+
+// Arch is an architecture description (target.arch.value).
+type Arch struct {
+	// Name is the architecture name used in targets and file suffixes.
+	Name string
+	// Word is the width of int in bits for the targets of the
+	// architecture, unless a target says otherwise.
+	Word int
+	// Endian is the byte order of memory and of the encoding units.
+	Endian Endian
+	// Unit is the width in bits of the units in which encodings are
+	// stored: bit patterns fill each unit from its most significant bit,
+	// and the units are stored in the byte order Endian.
+	Unit int
+	// AddressBits is the width of a physical address.
+	AddressBits int
+	// Pointers are the widths of the pointer kinds (target.pointers.kinds).
+	Pointers Pointers
+	// Address is the physical address of a memory operand with segment
+	// value seg and offset off, in the semantics notation; "off" on
+	// architectures without segments.
+	Address string
+	// PC is the program counter register.
+	PC string
+	// PCRead, if not 0, is what the program counter reads as in the
+	// semantics of an instruction, and the base of its relative
+	// operands: the address of the instruction plus PCRead. Otherwise the
+	// program counter has advanced past the instruction.
+	PCRead int
+	// Fetch is the physical address of the next instruction, in the
+	// semantics notation.
+	Fetch string
+	// Registers are the registers and the parts of registers that
+	// instructions name.
+	Registers []Register
+	// Operands are the kinds of the operands of instructions.
+	Operands []Operand
+	// Fragments are parts of encodings that encode an operand in one of
+	// several ways, such as the register and memory forms of an operand.
+	Fragments []Fragment
+	// Prefixes are the instruction prefixes.
+	Prefixes []Prefix
+	// Instructions are the instruction forms.
+	Instructions []Instruction
+	// Semantics holds the definitions of functions that the semantics
+	// of the instructions use, in the semantics notation.
+	Semantics string
+	// ABI is the machine model of the code generator.
+	ABI ABI
+	// Rules are the instruction selection rules: the code generator
+	// replaces each machine operation by the template of a rule.
+	Rules []Rule
+}
+
+// Endian is a byte order.
+type Endian enum {
+	Little
+	Big
+}
+
+// Pointers are the widths in bits of the pointer kinds; zero means that
+// the kind does not exist (target.pointers.kinds).
+type Pointers struct {
+	Flat, Near, Far, Program int
+}
+
+// Register is a register, or a named part of one, such as a flag of a
+// flags register or the low byte of a register.
+type Register struct {
+	Name string
+	// Width is the width in bits.
+	Width int
+	// Class groups the registers that an operand may name by number;
+	// the order of the registers of a class in Registers gives their
+	// numbers. Registers of class "prefix" hold the state set by
+	// prefixes and are cleared after each instruction.
+	Class string
+	// Parent is the register this one is part of; "" for a whole
+	// register.
+	Parent string
+	// Offset is the bit offset of the part within Parent.
+	Offset int
+	// Fixed are the bits of the register that always read as 1, as a
+	// mask.
+	Fixed int
+}
+
+// Operand is a kind of operand. Exactly one of Register, Class, Memory
+// and Imm describes what the operand is; Class and Memory together give
+// an operand that is a register or memory.
+type Operand struct {
+	Name string
+	// Register is the fixed register the operand denotes.
+	Register string
+	// Class is the register class of a register operand, encoded by its
+	// number.
+	Class string
+	// Registers, if not 0, limits a register operand to the first
+	// Registers registers of its class, encoded by fewer bits.
+	Registers int
+	// Memory is the width in bits of a memory operand; -1 for a memory
+	// operand whose address only is used.
+	Memory int
+	// Fragment is the fragment that encodes a memory operand, or an
+	// operand that is a register or memory.
+	Fragment string
+	// Imm is the width in bits of an immediate operand.
+	Imm int
+	// Signed means the immediate is sign-extended to Width.
+	Signed bool
+	// Relative means the immediate is a displacement from the end of
+	// the instruction; in the semantics the operand is the target
+	// address.
+	Relative bool
+	// Value is the value of an operand that is a constant, written in
+	// the assembler syntax only, such as the count 1 of a shift.
+	Value int
+	// Constant marks an operand that is a constant.
+	Constant bool
+	// Width is the width of the operand in the semantics, if it differs
+	// from the width of its encoding.
+	Width int
+	// Scale is the number of zero bits below the encoded bits of an
+	// immediate or relative operand: its value is the field shifted left
+	// by Scale.
+	Scale int
+	// Transform, if not "", maps the bits v of the field to the bits of
+	// the operand, in the semantics notation; it is its own inverse,
+	// which encodes the operand.
+	Transform string
+}
+
+// Fragment is a part of an encoding with alternatives, each of which
+// encodes its operand in another way.
+type Fragment struct {
+	Name         string
+	Alternatives []Alternative
+}
+
+// Alternative is one way a fragment encodes its operand.
+type Alternative struct {
+	// Encoding is the bit pattern, in the encoding notation. The fields
+	// named in it are the fields of the fragment.
+	Encoding string
+	// Register names the field that holds the number of the register
+	// that the operand is; "" for a memory operand.
+	Register string
+	// Address is the address of a memory operand, in the semantics
+	// notation, using the fields of the fragment.
+	Address string
+	// Segment is the segment value of the address, in the semantics
+	// notation; "" on architectures without segments.
+	Segment string
+	// Cycles are the clock cycles that computing the address adds.
+	Cycles int
+}
+
+// Prefix is an instruction prefix: an encoding that changes how the
+// next instruction executes.
+type Prefix struct {
+	Name     string
+	Encoding string
+	// Semantics sets the prefix state that the semantics of the
+	// instructions read, in the semantics notation.
+	Semantics string
+}
+
+// Instruction is an instruction form: a mnemonic with operand kinds,
+// its encoding, its effect on the machine state and its timing.
+type Instruction struct {
+	Mnemonic string
+	// Operands are the operand kinds, in assembler order; in the
+	// semantics, the operands are named a, b and c.
+	Operands []string
+	// Encoding is the encoding, in the encoding notation.
+	Encoding string
+	// Semantics is the effect of the instruction, in the semantics
+	// notation.
+	Semantics string
+	// Cycles is the number of clock cycles of the register form, for
+	// the timing model; the cycles of an address are added.
+	Cycles int
+	// Effects are the effects of the instruction beyond its effect on
+	// registers and memory (target.arch.instr-effects).
+	Effects []string
+}
+
+// ABI is the machine model of the code generator (target.arch.abi). The
+// stack grows toward lower addresses.
+type ABI struct {
+	// Frame is the register that holds the frame base; the slots of a
+	// frame are addressed relative to it.
+	Frame string
+	// Params is the offset from the frame base of the argument area of
+	// the caller, where the parameters and results of a function are.
+	Params int
+	// Align is the alignment in bytes of slots and of argument areas.
+	Align int
+	// Reserved are the registers whose values generated code relies on:
+	// the calls of the instruction package do not load them from Regs.
+	Reserved []string
+	// Flags is the flags register, which the operation flagsout stores
+	// after a call of the instruction package.
+	Flags string
+}
+
+// Rule is an instruction selection rule (target.arch.rule): the
+// instruction template that implements a machine operation.
+type Rule struct {
+	// Op is the machine operation, such as "add.s" (target.arch.ops).
+	Op string
+	// Width is the width in bits of the operands; 0 for an operation
+	// without one.
+	Width int
+	// From is the width of the operand of ext.s and ext.u.
+	From int
+	// Code is the instruction template: assembler text, one instruction
+	// per line, with placeholders in braces (target.arch.template).
+	Code string
+}

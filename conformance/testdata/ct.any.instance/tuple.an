@@ -1,0 +1,33 @@
+// want: ok
+// checks: ct.any.tuple ct.any.use ct.typeswitch.static ct.typeswitch.binding
+
+package main
+
+import "an/fmt"
+
+func describe(args ...any) string {
+	s := ""
+	for const a := range args {
+		switch x := a.(type) {
+		case string:
+			s += "s:" + x + " "
+		case int, i64:
+			s += fmt.Sprint("i:", x+1, " ")
+		default:
+			s += fmt.Sprint("?:", x, " ")
+		}
+	}
+	return s + fmt.Sprint(len(args))
+}
+
+func forward(prefix string, args ...any) {
+	fmt.Println(prefix, describe(args...))
+	fmt.Println(args...)
+}
+
+func main() {
+	fmt.Println(describe("a", 1, 2.5, i64(4)))
+	fmt.Println(describe())
+	forward("fw:", 7, "z")
+	forward("again:", "z", 7)
+}

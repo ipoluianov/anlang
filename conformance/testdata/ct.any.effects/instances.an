@@ -1,0 +1,31 @@
+// want: ok
+
+package main
+
+import "an/fmt"
+
+type Loud struct{}
+
+func (l Loud) String() string {
+	fmt.Println("String called")
+	return "loud"
+}
+
+func show(args ...any) string {
+	return fmt.Sprint(args...)
+}
+
+// effects: quiet Alloc
+func quiet() string {
+	return show(1, "x")
+}
+
+// effects: loud Alloc Console Panic
+func loud() string {
+	return show(Loud{})
+}
+
+func main() {
+	_ = quiet()
+	_ = loud()
+}

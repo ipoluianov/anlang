@@ -1,0 +1,13 @@
+// want: eff.custom.mark
+
+package main
+
+import "an/effect"
+
+func mark(e effect.Effect) {
+	effect.Mark(e)
+}
+
+func main() {
+	mark(effect.Alloc)
+}

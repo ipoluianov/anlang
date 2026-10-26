@@ -1,0 +1,17 @@
+// want: ct.limit.exceeded
+// checks: ct.limit.bounded
+
+package main
+
+const forever = spin()
+
+func spin() int {
+	n := 0
+	for {
+		n = (n + 1) % 7
+	}
+}
+
+func main() {
+	_ = forever
+}

@@ -1,0 +1,12 @@
+package store
+
+import "an/effect"
+
+// SQL is the effect of database access.
+const SQL = effect.Declare("SQL")
+
+// Each calls f for every row.
+func Each(f func(row int)) {
+	effect.Mark(SQL)
+	f(1)
+}

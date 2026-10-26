@@ -1,0 +1,11 @@
+// want: eff.model.identity
+
+package main
+
+import "an/effect"
+
+func main() {
+	var e effect.Effect = "an/effect.Alloc#Alloc"
+	f := effect.Effect("x")
+	_, _ = e, f
+}

@@ -1,0 +1,15 @@
+// want: ct.typeswitch.default
+
+package main
+
+func show[T any](v T) string {
+	switch v.(type) {
+	case string:
+		return "string"
+	}
+	return ""
+}
+
+func main() {
+	_ = show(1)
+}

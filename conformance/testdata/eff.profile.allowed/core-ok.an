@@ -1,0 +1,18 @@
+// want: ok
+// checks: mem.alloc.profile
+
+package main
+
+profile core
+
+func checksum(data [8]u8) u32 {
+	var sum u32
+	for _, b := range data {
+		sum = sum*31 + u32(b)
+	}
+	return sum
+}
+
+func main() {
+	_ = checksum([8]u8{})
+}

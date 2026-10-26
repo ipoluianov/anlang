@@ -1,0 +1,172 @@
+package runtime
+
+import "an/wrap"
+
+// Formatting for fmt.Printf (comp.gen.runtime): the code generator parses
+// the format at compile time and calls these functions for the
+// directives. The flags are the bits flagMinus … flagSharp.
+
+const (
+	flagMinus = 1
+	flagPlus  = 2
+	flagSpace = 4
+	flagZero  = 8
+	flagSharp = 16
+)
+
+const spaces = "                                "
+
+const zeros = "00000000000000000000000000000000"
+
+// pad writes n copies of the first byte of fill: spaces or zeros.
+func pad(fd int, fill string, n int) {
+	for n > 0 {
+		k := min(n, len(fill))
+		writeString(fd, fill[:k])
+		n -= k
+	}
+}
+
+// PrintIntF writes x as the verbs d, x, X, o and b of fmt.Printf do.
+func PrintIntF(fd int, x i64, verb u8, width, prec int, flags u8) {
+	if x < 0 {
+		formatInt(fd, u64(-wrap.U64(x)), true, verb, width, prec, flags)
+		return
+	}
+	formatInt(fd, u64(wrap.U64(x)), false, verb, width, prec, flags)
+}
+
+// PrintUintF writes x as the verbs d, x, X, o and b of fmt.Printf do.
+func PrintUintF(fd int, x u64, verb u8, width, prec int, flags u8) {
+	formatInt(fd, x, false, verb, width, prec, flags)
+}
+
+// formatInt writes the magnitude x of an integer, negative if neg.
+func formatInt(fd int, x u64, neg bool, verb u8, width, prec int, flags u8) {
+	var base u64 = 10
+	digits := "0123456789abcdefghijklmnopqrstuvwxyz"
+	prefix := ""
+	switch verb {
+	case 'x':
+		base = 16
+		if flags&flagSharp != 0 {
+			prefix = "0x"
+		}
+	case 'X':
+		base = 16
+		digits = "0123456789ABCDEF"
+		if flags&flagSharp != 0 {
+			prefix = "0X"
+		}
+	case 'o':
+		base = 8
+		if flags&flagSharp != 0 {
+			prefix = "0"
+		}
+	case 'b':
+		base = 2
+		if flags&flagSharp != 0 {
+			prefix = "0b"
+		}
+	}
+	var buf [64]u8
+	i := len(buf)
+	for {
+		i--
+		buf[i] = digits[x%base]
+		x /= base
+		if x == 0 {
+			break
+		}
+	}
+	if prec == 0 && i == len(buf)-1 && buf[i] == '0' {
+		i = len(buf) // a zero precision prints no digits for 0
+	}
+	n := len(buf) - i
+	sign := ""
+	switch {
+	case neg:
+		sign = "-"
+	case flags&flagPlus != 0:
+		sign = "+"
+	case flags&flagSpace != 0:
+		sign = " "
+	}
+	if prefix == "0" && i < len(buf) && buf[i] == '0' {
+		prefix = ""
+	}
+	lead := 0 // zeros before the digits
+	if prec > n {
+		lead = prec - n
+	}
+	total := len(sign) + len(prefix) + lead + n
+	if flags&flagZero != 0 && flags&flagMinus == 0 && prec < 0 && width > total {
+		lead += width - total
+		total = width
+	}
+	if flags&flagMinus == 0 {
+		pad(fd, spaces, width-total)
+	}
+	writeString(fd, sign)
+	writeString(fd, prefix)
+	pad(fd, zeros, lead)
+	write(fd, buf[i:])
+	if flags&flagMinus != 0 {
+		pad(fd, spaces, width-total)
+	}
+}
+
+// PrintStringF writes s as the verb s of fmt.Printf does: at most prec
+// characters if prec >= 0, padded to width characters.
+func PrintStringF(fd int, s string, width, prec int, flags u8) {
+	n := 0 // characters
+	end := len(s)
+	for i := range len(s) {
+		if s[i]&0xC0 != 0x80 {
+			if n == prec {
+				end = i
+				break
+			}
+			n++
+		}
+	}
+	if flags&flagMinus == 0 {
+		fill := spaces
+		if flags&flagZero != 0 {
+			fill = zeros
+		}
+		pad(fd, fill, width-n)
+	}
+	writeString(fd, s[:end])
+	if flags&flagMinus != 0 {
+		pad(fd, spaces, width-n)
+	}
+}
+
+// PrintRune writes the character r in UTF-8, as the verb c of
+// fmt.Printf does.
+func PrintRune(fd int, r i32) {
+	var buf [4]u8
+	switch {
+	case r < 0 || r > 0x10FFFF || r >= 0xD800 && r <= 0xDFFF:
+		writeString(fd, "�")
+	case r < 0x80:
+		buf[0] = u8(r & 0x7F)
+		write(fd, buf[:1])
+	case r < 0x800:
+		buf[0] = 0xC0 | u8(r>>6&0x1F)
+		buf[1] = 0x80 | u8(r&0x3F)
+		write(fd, buf[:2])
+	case r < 0x10000:
+		buf[0] = 0xE0 | u8(r>>12&0x0F)
+		buf[1] = 0x80 | u8(r>>6&0x3F)
+		buf[2] = 0x80 | u8(r&0x3F)
+		write(fd, buf[:3])
+	default:
+		buf[0] = 0xF0 | u8(r>>18&0x07)
+		buf[1] = 0x80 | u8(r>>12&0x3F)
+		buf[2] = 0x80 | u8(r>>6&0x3F)
+		buf[3] = 0x80 | u8(r&0x3F)
+		write(fd, buf[:4])
+	}
+}

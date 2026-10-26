@@ -1,0 +1,53 @@
+// want: ok
+
+// asm statements with input and output registers and local labels.
+package main
+
+profile core
+
+import (
+	"an/arch/i8086"
+	"an/dos"
+)
+
+// Regs are the registers of the asm statements.
+type Regs struct {
+	AX, CX, DX u16
+}
+
+// triangle returns 1 + 2 + … + n with a loop in assembler.
+func triangle(n u16) u16 {
+	var out Regs
+	out = asm(Regs{CX: n}) `
+		XOR AX, AX
+		JCXZ done   ; nothing to add
+	again:
+		ADD AX, CX
+		LOOP again
+	done:
+	`
+	return out.AX
+}
+
+// swap exchanges the bytes of x.
+func swap(x u16) u16 {
+	var r i8086.Regs
+	r = asm(i8086.Regs{AX: x}) `XCHG AL, AH`
+	return r.AX
+}
+
+func digit(n u16) {
+	dos.PrintChar(u8(n%10) + '0')
+}
+
+func main() {
+	t := triangle(10)
+	digit(t / 10)
+	digit(t)
+	dos.PrintChar(' ')
+	s := swap(0x0102)
+	digit(s >> 8)
+	digit(s & 0xFF)
+	asm() `NOP`
+	dos.Print("\r\n")
+}

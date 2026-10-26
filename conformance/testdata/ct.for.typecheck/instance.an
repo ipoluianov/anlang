@@ -1,0 +1,12 @@
+// want: expr.bounds.check
+// checks: ct.for.typecheck
+
+package main
+
+func main() {
+	var a [3]int
+	for const i := range 4 {
+		a[i] = 1
+	}
+	_ = a
+}

@@ -1,0 +1,68 @@
+// want: ok
+// checks: ct.meta.variant-get
+
+package main
+
+import (
+	"an/fmt"
+	"an/meta"
+)
+
+type User struct {
+	Name  string `json:"name"`
+	Age   int    `json:"age"`
+	email string
+}
+
+type Shape enum {
+	Dot
+	Circle{r int}
+	Rect{w, h int}
+}
+
+func encode[T any](v T) string {
+	s := meta.Name(T) + "{"
+	for const f := range meta.Fields(T) {
+		s += fmt.Sprintf("%s(%s,%d,%t)=%v;", f.Name, f.Tag, f.Index, f.Exported, f.Get(v))
+	}
+	return s + "}"
+}
+
+func describe[E any](e E) string {
+	for const x := range meta.Variants(E) {
+		if x.Is(e) {
+			s := x.Name
+			for const f := range x.Fields {
+				s += fmt.Sprint(" ", f.Name, "=", f.Get(e))
+			}
+			return s
+		}
+	}
+	return "?"
+}
+
+func reset[T any](v inout T) {
+	for const f := range meta.Fields(T) {
+		switch x := f.Get(v).(type) {
+		case int:
+			f.Set(v, x*0)
+		case string:
+			f.Set(v, "")
+		}
+	}
+}
+
+func main() {
+	u := User{"ann", 30, "a@x"}
+	fmt.Println(encode(u))
+	fmt.Println(describe(Rect(2, 3)), describe(Shape(Dot)))
+	reset(u)
+	fmt.Println(u)
+	made := Shape(Dot)
+	for const x := range meta.Variants(Shape) {
+		if x.Name == "Circle" {
+			made = x.Make(5)
+		}
+	}
+	fmt.Println(made)
+}

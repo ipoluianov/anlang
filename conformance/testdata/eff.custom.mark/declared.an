@@ -1,0 +1,41 @@
+// want: ok
+// checks: eff.custom.declare eff.custom.additive
+
+package main
+
+import (
+	"an/effect"
+	"an/fmt"
+)
+
+const SQL = effect.Declare("SQL")
+
+// effects: query SQL
+func query() {
+	effect.Mark(SQL)
+}
+
+// A custom effect does not hide the others.
+// effects: queryAndLog Console Panic SQL
+func queryAndLog() {
+	effect.Mark(SQL)
+	fmt.Println("query")
+}
+
+// effects: report SQL
+func report() {
+	query()
+}
+
+// Marking a base effect.
+// effects: clock Clock
+func clock() {
+	effect.Mark(effect.Clock)
+}
+
+func main() {
+	query()
+	queryAndLog()
+	report()
+	clock()
+}

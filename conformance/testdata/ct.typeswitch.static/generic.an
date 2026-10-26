@@ -1,0 +1,21 @@
+// want: ok
+// checks: ct.typeswitch.binding
+
+package main
+
+import "an/fmt"
+
+func show[T any](v T) string {
+	switch x := v.(type) {
+	case string:
+		return "string " + x
+	case int:
+		return fmt.Sprint("int ", x*2)
+	default:
+		return fmt.Sprint("other ", x)
+	}
+}
+
+func main() {
+	fmt.Println(show("a"), show(21), show(1.5))
+}

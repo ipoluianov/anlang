@@ -1,0 +1,10 @@
+// want: eff.profile.allowed target.effects.provides
+// checks: eff.profile.default
+
+package main
+
+import "an/effect"
+
+func main() {
+	effect.Mark(effect.Interrupts)
+}

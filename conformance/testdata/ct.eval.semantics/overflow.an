@@ -1,0 +1,14 @@
+// want: ct.eval.panic
+// checks: ct.eval.semantics
+
+package main
+
+const big = grow(100)
+
+func grow(n i8) i8 {
+	return n * 2
+}
+
+func main() {
+	_ = big
+}

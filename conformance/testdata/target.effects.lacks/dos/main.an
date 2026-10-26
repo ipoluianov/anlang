@@ -1,0 +1,12 @@
+// want: target.effects.lacks
+// checks: eff.target.check
+
+package main
+
+profile core
+
+import "an/effect"
+
+func main() {
+	effect.Mark(effect.Network)
+}

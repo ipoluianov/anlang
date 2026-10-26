@@ -1,0 +1,24 @@
+// want: ok
+// checks: std.fmt.print std.fmt.sprint
+
+package main
+
+import "an/fmt"
+
+type Celsius f64
+
+func (c Celsius) String() string { return fmt.Sprintf("%.1f°C", f64(c)) }
+
+type Point struct {
+	X, Y int
+}
+
+func main() {
+	fmt.Printf("%d %5.2f %-6s| %q %x %t\n", 42, 3.14159, "ab", "q", 255, true)
+	fmt.Printf("%v %+v %s\n", Point{1, 2}, Point{1, 2}, Celsius(21.5))
+	s := fmt.Sprintf("%08.3f|%+d|%U|%c", -3.5, 7, 'λ', 'λ')
+	fmt.Println(s)
+	fmt.Printf("%*d|%-*d|\n", 5, 1, 4, 2)
+	fmt.Printf("%d%%\n", 50)
+	fmt.Printf("%x %X %v\n", []u8("hi"), "hi", []int{1, 2})
+}

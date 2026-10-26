@@ -106,11 +106,18 @@ type Tuple = types.Tuple
 type Const struct {
 	Typ types.Type
 	Val constant.Value
+	// Computed is the value of a computed constant of a composite or
+	// interface type (types.Composite, types.MapValue, types.IfaceValue);
+	// Val is nil then.
+	Computed any
 }
 
 func (c *Const) Type() types.Type { return c.Typ }
 func (c *Const) Name() string {
-	if c.Val == nil {
+	switch {
+	case c.Computed != nil:
+		return "const"
+	case c.Val == nil:
 		return "zero"
 	}
 	return c.Val.ExactString()
@@ -143,6 +150,23 @@ type FuncValue struct {
 
 func (f *FuncValue) Type() types.Type { return f.Func.Sig }
 func (f *FuncValue) Name() string     { return f.Func.Name }
+
+// Global is the address of a package-level variable: a hardware mapping
+// (mem.unsafe.map), whose memory is at the address Addr, a constant of a
+// pointer kind of an/unsafe.
+type Global struct {
+	Var  *types.Var
+	Typ  types.Type // *Pointer
+	Addr *Const
+}
+
+func (g *Global) Type() types.Type { return g.Typ }
+func (g *Global) Name() string {
+	if g.Var.Pkg() != nil {
+		return g.Var.Pkg().Path + "." + g.Var.Name()
+	}
+	return g.Var.Name()
+}
 
 // Builtin is a built-in function or a function of the standard library
 // implemented by the compiler.
@@ -387,6 +411,17 @@ type Extract struct {
 	Index int
 }
 
+// Asm executes the instructions Text of the architecture of the target
+// (stmt.asm.syntax): the registers named by the fields of the struct In,
+// if any, are loaded, the instructions run, and the result, a struct of
+// the type of the instruction, holds the registers named by its fields
+// afterwards.
+type Asm struct {
+	register
+	Text string
+	In   Value
+}
+
 // Jump transfers control to the only successor.
 type Jump struct {
 	anInstr
@@ -448,10 +483,16 @@ func (i *MakeClosure) Operands() []Value   { return i.Bindings }
 func (i *Call) Operands() []Value          { return append([]Value{i.Callee}, i.Args...) }
 func (i *Extract) Operands() []Value       { return []Value{i.Tuple} }
 func (i *Jump) Operands() []Value          { return nil }
-func (i *If) Operands() []Value            { return []Value{i.Cond} }
-func (i *Return) Operands() []Value        { return i.Results }
-func (i *Panic) Operands() []Value         { return []Value{i.X} }
-func (i *Defer) Operands() []Value         { return i.Call.Operands() }
+func (i *Asm) Operands() []Value {
+	if i.In == nil {
+		return nil
+	}
+	return []Value{i.In}
+}
+func (i *If) Operands() []Value     { return []Value{i.Cond} }
+func (i *Return) Operands() []Value { return i.Results }
+func (i *Panic) Operands() []Value  { return []Value{i.X} }
+func (i *Defer) Operands() []Value  { return i.Call.Operands() }
 
 // ---------------------------------------------------------------------
 // Construction.

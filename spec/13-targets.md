@@ -27,6 +27,7 @@ package doscom
 
 import (
     "an/arch"
+    "an/effect"
     "an/platform"
     "an/target"
 )
@@ -38,8 +39,8 @@ const Description = target.Desc{
     Pointers: target.Pointers{Near: 16, Far: 32},
     Formats:  []target.Format{target.Flat{Origin: 0x100, MaxSize: 65280}},
     Floats:   target.SoftFloat,
-    Provides: []Effect{Console, Video, File, Keyboard, StaticAlloc},
-    Lacks:    []Effect{Network},
+    Provides: []effect.Effect{effect.Console, effect.Video, effect.File, effect.Keyboard, effect.Clock, effect.StaticAlloc},
+    Lacks:    []effect.Effect{effect.Network},
     OnPanic:  target.PrintAndExit,
 }
 ```
@@ -61,6 +62,8 @@ const Description = target.Desc{
 | `Lacks` | `[]Effect` | no | environment effects explicitly absent (13.3) |
 | `OnPanic` | `target.PanicAction` | no; default from `Platform` | what a panic does (13.10) |
 | `Clock` | frequency in Hz | no; required for `wcet.Within` | CPU clock frequency used with the architecture's timing model for WCET (see [14-embedded](14-embedded.md), **emb.wcet.model**) |
+
+**target.desc.types** — Package `an/target` declares `Desc` and the types of its fields. `target.Pointers` is `arch.Pointers` and `target.PanicAction` is `platform.PanicAction` (13.4.1). A field left at its zero value takes its default: `Word` and `Pointers` from `Arch`, `Floats` (zero value `target.DefaultFloats`) from `Arch`, and `OnPanic` (zero value `target.DefaultPanic`) from `Platform`. Environment effects are the constants of package `an/effect`. The field `Device` is declared with the device descriptions of roadmap step 16.
 
 **target.desc.valid** — An implementation MUST reject a target description that violates this schema: a missing required field, `Word` outside {16, 32, 64}, a `Word` or `Pointers` value the architecture does not support, `Provides` and `Lacks` that intersect, overlapping memory regions, or a format that the platform does not support.
 
@@ -100,6 +103,24 @@ const Description = target.Desc{
 | `ios`, `android` | yes | `ui` | `PrintAndExit` |
 | `web` | no (WebAssembly imports) | `ui`, `app` | `PrintAndExit` |
 
+### 13.4.1 The `platform.Platform` schema
+
+**target.platform.schema** — A platform description is a constant of type `platform.Platform` of package `an/platform`. Its fields are:
+
+| Field | Type | Meaning (item of **target.platform.desc**) |
+| --- | --- | --- |
+| `Name` | `string` | the platform name used in targets and file suffixes |
+| `Provides` | `[]effect.Effect` | the environment effects the platform can provide (1); a target of the platform MUST NOT provide others |
+| `Dynamic` | `bool` | whether the platform has dynamic loading (2) |
+| `Rules` | `[]arch.Rule` | the platform operations `start`, `exit` and `write` as instruction selection rules (13.5.7): the system call mechanism (3) and the start-up sequence (4) |
+| `Formats` | `[]string` | the kinds of the binary formats the platform accepts (5), such as `"flat"` |
+| `Profiles` | `[]string` | the profiles allowed for the `main` package (6) |
+| `OnPanic` | `platform.PanicAction` | the default panic action (7): `platform.PrintAndExit`, `platform.Reset` or `platform.Halt` |
+
+The fields for the C ABI variant (3), background execution (8) and the system call table (9) are declared with the roadmap steps that introduce foreign functions on operating systems, the `ui` platforms and platforms implemented in Anlang.
+
+**target.platform.entry** — The entry point of a program is code generated from the platform rules: the instructions of rule `start`, a call of `main`, and the instructions of rule `exit` with status 0. A panic calls rule `exit` with status 2 after the panic action has written its message (**rt.panic.actions**).
+
 ## 13.5 Architectures
 
 ### 13.5.1 Architecture descriptions
@@ -124,13 +145,138 @@ An *architecture description* consists of three components, all Anlang data:
 
 ### 13.5.2 Instruction packages
 
-**target.arch.instr-package** — The instruction package `an/arch/<name>` exposes the architecture's instructions and registers as ordinary Anlang functions and types, for example `i8086.Int(0x21, i8086.Regs{AH: 0x09})`, `armv7m.WFI()`, `x86_64.ReadCR2()`. Named operands are passed as a struct, since Anlang has no named arguments.
+**target.arch.instr-package** — The instruction package `an/arch/<name>` exposes the architecture's instructions and registers as ordinary Anlang functions and types, for example `i8086.Int(0x21, i8086.Regs{AX: 0x0900})`, `armv7m.WFI()`, `x86_64.ReadCR2()`. Named operands are passed as a struct, since Anlang has no named arguments. A function of an instruction form whose operands are immediates, constants and fixed registers takes the immediates and a struct `Regs` with the whole registers, and returns the registers after the instruction; instructions that change the program counter directly have no function. The immediates of a call MUST be constants. A call loads the registers from `Regs` except the reserved registers and the flags register of the ABI (**target.arch.abi**), executes the instruction, and returns `Regs` with the registers after it; the reserved registers keep their values from the argument. An architecture with far pointers has a function `Far(segment, offset)` that returns a value of type `unsafe.Far` (**mem.unsafe.api**).
 
 **target.arch.instr-effects** — The effects of each instruction function are derived from the formal semantics: an instruction that changes interrupt state has `Interrupts`, a privileged instruction has `Privileged`, and so on. The compiler knows which registers each instruction clobbers.
 
 **target.arch.import-suffix** — A file MAY import `an/arch/<name>` only if its name carries the architecture suffix `_<name>` (for example `print_i8086.an`), as defined in [03-declarations](03-declarations.md). Architecture description packages themselves are exempt.
 
 **target.arch.asm** — The assembler for `asm` blocks (see [05-statements](05-statements.md)) is the one generated from the same description.
+
+### 13.5.3 The `arch.Arch` schema
+
+**target.arch.schema** — An architecture description is a constant of type `arch.Arch`. Its fields are:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `Name` | `string` | the architecture name used in targets and file suffixes |
+| `Word` | `int` | the default width of `int` in bits (13.6) |
+| `Endian` | `arch.Endian` | `arch.Little` or `arch.Big`: the byte order of memory and of encoding units |
+| `Unit` | `int` | the width in bits of the units in which encodings are stored |
+| `AddressBits` | `int` | the width of a physical address |
+| `Pointers` | `arch.Pointers` | the widths of the pointer kinds (13.6) |
+| `Address` | `string` | the physical address of a memory operand with segment value `seg` and offset `off`, in the semantics notation; `"off"` on architectures without segments |
+| `Registers` | `[]arch.Register` | registers and named parts of registers |
+| `Operands` | `[]arch.Operand` | the kinds of instruction operands |
+| `Fragments` | `[]arch.Fragment` | parts of encodings with alternatives |
+| `Prefixes` | `[]arch.Prefix` | instruction prefixes |
+| `Instructions` | `[]arch.Instruction` | instruction forms |
+| `Semantics` | `string` | functions shared by the semantics of the instructions, in the semantics notation |
+| `ABI` | `arch.ABI` | the machine model of the code generator: the frame register, the argument area and the alignment (13.5.7) |
+| `Rules` | `[]arch.Rule` | the instruction selection rules (13.5.7) |
+
+- A **register** has a `Name`, a `Width` in bits and optionally a `Class`, a `Parent` with an `Offset` and a `Fixed` mask of bits that read as 1. A part of a register (a flag, a low byte) names its parent and its bit offset; writing a part changes the parent. The registers of a class are numbered in the order of `Registers`; an operand of the class is encoded by the number. Registers of class `"prefix"` hold the state that prefixes set; they are cleared after each instruction.
+- An **operand kind** is exactly one of: a fixed `Register`; a register of a `Class`; a `Memory` operand of a width in bits (`-1` for an operand whose address only is used), encoded by a `Fragment`, which together with a `Class` gives an operand that is a register or memory; an immediate of `Imm` bits, optionally `Signed` (sign-extended to `Width`) and `Relative` (a displacement from the end of the instruction, which the semantics sees as the target address); or a `Constant` with a `Value`, which appears only in the assembler syntax.
+- A **fragment** has `Alternatives`, each an `Encoding` whose fields are fields of the fragment, and either a `Register` field that holds the register number of the operand, or an `Address` and a `Segment` in the semantics notation using the fields, with the `Cycles` that computing the address adds.
+- A **prefix** has an `Encoding` and `Semantics` that assign the prefix state.
+- An **instruction form** has a `Mnemonic`, operand kinds `Operands` in assembler order, an `Encoding`, `Semantics`, the `Cycles` of its register form and its `Effects` beyond registers and memory (**target.arch.instr-effects**). In the semantics, the operands are named `a`, `b` and `c`.
+
+**target.arch.check** — An implementation MUST reject a description in which a name is undefined, a register part lies outside its parent, the registers of a class differ in width, an operand kind is not exactly one kind, an encoding does not encode an operand that needs it or encodes it in a field of the wrong width, a pattern is not a whole number of units, or the semantics violate **target.arch.widths**.
+
+### 13.5.4 Encoding notation
+
+**target.arch.encoding** — An encoding is a sequence of items separated by spaces:
+
+| Item | Meaning |
+| --- | --- |
+| `HH` | a byte in hexadecimal, 8 fixed bits |
+| `%0101` | fixed bits in binary |
+| `name:width` | a field: an operand `a`, `b` or `c` (a register number or an immediate), or a field of a fragment |
+| `<frag op field=value …>` | fragment `frag` encoding operand `op`; each `field=value` binds a field of the fragment to an operand or to a constant |
+
+Bits fill each unit of `Unit` bits from its most significant bit; the units are stored in the byte order `Endian`. A field that consists of whole units and starts at a unit boundary is stored in the byte order `Endian`, like an immediate in memory.
+
+**target.arch.specific** — When several instruction forms match an encoding, the most specific one applies: the one with the most fixed bits, a constant binding counting as one. A description in which two forms with the same number of fixed bits match one encoding is ambiguous and MUST be rejected for that encoding.
+
+```go
+{Mnemonic: "ADD", Operands: []string{"r/m16", "imm16"}, Encoding: "81 <rm a reg=0> b:16", Semantics: "a = add(a, b, 0);", Cycles: 4},
+{Mnemonic: "INC", Operands: []string{"r16"}, Encoding: "%01000 a:3", Semantics: "a = inc(a);", Cycles: 2},
+```
+
+### 13.5.5 Semantics notation
+
+**target.arch.semantics** — The semantics of an instruction is a sequence of statements over bit vectors, in the style of Sail:
+
+```
+Stmt   = "let" name "=" Expr ";" | Target "=" Expr ";" | Call ";"
+       | "if" Expr Block [ "else" ( Block | IfStmt ) ] | "while" Expr Block
+       | "break" ";" | "return" [ Expr ] ";" .
+Block  = "{" { Stmt } "}" .
+Target = name | "mem8" "[" Expr "]" | "mem16" "[" Expr "]" | "mem32" "[" Expr "]" .
+Def    = "fn" name "(" [ name { "," name } ] ")" Block .
+```
+
+A name denotes a local variable, a parameter, a register or an operand (`a`, `b`, `c`); assigning a register part changes its parent; assigning an operand writes its register or its memory. `memN[addr]` is the N-bit value at physical address `addr` in the byte order `Endian`. Expressions use the operators of Go with Go's precedence: `|| && == != < <= > >= + - | ^ * & << >>`, and `>>>` for the arithmetic shift right; comparisons are unsigned. `x[i]` is bit `i` and `x[hi:lo]` the bits `hi` to `lo`. The built-in functions are `zx`, `sx` and `tr` (zero-extend, sign-extend and truncate to a constant width), `width`, `msb`, `lts`, `les`, `gts`, `ges` (signed comparisons), `divu`, `remu`, `divs`, `rems`, `in8`, `in16`, `out8`, `out16` (input and output ports), `halt`, `ea` (the offset of a memory operand) and `segof` (its segment value). The `Semantics` field of `arch.Arch` defines further functions with `fn`; they are not recursive.
+
+**target.arch.widths** — Every value has a width from 1 to 64 bits. The operands of an arithmetic, bitwise or comparison operator have the same width; a literal, or a value computed from literals and `width`, is unsized and takes the width of the other operand. A comparison, `!`, `&&`, `||` and a bit have width 1; conditions have width 1. Functions defined with `fn` have no declared widths: each call is checked with the widths of its arguments, and all values a function returns have one width. An assignment keeps the width of its target. Arithmetic is modulo 2ⁿ of the width.
+
+**target.arch.execution** — An instruction executes with `IP` (or the architecture's program counter) already advanced past it; a relative operand denotes the target address. A memory operand reads and writes at the physical address `Address` computed from the `Segment` and `Address` of its fragment alternative.
+
+### 13.5.6 Assembler syntax
+
+**target.arch.asm-syntax** — The assembler and the disassembler generated from a description (**target.arch.generated**) use this syntax for one instruction: the names of its prefixes, the mnemonic, and the operands separated by commas. A register operand is the register name; an immediate is a number in decimal or with the prefix `0x`; a relative operand is the target address; a far pointer is `segment:offset`; a memory operand is `byte [address]`, `word [address]`, `dword [address]` or `qword [address]` by its width, or `[address]` for an operand whose address only is used, where the address is a sum of registers and a displacement that one of the alternatives of its fragment can encode. Names are not case-sensitive. Of several encodings of one text, the assembler chooses the shortest, and of equally short ones the instruction form and the fragment alternative described first.
+
+**target.arch.round-trip** — For every encoding that the description defines, assembling the disassembled text MUST give an encoding whose disassembled text is the same.
+
+### 13.5.7 Instruction selection rules
+
+**target.arch.rule** — An instruction selection rule is a value of type `arch.Rule` with the fields `Op` (a machine operation), `Width` (the width in bits of its operands, 0 for an operation without one), `From` (for `ext.s` and `ext.u`, the width of the operand) and `Code` (an instruction template). The code generator expresses every IR instruction as a sequence of machine operations and replaces each operation by the template of a rule for it.
+
+**target.arch.ops** — The machine operations are the following. `r` is the result; `x` and `y` are operands; `p` and `q` are addresses (values of the default pointer width); `k` and `n` are constants: an offset and a size in bytes; `L` and `f` are labels. A value of width `Width` is an integer modulo 2^Width; signed operations read it in two's complement.
+
+| `Op` | Operands | Meaning |
+| --- | --- | --- |
+| `move` | `r`, `x` | `r = x`; `Width` is 8 or the word width |
+| `add`, `sub`, `mul`, `and`, `or`, `xor` | `r`, `x`, `y` | the operation modulo 2^Width |
+| `not`, `neg` | `r`, `x` | bitwise complement; negation modulo 2^Width |
+| `add.s`, `sub.s`, `mul.s`, `neg.s` | `r`, `x`, `y` | as `add` … `neg`, but if the exact result read as a signed integer does not fit in `Width` bits, control goes to the trap label and `r` is not written |
+| `add.u`, `sub.u`, `mul.u` | `r`, `x`, `y` | the same for unsigned integers |
+| `div.s`, `rem.s` | `r`, `x`, `y` | the quotient truncated toward zero and the remainder of signed integers; `y` ≠ 0, and `x` is not the minimum when `y` is −1 |
+| `div.u`, `rem.u` | `r`, `x`, `y` | the quotient and remainder of unsigned integers; `y` ≠ 0 |
+| `shl`, `shr.u`, `shr.s` | `r`, `x`, `y` | shifts of `x` by the count `y`, an unsigned value of the word width; a count of `Width` or more gives 0, or for `shr.s` the sign of `x` in every bit |
+| `eq`, `ne`, `lt.s`, `lt.u`, `le.s`, `le.u` | `r`, `x`, `y` | `r` is an 8-bit 1 if the relation holds, 0 otherwise |
+| `ext.s`, `ext.u` | `r`, `x` | `x` of width `From` sign- or zero-extended to `r` of width `Width` |
+| `addr` | `r`, `x` | `r` is the address of the slot of `x` |
+| `load` | `r`, `p`, `k` | `r` is the value at address `p + k`; `Width` is 8 or the word width |
+| `store` | `p`, `k`, `x` | writes `x` at address `p + k` |
+| `load.far`, `store.far` | as `load`, `store` | the same with `p` a far address (`unsafe.Far`): the memory of a hardware mapping (**mem.unsafe.map**) |
+| `copy` | `p`, `q`, `n` | copies `n` bytes from address `q` to address `p`; the two do not overlap |
+| `zero` | `p`, `n` | sets `n` bytes at address `p` to 0 |
+| `jump` | `L` | continues at `L` |
+| `branch` | `x`, `L` | continues at `L` if the 8-bit `x` is not 0, otherwise with the next operation |
+| `call` | `f` | calls the function at label `f` |
+| `callind` | `x` | calls the function whose address is `x` |
+| `enter` | `n` | the start of a function: makes the frame base such that the stack pointer of the caller at the call was the frame base plus `ABI.Params`, and reserves `n` bytes below the frame base |
+| `leave` | — | returns from a function to its caller, restoring the caller's frame base and stack pointer |
+| `regin`, `regout` | `x` or `r`, `reg` | moves `x` into register `reg`, or register `reg` into `r`, for calls of the instruction package and `asm` statements; a register for which no template assembles is not moved |
+| `flagsout` | `r` | stores the flags register `ABI.Flags` into `r` |
+| `start` | — | platform rule: instructions before the call of `main` |
+| `exit` | `x` | platform rule: ends the program with the status `x` of the word width |
+| `write` | `x`, `p`, `y` | platform rule: writes `y` bytes at address `p` to the stream `x`: 1 for standard output, 2 for standard error |
+
+**target.arch.template** — An instruction template is assembler text in the syntax of **target.arch.asm-syntax**, one instruction per line, with placeholders in braces:
+
+1. `{x}`, `{y}`, `{r}`, `{p}`, `{q}` — the operand. An operand in a slot is a memory operand `<size> [<frame register><offset>]` with the size of `Width` (`byte`, `word`, `dword`, `qword`), where the frame register is `ABI.Frame`; a constant operand, including the address of a function or of constant data, is a number.
+2. `{x.i}` — part `i` of the operand, a value of the word width: part 0 is the least significant. Templates of operations wider than a word name the parts.
+3. `{k}`, `{n}` — the constant offset or size; `{L}`, `{f}` — the label; `{trap}` — the trap label of a checked operation.
+4. `@name` — a label local to one use of the template; a line `@name:` defines it.
+5. `{reg}` — the register of `regin` and `regout`.
+
+**target.arch.select** — For an operation with given `Op`, `Width` and `From`, the code generator uses the first rule of the architecture, then of the platform, with the same three values whose template assembles with the operands substituted. If no template assembles because an operand is a constant, the constant is first moved into a slot. If there is no rule for `mul`, `mul.s`, `mul.u`, `div.s`, `div.u`, `rem.s`, `rem.u`, `shl`, `shr.s` or `shr.u` of a width greater than the word width, the operation is a call of the function of the runtime package whose name is the operation name in camel case followed by the width, such as `DivU32` for `div.u` of 32 bits ([22-compiler](22-compiler.md), 22.11). A missing rule for any other operation the program needs is a build error that names the operation and the architecture.
+
+**target.arch.abi** — `arch.ABI` has the fields `Frame` (the register that holds the frame base; slots are addressed relative to it), `Params` (the offset from the frame base of the argument area of the caller), `Align` (the alignment in bytes of slots and of the argument area), `Reserved` (the registers whose values the generated code relies on, which calls of the instruction package and `asm` statements do not load) and `Flags` (the flags register, which they store but do not load). The stack grows toward lower addresses. The layout of frames and argument areas is specified in [22-compiler](22-compiler.md), 22.11.
+
+**target.arch.rules-test** — Until the solver handles bit vectors (roadmap step 22), the check of **target.arch.rules-checked** executes each rule of an operation other than `jump`, `branch`, `call`, `callind`, `enter`, `leave`, `regin`, `regout`, `flagsout` and the platform operations in the interpreter generated from the description: exhaustively for operands of 8 bits, and for wider operands on the boundary values (0, 1, the maxima and minima and their neighbors) and on random values, comparing the result, and whether control reached the trap label, with the meaning in **target.arch.ops**. The other rules are checked by running the reference programs (**conf.backend.ir**).
 
 ## 13.6 Integer widths and pointer kinds
 
@@ -189,6 +335,8 @@ const Description = target.Desc{
 ## 13.9 Binary formats
 
 **target.format.interface** — A binary format is a value implementing interface `target.Format`. The linker hands it the linked image — segments with addresses and contents, the entry point and symbols — and the format produces the output file. Formats are Anlang code like architectures; adding one does not change the compiler.
+
+**target.format.kind** — Until compile-time evaluation can call methods on the linked image (roadmap step 26), interface `target.Format` has the method `Kind() string`, and the toolchain writes the format of each kind: `"flat"` for `target.Flat` and `"boot"` for `target.BootSector`.
 
 **target.format.all** — A build produces one output file for each format listed in `Formats`, in `out/<target>/`.
 
@@ -272,9 +420,3 @@ Architecture names inside target names keep their own spelling (`x86_64`).
 | `ios`, `ios-sim` | `arm64`; `arm64`, `x86_64` | `ios` | `.ipa`; `.app` | 66 |
 
 **Note** — The `rp2040` has two cores; until multi-core microcontrollers are specified ([14-embedded](14-embedded.md)), the target runs on core 0 only. A project adds other chips and boards as its own target packages (**target.pkg.location**).
-
-## Open issues
-
-
-1. **Format of architecture descriptions.** Deferred to implementation — step 11. Only the required content is specified (13.5.1); the structure of the constants and the notation of instruction semantics are fixed with the i8086 description.
-2. **Field names of platform descriptions.** Deferred to implementation — step 13. The content is specified by **target.platform.desc**; field names are fixed with the first platform (`dos`).

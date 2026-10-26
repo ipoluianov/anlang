@@ -1,0 +1,4 @@
+3
+deferred calls run while panicking
+panic: runtime error: index out of range [3] with length 3
+exit status 2

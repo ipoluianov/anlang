@@ -1,0 +1,18 @@
+// want: eff.profile.allowed target.effects.provides
+
+package main
+
+import "an/effect"
+
+func blink() {
+	effect.Mark(effect.Gpio)
+}
+
+func toggle() {
+	effect.Mark(effect.Interrupts)
+}
+
+func main() {
+	blink()
+	toggle()
+}

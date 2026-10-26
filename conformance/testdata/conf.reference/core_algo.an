@@ -1,0 +1,85 @@
+// want: ok
+
+// Algorithms on arrays in the core profile: a sieve, sorting, search and
+// recursion.
+package main
+
+profile core
+
+import "an/fmt"
+
+const n = 100
+
+func sieve() [n]bool {
+	var composite [n]bool
+	composite[0], composite[1] = true, true
+	for i := 2; i*i < n; i++ {
+		if !composite[i] {
+			for j := i * i; j < n; j += i {
+				composite[j] = true
+			}
+		}
+	}
+	return composite
+}
+
+func sort(a inout [10]i32) {
+	for i := 1; i < len(a); i++ {
+		for j := i; j > 0 && a[j] < a[j-1]; j-- {
+			a[j], a[j-1] = a[j-1], a[j]
+		}
+	}
+}
+
+func search(a [10]i32, v i32) int {
+	lo, hi := 0, len(a)
+	for lo < hi {
+		mid := (lo + hi) / 2
+		if a[mid] < v {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	return lo
+}
+
+func hanoi(k int, from, to, via u8, moves inout int) {
+	if k == 0 {
+		return
+	}
+	hanoi(k-1, from, via, to, moves)
+	moves++
+	hanoi(k-1, via, to, from, moves)
+}
+
+func ackermann(m, n u16) u16 {
+	switch {
+	case m == 0:
+		return n + 1
+	case n == 0:
+		return ackermann(m-1, 1)
+	}
+	return ackermann(m-1, ackermann(m, n-1))
+}
+
+func main() {
+	c := sieve()
+	count := 0
+	for i, isComposite := range c {
+		if !isComposite {
+			count++
+			if i > 80 {
+				fmt.Print(i, " ")
+			}
+		}
+	}
+	fmt.Println(count)
+	a := [10]i32{42, -7, 1000000, 3, 0, -99999, 15, 15, 8, 2}
+	sort(a)
+	fmt.Println(a)
+	fmt.Println(search(a, 15), search(a, 16), search(a, -100000), search(a, 2000000))
+	moves := 0
+	hanoi(10, 'A', 'C', 'B', moves)
+	fmt.Println(moves, ackermann(2, 3), ackermann(3, 3))
+}

@@ -8,6 +8,7 @@ package lower
 
 import (
 	"fmt"
+	"go/constant"
 	"strings"
 
 	"an/ir"
@@ -26,11 +27,61 @@ type builder struct {
 	queue   []func()
 	errors  []*syntax.Error
 	nlits   int
+	globals map[*types.Var]*ir.Global
+	ready   func(*types.Const) bool // for Constant: whether a computed constant is known
+	missing []*types.Const          // computed constants used before they are known
 }
 
 // Program translates the checked packages of a program to IR: the
 // packages it imports, in dependency order, and package main last.
 func Program(infos ...*types.Info) (*ir.Program, []*syntax.Error) {
+	b := newBuilder(infos)
+	main := infos[len(infos)-1]
+	if main.Main == nil {
+		return nil, []*syntax.Error{{Msg: "package main has no func main"}}
+	}
+	b.prog.Main = b.function(main.Main, nil)
+	return b.run()
+}
+
+// ProgramWith translates the program as Program does, and the functions
+// extra too, which generated code calls without the program calling
+// them: the functions of the runtime package (comp.gen.runtime).
+func ProgramWith(extra []*types.Func, infos ...*types.Info) (*ir.Program, []*syntax.Error) {
+	b := newBuilder(infos)
+	main := infos[len(infos)-1]
+	if main.Main == nil {
+		return nil, []*syntax.Error{{Msg: "package main has no func main"}}
+	}
+	b.prog.Main = b.function(main.Main, nil)
+	for _, f := range extra {
+		b.function(f, nil)
+	}
+	return b.run()
+}
+
+// Constant translates the initializer of the computed constant k of the
+// package described by info to a program whose Main returns the value
+// of the constant (ct.const.call). infos are the packages of the program.
+//
+// ready reports whether the value of a computed constant is known; the
+// constants used before their values are known are returned in missing,
+// and the program must be built again after evaluating them.
+func Constant(k *types.Const, info *types.Info, ready func(*types.Const) bool, infos ...*types.Info) (prog *ir.Program, missing []*types.Const, errs []*syntax.Error) {
+	b := newBuilder(infos)
+	b.ready = ready
+	sig := &types.Signature{Params: types.NewTuple(), Results: types.NewTuple(k.Type())}
+	fn := ir.NewFunc(info.Pkg.Path+".const$"+k.Name(), sig, k.Pos())
+	b.prog.Funcs = append(b.prog.Funcs, fn)
+	b.prog.Main = fn
+	fb := b.newFuncBuilder(info, fn, nil, nil)
+	v := fb.convert(fb.copy(fb.expr(k.Init)), k.Type())
+	fb.ret([]ir.Value{v})
+	prog, errs = b.run()
+	return prog, b.missing, errs
+}
+
+func newBuilder(infos []*types.Info) *builder {
 	b := &builder{
 		prog:    &ir.Program{IntBits: 64},
 		infos:   infos,
@@ -38,6 +89,7 @@ func Program(infos ...*types.Info) (*ir.Program, []*syntax.Error) {
 		origins: map[*syntax.FuncDecl]*types.Func{},
 		funcs:   map[string]*ir.Func{},
 		ctors:   map[string]*ir.Func{},
+		globals: map[*types.Var]*ir.Global{},
 	}
 	for _, info := range infos {
 		for _, f := range append(append([]*types.Func(nil), info.Funcs...), info.Methods...) {
@@ -45,11 +97,11 @@ func Program(infos ...*types.Info) (*ir.Program, []*syntax.Error) {
 			b.origins[f.Decl] = f
 		}
 	}
-	main := infos[len(infos)-1]
-	if main.Main == nil {
-		return nil, []*syntax.Error{{Msg: "package main has no func main"}}
-	}
-	b.prog.Main = b.function(main.Main, nil)
+	return b
+}
+
+// run builds the queued functions.
+func (b *builder) run() (*ir.Program, []*syntax.Error) {
 	for len(b.queue) > 0 {
 		job := b.queue[0]
 		b.queue = b.queue[1:]
@@ -152,6 +204,8 @@ type funcBuilder struct {
 	// For the body of a range-over-func loop: what break, continue and
 	// return do inside it.
 	yield *yieldContext
+
+	tuple []ir.Value // the parameters of the tuple of an instance (ct.any.instance)
 }
 
 // target is the destination of break and continue.
@@ -317,11 +371,31 @@ func (fb *funcBuilder) local(v *types.Var) ir.Value {
 	if a, ok := fb.vars[v]; ok {
 		return a
 	}
+	if v.Map != nil {
+		return fb.b.global(v)
+	}
 	// A variable of an enclosing function, captured by a function literal.
 	if fb.parent != nil {
 		return fb.capture(v)
 	}
 	return nil
+}
+
+// global returns the address of a hardware mapping.
+func (b *builder) global(v *types.Var) *ir.Global {
+	if g, ok := b.globals[v]; ok {
+		return g
+	}
+	addr := &ir.Const{Typ: v.Map.Type(), Val: v.Map.Val}
+	if v.Map.Computed {
+		addr = &ir.Const{Typ: v.Map.Type(), Computed: v.Map.Value}
+		if c, ok := v.Map.Value.(constant.Value); ok {
+			addr = &ir.Const{Typ: v.Map.Type(), Val: c}
+		}
+	}
+	g := &ir.Global{Var: v, Typ: &ir.Pointer{Elem: v.Type()}, Addr: addr}
+	b.globals[v] = g
+	return g
 }
 
 // capture returns the address of a captured variable inside a function

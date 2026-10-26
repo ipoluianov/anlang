@@ -1,0 +1,16 @@
+// want: ok
+// checks: expr.int.div
+
+// Division by zero panics.
+package main
+
+profile core
+
+import "an/fmt"
+
+func div(a, b u32) u32 { return a / b }
+
+func main() {
+	fmt.Println(div(100, 7))
+	fmt.Println(div(1, 0))
+}

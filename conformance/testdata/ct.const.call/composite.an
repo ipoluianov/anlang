@@ -1,0 +1,69 @@
+// want: ok
+// checks: ct.const.types
+
+package main
+
+import "an/fmt"
+
+type Point struct {
+	X, Y int
+}
+
+type Shape enum {
+	Dot
+	Circle{r int}
+}
+
+const origin = Point{1, 2}
+
+const primes = sieve(30)
+
+const squares = square(primes)
+
+const index = byName([]string{"a", "b", "c"})
+
+const shapes = []Shape{Dot, Circle(3)}
+
+const label = Some("x")
+
+func sieve(n int) []int {
+	composite := make([]bool, n)
+	var ps []int
+	for i := 2; i < n; i++ {
+		if composite[i] {
+			continue
+		}
+		ps = append(ps, i)
+		for j := i * i; j < n; j += i {
+			composite[j] = true
+		}
+	}
+	return ps
+}
+
+func square(xs []int) []int {
+	var r []int
+	for _, x := range xs {
+		r = append(r, x*x)
+	}
+	return r
+}
+
+func byName(names []string) map[string]int {
+	m := map[string]int{}
+	for i, n := range names {
+		m[n] = i
+	}
+	return m
+}
+
+func main() {
+	fmt.Println(origin, primes, squares, len(primes))
+	fmt.Println(index["c"], len(index), shapes)
+	if s, ok := label.Get(); ok {
+		fmt.Println(s)
+	}
+	p := origin
+	p.X = 10
+	fmt.Println(p, origin)
+}

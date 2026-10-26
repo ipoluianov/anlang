@@ -52,11 +52,34 @@ An effect enters a program only at a *source*. Every other function obtains effe
 
 **eff.source.primitive** — The implementation-provided primitives of the standard library (system calls, interrupt instructions, memory allocation, clock and random-number access) carry fixed effects documented with each primitive.
 
-**eff.source.alloc** — An operation that may allocate dynamic memory has the effect `Alloc`. The operations are listed in [06-memory](06-memory.md).
+**eff.source.alloc** — An operation that may allocate dynamic memory has the effect `Alloc` ([06-memory](06-memory.md), **mem.alloc.effect**). The operations are listed in **eff.source.alloc-ops**.
 
-**eff.source.panic** — An operation that may panic has the effect `Panic`. This includes integer overflow checks, index and slice bounds checks, narrowing conversion checks, arena generation checks and explicit calls of `panic`. A check that the compiler removes because the solver proved it cannot fail ([08-contracts](08-contracts.md), **contract.check.runtime**) contributes no effect.
+**eff.source.alloc-ops** — The operations with the effect `Alloc` are exactly:
 
-**eff.source.wait** — A wait point ([09-concurrency](09-concurrency.md), **conc.wait.points**) has the effect `Block`.
+1. `make`; a slice or map composite literal with at least one element; `append` with at least one value or with `...`;
+2. string concatenation with `+` or `+=` that is not constant; a conversion that is not constant between a string type and `[]u8` or `[]i32`, from an integer type to a string type, and to `cstring` or `dstring`;
+3. an assignment to a map element, including assignment operations, `++` and `--`; `delete`; `clear` of a map;
+4. a write into the elements of a slice, which may copy a shared buffer (**mem.cow.slice**): an assignment, assignment operation, `++` or `--` whose target is reached through an index expression on a slice, and `copy` and `clear` of a slice;
+5. a conversion of a value that is not constant to an interface type, unless its type is a boolean or numeric type, a struct type without fields or an `enum` type none of whose variants carry data;
+6. a function literal that uses local variables or parameters of an enclosing function; a method value;
+7. `fmt.Sprint`, `fmt.Sprintln` and `fmt.Sprintf`.
+
+**eff.source.panic** — An operation that may panic has the effect `Panic`. This includes integer overflow checks, index and slice bounds checks, checks of conversions from floating-point to integer types, arena generation checks and explicit calls of `panic`; the operations are listed in **eff.source.panic-ops**. A check that the compiler removes because the solver proved it cannot fail ([08-contracts](08-contracts.md), **contract.check.runtime**) contributes no effect.
+
+**eff.source.panic-ops** — The operations with the effect `Panic` are exactly:
+
+1. binary `+`, `-`, `*` and unary `-` on operands of a checked integer type or a type parameter, and the corresponding assignment operations, `++` and `--`, unless the operation is constant (**expr.int.checked**);
+2. `/` and `%` on operands of an integer type, including the wrapping types, or of a type parameter, unless the divisor is a constant other than 0 and, for a checked signed type, other than -1 (**expr.int.div**);
+3. a shift whose count is not constant and has a signed type;
+4. an index expression on a slice, a string or a value of a type parameter, and on an array unless the index is constant; a slice expression with at least one index, on an array unless all its indices are constant (**expr.bounds.check**);
+5. a conversion that is not constant from a floating-point type to an integer type (**type.conv.float-int**), from a slice to an array, and to `cstring` or `dstring`;
+6. a type assertion that does not have the comma-ok form;
+7. `==` and `!=` on operands whose type is or contains an interface type or is a type parameter, unless an operand is `nil`; an index expression, element assignment, composite literal entry or `delete` on a map whose key type is or contains an interface type;
+8. `make` with a length or capacity that is not constant; `panic`; `close`; a channel send.
+
+**eff.source.builtin** — Until the standard library is compiled from Anlang source (roadmap steps 9–10 and 29), the following functions are primitives (**eff.source.primitive**): `print` and `println` have the effect `Console`; `fmt.Print`, `fmt.Println` and `fmt.Printf` have the effects `Console` and `Panic` (**std.fmt.print**). The functions of `an/fmt` call the methods `Error` and `String` of their arguments: for an argument of concrete type `T` they add the summaries of `T.Error` and `T.String`, and for an argument of an interface type with such a method they add the open reference to it.
+
+**eff.source.wait** — A wait point ([09-concurrency](09-concurrency.md), **conc.wait.points**) has the effect `Block`. In the language these are a channel receive or send that is not a case of a `select` statement, a `select` statement without a `default` case and a `range` over a channel.
 
 **eff.source.go** — A `go` statement and a call of `task.Go` have the effect `Tasks`.
 
@@ -92,6 +115,8 @@ The compiler infers effects. A program never writes the effects of a function.
 6. A conversion in `f` of a value of concrete type `T` to an interface type `I` adds, for each method M of `I`, C and Q of `T.M` to Σ(f), and records `T.M` as an implementation of the open reference "effects of method M of I" (§7.5).
 7. The creation in `f` of a function value (function literal, method value or function name used as a value) of type `F` adds C and Q of the created function to Σ(f), and records that function as an implementation of the open reference "effects of calling a value of type F" (§7.5). References of a function literal to parameters of `f` that it captures become references in P(f).
 
+**eff.infer.close** — Where a parametric reference cannot be replaced by an argument — the argument is not one of the forms of **eff.infer.rules** 2, or the function is reached through an open reference, so its arguments are unknown — a reference to calling parameter `p` of function type `F` stands for the open reference "effects of calling a value of type `F`", and a reference to method M of parameter `p` of interface type `I` for "effects of method M of `I`". A reference of a function literal to a parameter of an enclosing function becomes a reference of the enclosing function (**eff.infer.rules** 7); in the summary of the literal itself it stands for the open reference.
+
 **eff.infer.recursion** — For mutually recursive functions the summaries are the least fixed point of the rules of **eff.infer.rules**.
 
 **eff.infer.generic** — A generic function has one summary. At each instantiation, references to methods of type parameters are replaced by the summaries of the methods of the type arguments.
@@ -117,6 +142,8 @@ Effects are used in two different ways, and the specification distinguishes them
 
 **eff.attr.resolve** — Over the whole program, an open reference "effects of method M of I" resolves to the union of the execution effects of all methods `T.M` recorded as its implementations; an open reference "effects of calling a value of type F" resolves to the union of the execution effects of all functions recorded as its implementations.
 
+**eff.attr.flow** — A conversion of a value of interface type `I1` to another interface type `I2`, including a type assertion to `I2`, makes every implementation recorded for "method M of `I1`" an implementation of "method M of `I2`" for each method M of `I2`; a conversion between function types does the same for "calling a value of type F". A method value of an interface value is an implementation of its function type through the open reference to the method.
+
 **eff.attr.exec** — The *execution effects* of a call are the effects that may occur while the call runs:
 
 - for a function without parametric references: X(f) = C(f) ∪ resolve(Q(f));
@@ -140,7 +167,7 @@ Constraints are written only at boundaries. Each constraint is a set of effects 
 | Peripheral contexts | execution effects of each execution context | execution | [14-embedded](14-embedded.md) |
 | Application manifest | execution effects of the program | execution | [17-ui](17-ui.md) |
 
-**eff.constraint.report** — When a constraint is violated, the diagnostic MUST name the constraint, the violating effect and a call chain from the constrained function to a source of the effect, for example `TIM2 → buffer.Push → grow → Alloc`.
+**eff.constraint.report** — When a constraint is violated, the diagnostic MUST name the constraint, the violating effect and a call chain from the constrained function to a source of the effect, for example `TIM2 → buffer.Push → grow → Alloc`. For an attribution constraint, which every function of a package must satisfy, the violation is reported at each function where the effect enters the package: from a source in its body or from a function of another package. The functions of the same package that receive the effect from such a function are not reported again.
 
 ### 7.6.1 `ensures effect.Without`
 

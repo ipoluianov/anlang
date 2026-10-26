@@ -1,0 +1,17 @@
+// want: ok
+// checks: ct.encoding.dstring
+
+// encoding.CP866 of a constant is a []u8 constant made at compile time.
+package main
+
+profile core
+
+import "an/encoding"
+
+func show(s dstring) {}
+
+func main() {
+	show(encoding.CP866("Привет, ░▒▓ №1\r\n"))
+	b := encoding.CP866("Ёж")
+	_ = b
+}

@@ -1,0 +1,9 @@
+// want: ok
+
+package main
+
+import "conf/lib"
+
+func main() {
+	_ = lib.Twice(2)
+}

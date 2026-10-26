@@ -1,0 +1,27 @@
+// want: ok
+// checks: ct.any.tuple
+
+package main
+
+import "an/fmt"
+
+type DB struct {
+	name  string
+	count int
+}
+
+func (db DB) Query(q string, args ...any) string {
+	return fmt.Sprint(db.name, ": ", q, " ", len(args), " ", fmt.Sprint(args...))
+}
+
+func (db inout DB) Exec(args ...any) {
+	db.count += len(args)
+}
+
+func main() {
+	db := DB{name: "main"}
+	fmt.Println(db.Query("select", 1, "x"))
+	db.Exec(1, 2, 3)
+	db.Exec()
+	fmt.Println(db.count)
+}

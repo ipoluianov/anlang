@@ -1,0 +1,11 @@
+// want: ok
+// checks: eff.attr.own
+
+package main
+
+import "conf/report"
+
+// effects: main Console Panic SQL
+func main() {
+	report.Rows()
+}

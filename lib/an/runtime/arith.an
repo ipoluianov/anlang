@@ -1,0 +1,247 @@
+package runtime
+
+import "an/wrap"
+
+// The arithmetic of the operations that have no instruction selection
+// rule for their width (target.arch.select). The generated code tests
+// division by zero and the overflow of the minimum divided by -1 before
+// it calls a division.
+
+// divmodU32 returns the quotient and remainder of x and y, y != 0.
+func divmodU32(x, y u32) (u32, u32) {
+	var q, r u32
+	for range 32 {
+		top := r >> 31
+		r = r<<1 | x>>31
+		x <<= 1
+		q <<= 1
+		if top != 0 || r >= y {
+			r = u32(wrap.U32(r) - wrap.U32(y))
+			q |= 1
+		}
+	}
+	return q, r
+}
+
+// DivU32 implements div.u of 32 bits.
+func DivU32(x, y u32) u32 {
+	q, _ := divmodU32(x, y)
+	return q
+}
+
+// RemU32 implements rem.u of 32 bits.
+func RemU32(x, y u32) u32 {
+	_, r := divmodU32(x, y)
+	return r
+}
+
+// abs32 returns the magnitude of x.
+func abs32(x i32) u32 {
+	if x < 0 {
+		return u32(-wrap.U32(x))
+	}
+	return u32(wrap.U32(x))
+}
+
+// DivS32 implements div.s of 32 bits.
+func DivS32(x, y i32) i32 {
+	q := abs32(x) / abs32(y)
+	if x < 0 != (y < 0) {
+		return i32(wrap.I32(-wrap.U32(q)))
+	}
+	return i32(wrap.I32(q))
+}
+
+// RemS32 implements rem.s of 32 bits: the remainder has the sign of x.
+func RemS32(x, y i32) i32 {
+	r := abs32(x) % abs32(y)
+	if x < 0 {
+		return i32(wrap.I32(-wrap.U32(r)))
+	}
+	return i32(wrap.I32(r))
+}
+
+// mul32 returns the product of x and y modulo 2^32.
+func mul32(x, y wrap.U32) wrap.U32 {
+	var p wrap.U32
+	for range 32 {
+		p <<= 1
+		if y>>31 != 0 {
+			p += x
+		}
+		y <<= 1
+	}
+	return p
+}
+
+// MulU32 implements mul.u of 32 bits.
+func MulU32(x, y u32) u32 {
+	p, ok := CheckedMulU32(x, y)
+	if !ok {
+		PanicOverflow()
+	}
+	return p
+}
+
+// CheckedMulU32 returns the product of x and y and whether it fits,
+// for bits.CheckedMul and bits.SaturatingMul.
+func CheckedMulU32(x, y u32) (u32, bool) {
+	if x != 0 && y > 0xFFFF_FFFF/x {
+		return 0, false
+	}
+	return u32(mul32(wrap.U32(x), wrap.U32(y))), true
+}
+
+// MulS32 implements mul.s of 32 bits.
+func MulS32(x, y i32) i32 {
+	p, ok := CheckedMulS32(x, y)
+	if !ok {
+		PanicOverflow()
+	}
+	return p
+}
+
+// CheckedMulS32 returns the product of x and y and whether it fits,
+// for bits.CheckedMul and bits.SaturatingMul.
+func CheckedMulS32(x, y i32) (i32, bool) {
+	neg := x < 0 != (y < 0)
+	ux, uy := abs32(x), abs32(y)
+	var limit u32 = 0x7FFF_FFFF
+	if neg {
+		limit = 0x8000_0000
+	}
+	if ux != 0 && uy > limit/ux {
+		return 0, false
+	}
+	p := mul32(wrap.U32(ux), wrap.U32(uy))
+	if neg {
+		p = -p
+	}
+	return i32(wrap.I32(p)), true
+}
+
+// divmodU64 returns the quotient and remainder of x and y, y != 0.
+func divmodU64(x, y u64) (u64, u64) {
+	if y <= 0xFFFF {
+		// Long division by 16-bit digits, with 32-bit divisions.
+		d := u32(y & 0xFFFF)
+		var q u64
+		var r u32
+		for range 4 {
+			cur := r<<16 | u32(x>>48)
+			x <<= 16
+			q = q<<16 | u64(cur/d)
+			r = cur % d
+		}
+		return q, u64(r)
+	}
+	var q, r u64
+	for range 64 {
+		top := r >> 63
+		r = r<<1 | x>>63
+		x <<= 1
+		q <<= 1
+		if top != 0 || r >= y {
+			r = u64(wrap.U64(r) - wrap.U64(y))
+			q |= 1
+		}
+	}
+	return q, r
+}
+
+// DivU64 implements div.u of 64 bits.
+func DivU64(x, y u64) u64 {
+	q, _ := divmodU64(x, y)
+	return q
+}
+
+// RemU64 implements rem.u of 64 bits.
+func RemU64(x, y u64) u64 {
+	_, r := divmodU64(x, y)
+	return r
+}
+
+// abs64 returns the magnitude of x.
+func abs64(x i64) u64 {
+	if x < 0 {
+		return u64(-wrap.U64(x))
+	}
+	return u64(wrap.U64(x))
+}
+
+// DivS64 implements div.s of 64 bits.
+func DivS64(x, y i64) i64 {
+	q := abs64(x) / abs64(y)
+	if x < 0 != (y < 0) {
+		return i64(wrap.I64(-wrap.U64(q)))
+	}
+	return i64(wrap.I64(q))
+}
+
+// RemS64 implements rem.s of 64 bits: the remainder has the sign of x.
+func RemS64(x, y i64) i64 {
+	r := abs64(x) % abs64(y)
+	if x < 0 {
+		return i64(wrap.I64(-wrap.U64(r)))
+	}
+	return i64(wrap.I64(r))
+}
+
+// Mul64 implements mul of 64 bits: the product modulo 2^64.
+func Mul64(x, y wrap.U64) wrap.U64 {
+	var p wrap.U64
+	for range 64 {
+		p <<= 1
+		if y>>63 != 0 {
+			p += x
+		}
+		y <<= 1
+	}
+	return p
+}
+
+// MulU64 implements mul.u of 64 bits.
+func MulU64(x, y u64) u64 {
+	p, ok := CheckedMulU64(x, y)
+	if !ok {
+		PanicOverflow()
+	}
+	return p
+}
+
+// CheckedMulU64 returns the product of x and y and whether it fits,
+// for bits.CheckedMul and bits.SaturatingMul.
+func CheckedMulU64(x, y u64) (u64, bool) {
+	if x != 0 && y > 0xFFFF_FFFF_FFFF_FFFF/x {
+		return 0, false
+	}
+	return u64(Mul64(wrap.U64(x), wrap.U64(y))), true
+}
+
+// MulS64 implements mul.s of 64 bits.
+func MulS64(x, y i64) i64 {
+	p, ok := CheckedMulS64(x, y)
+	if !ok {
+		PanicOverflow()
+	}
+	return p
+}
+
+// CheckedMulS64 returns the product of x and y and whether it fits,
+// for bits.CheckedMul and bits.SaturatingMul.
+func CheckedMulS64(x, y i64) (i64, bool) {
+	neg := x < 0 != (y < 0)
+	ux, uy := abs64(x), abs64(y)
+	var limit u64 = 0x7FFF_FFFF_FFFF_FFFF
+	if neg {
+		limit = 0x8000_0000_0000_0000
+	}
+	if ux != 0 && uy > limit/ux {
+		return 0, false
+	}
+	p := Mul64(wrap.U64(ux), wrap.U64(uy))
+	if neg {
+		p = -p
+	}
+	return i64(wrap.I64(p)), true
+}

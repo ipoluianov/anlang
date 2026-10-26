@@ -5,10 +5,12 @@ package interp
 
 import (
 	"fmt"
+	"go/constant"
 	"math"
 	"sort"
 	"strings"
 
+	"an/ir"
 	"an/types"
 )
 
@@ -127,8 +129,10 @@ func (r *fieldRef) store(v value) {
 }
 
 // uniqueAggregate returns the aggregate at base, copied first if it is
-// shared, so that it can be modified.
+// shared, so that it can be modified. The values that contain it are
+// made unique first: a part of a shared value is shared too.
 func uniqueAggregate(base addr) *aggregate {
+	unshareParent(base)
 	a := base.load().(*aggregate)
 	if a.refs > 1 {
 		a.refs--
@@ -136,6 +140,22 @@ func uniqueAggregate(base addr) *aggregate {
 		base.store(a)
 	}
 	return a
+}
+
+// unshareParent makes the value that contains the location r unique,
+// if r is a part of a value.
+func unshareParent(r addr) {
+	switch r := r.(type) {
+	case *fieldRef:
+		uniqueAggregate(r.base)
+	case *elemRef:
+		switch x := r.base.load().(type) {
+		case *aggregate:
+			uniqueAggregate(r.base)
+		case sliceVal:
+			uniqueSlice(r.base, x)
+		}
+	}
 }
 
 // elemRef is the address of element i of the array or slice at base.
@@ -213,6 +233,10 @@ func (r *subRef) store(v value) {
 // uniqueSlice returns slice s stored at base with a buffer that is not
 // shared, copying the buffer first if needed.
 func uniqueSlice(base addr, s sliceVal) sliceVal {
+	if _, ok := base.(*subRef); !ok {
+		unshareParent(base)
+		s = base.load().(sliceVal)
+	}
 	if s.buf.refs > 1 {
 		s.buf.refs--
 		nb := &buffer{elems: make([]value, s.cap), used: s.len, refs: 1}
@@ -353,12 +377,14 @@ func (m *machine) zero(t types.Type) value {
 			return ""
 		}
 	case *types.Struct:
+		m.alloc(len(u.Fields))
 		a := &aggregate{elems: make([]value, len(u.Fields)), refs: 1}
 		for i, f := range u.Fields {
 			a.elems[i] = m.zero(f.Type())
 		}
 		return a
 	case *types.Array:
+		m.alloc(int(u.Len))
 		a := &aggregate{elems: make([]value, u.Len), refs: 1}
 		for i := range a.elems {
 			a.elems[i] = m.zero(u.Elem)
@@ -403,4 +429,148 @@ func less(x, y value) bool {
 		return !x && y.(bool)
 	}
 	return keyString(x) < keyString(y)
+}
+
+// pin makes v shared by every use, so that a write through an address
+// copies it first: the value of a constant is never modified
+// (ct.const.immutable).
+func pin(v value) {
+	switch v := v.(type) {
+	case *aggregate:
+		v.refs = 1 << 40
+	case sliceVal:
+		if v.buf != nil {
+			v.buf.refs = 1 << 40
+		}
+	case *mapObj:
+		if v != nil {
+			v.refs = 1 << 40
+		}
+	case iface:
+		pin(v.v)
+	}
+}
+
+// computedValue returns the run-time value of the value cv of a computed
+// constant of type t.
+func (m *machine) computedValue(cv any, t types.Type) value {
+	switch cv := cv.(type) {
+	case nil:
+		return m.zero(t)
+	case constant.Value:
+		return m.constValue(&ir.Const{Typ: t, Val: cv})
+	case *types.IfaceValue:
+		return iface{t: cv.Type, v: m.computedValue(cv.Value, cv.Type)}
+	case *types.MapValue:
+		mt := t.Underlying().(*types.Map)
+		mp := &mapObj{index: map[string]int{}, refs: 1}
+		for i, k := range cv.Keys {
+			mp.set(m.computedValue(k, mt.Key), m.computedValue(cv.Vals[i], mt.Elem))
+		}
+		return mp
+	case *types.Composite:
+		elems := make([]value, len(cv.Elems))
+		switch u := t.Underlying().(type) {
+		case *types.Struct:
+			for i, e := range cv.Elems {
+				elems[i] = m.computedValue(e, u.Fields[i].Type())
+			}
+		case *types.Array:
+			for i, e := range cv.Elems {
+				elems[i] = m.computedValue(e, u.Elem)
+			}
+		case *types.Slice:
+			for i, e := range cv.Elems {
+				elems[i] = m.computedValue(e, u.Elem)
+			}
+			return sliceVal{buf: newBuffer(elems), len: len(elems), cap: len(elems)}
+		case *types.Enum:
+			fields := u.Variants[cv.Variant].Fields()
+			for i, e := range cv.Elems {
+				elems[i] = m.computedValue(e, fields[i].Type())
+			}
+		}
+		return &aggregate{elems: elems, variant: cv.Variant, refs: 1}
+	}
+	panic(fmt.Sprintf("interp: computed constant %T", cv))
+}
+
+// constOf returns the value v of type t as the value of a computed
+// constant (ct.const.types).
+func (m *machine) constOf(v value, t types.Type) (any, error) {
+	switch v := v.(type) {
+	case bool:
+		return constant.MakeBool(v), nil
+	case int64:
+		return constant.MakeInt64(v), nil
+	case uint64:
+		return constant.MakeUint64(v), nil
+	case float64:
+		return constant.MakeFloat64(v), nil
+	case string:
+		return constant.MakeString(v), nil
+	case iface:
+		if v.t == nil {
+			return nil, nil
+		}
+		if u := v.t.Underlying(); isFuncOrChan(u) {
+			return nil, fmt.Errorf("the dynamic value has type %s", v.t)
+		}
+		x, err := m.constOf(v.v, v.t)
+		if err != nil {
+			return nil, err
+		}
+		return &types.IfaceValue{Type: v.t, Value: x}, nil
+	case *mapObj:
+		if v == nil {
+			return nil, nil
+		}
+		mt := t.Underlying().(*types.Map)
+		mv := &types.MapValue{}
+		for i, k := range v.keys {
+			kc, err := m.constOf(k, mt.Key)
+			if err != nil {
+				return nil, err
+			}
+			vc, err := m.constOf(v.vals[i], mt.Elem)
+			if err != nil {
+				return nil, err
+			}
+			mv.Keys, mv.Vals = append(mv.Keys, kc), append(mv.Vals, vc)
+		}
+		return mv, nil
+	case sliceVal:
+		if v.buf == nil {
+			return nil, nil
+		}
+		et := t.Underlying().(*types.Slice).Elem
+		c := &types.Composite{}
+		for i := range v.len {
+			x, err := m.constOf(v.buf.elems[v.off+i], et)
+			if err != nil {
+				return nil, err
+			}
+			c.Elems = append(c.Elems, x)
+		}
+		return c, nil
+	case *aggregate:
+		c := &types.Composite{Variant: v.variant}
+		for i, e := range v.elems {
+			x, err := m.constOf(e, elemTypeOf(t, v.variant, i))
+			if err != nil {
+				return nil, err
+			}
+			c.Elems = append(c.Elems, x)
+		}
+		return c, nil
+	}
+	return nil, fmt.Errorf("a value of type %s cannot be a constant", t)
+}
+
+func isFuncOrChan(t types.Type) bool {
+	switch t.(type) {
+	case *types.Signature, *types.Chan:
+		return true
+	}
+	return false
 }

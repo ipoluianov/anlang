@@ -45,6 +45,10 @@ func (c *checker) objDecl(obj Object) {
 	case *Const:
 		c.constDecl(obj, di.typ, di.init, di.iota, di.spec != di.from)
 	case *Var:
+		if di.vars == nil && di.init != nil && c.isMapCall(di.init) {
+			c.mappingDecl(obj, di.typ, di.init)
+			break
+		}
 		c.errorf(obj.pos, "decl.var.package-kinds", "package-level variable %s: only atomic, sync and hardware mapping types are allowed at package level", obj.name)
 		vars := di.vars
 		if vars == nil {
@@ -97,6 +101,120 @@ func (c *checker) cycleError(cycle []Object) {
 	c.errorf(first.Pos(), rule, "initialization cycle or invalid recursive declaration: %s refers to itself through %s", first.Name(), strings.Join(append(names, first.Name()), " -> "))
 }
 
+// isMapCall reports whether e is a call of unsafe.Map.
+func (c *checker) isMapCall(e syntax.Expr) bool {
+	call, ok := unparen(e).(*syntax.CallExpr)
+	if !ok {
+		return false
+	}
+	ix, ok := unparen(call.Fun).(*syntax.IndexExpr)
+	if !ok {
+		return false
+	}
+	var id *syntax.Name
+	switch f := unparen(ix.X).(type) {
+	case *syntax.Name:
+		id = f
+	case *syntax.SelectorExpr:
+		pkgName, ok := unparen(f.X).(*syntax.Name)
+		if !ok {
+			return false
+		}
+		_, obj := c.scope.LookupParent(pkgName.Name)
+		pn, ok := obj.(*PkgName)
+		if !ok || pn.Imported == nil || pn.Imported.Path != "an/unsafe" {
+			return false
+		}
+		return f.Sel.Name == "Map"
+	default:
+		return false
+	}
+	_, obj := c.scope.LookupParent(id.Name)
+	b, ok := obj.(*Builtin)
+	return ok && b.id == _UnsafeMap
+}
+
+// mappingDecl checks a package-level variable initialized by unsafe.Map:
+// a hardware mapping (decl.var.package-kinds, mem.unsafe.map).
+func (c *checker) mappingDecl(obj *Var, typ, init syntax.Expr) {
+	if len(c.pkg.Profiles) != 1 || c.pkg.Profiles[0] != "core" {
+		c.errorf(obj.pos, "decl.var.package-kinds", "hardware mapping %s: allowed only in packages whose profile set is exactly {core}", obj.name)
+	}
+	c.declMapVar, c.declInit = obj, init
+	var x operand
+	c.expr(&x, init)
+	c.declMapVar, c.declInit = nil, nil
+	if x.mode == invalid {
+		obj.typ = Typ[Invalid]
+		return
+	}
+	obj.typ = x.typ
+	if typ != nil {
+		if t := c.typExpr(typ); isValid(t) && !Identical(t, x.typ) {
+			c.errorf(typ.Pos(), "mem.unsafe.map", "hardware mapping %s has type %s, but its declared type is %s", obj.name, x.typ, t)
+		}
+	}
+}
+
+// unsafeMap checks unsafe.Map[T](addr): an addressable value of type T
+// bound to the memory at addr, as the initializer of a package-level
+// variable (mem.unsafe.map).
+func (c *checker) unsafeMap(x *operand, e *syntax.CallExpr, ix *syntax.IndexExpr) {
+	x.expr = e
+	if len(ix.Indices) != 1 {
+		c.errorf(ix.Pos(), "mem.unsafe.map", "unsafe.Map takes one type argument")
+		x.invalidate()
+		return
+	}
+	t := c.typExpr(ix.Indices[0])
+	if len(e.Args) != 1 {
+		c.errorf(e.Pos(), "mem.unsafe.map", "unsafe.Map takes one address")
+		c.useArgs(e.Args)
+		x.invalidate()
+		return
+	}
+	var a operand
+	c.expr(&a, e.Args[0])
+	if a.mode == invalid || !isValid(t) {
+		x.invalidate()
+		return
+	}
+	if !IsPointerKind(a.typ) {
+		c.errorf(a.expr.Pos(), "mem.unsafe.map", "the address of unsafe.Map must be a pointer kind of an/unsafe, not %s", &a)
+		x.invalidate()
+		return
+	}
+	v := c.declMapVar
+	if v == nil || unparen(c.declInit) != e {
+		c.errorf(e.Pos(), "mem.unsafe.map", "unsafe.Map may be used only as the initializer of a package-level variable")
+		x.invalidate()
+		return
+	}
+	k := &Const{object: object{name: v.name + ".addr", typ: a.typ, pkg: c.pkg, pos: a.expr.Pos()}}
+	if a.mode == constant_ {
+		k.Val = a.val
+	} else {
+		var bad *syntax.Name
+		syntax.Walk(e.Args[0], func(n syntax.Node) bool {
+			if id, ok := n.(*syntax.Name); ok && bad == nil {
+				if w, ok := c.info.Uses[id].(*Var); ok && !w.field {
+					bad = id
+				}
+			}
+			return bad == nil
+		})
+		if bad != nil {
+			c.errorf(bad.Pos(), "decl.var.package-init", "the address of unsafe.Map must be evaluable at compile time; it uses the variable %s", bad.Name)
+			x.invalidate()
+			return
+		}
+		k.Init, k.Computed = e.Args[0], true
+		c.info.Computed = append(c.info.Computed, k)
+	}
+	v.Map = k
+	x.mode, x.typ = variable, t
+}
+
 // constDecl checks a constant declaration (decl.const.go). If the type
 // and initializer are inherited from an earlier spec, errors in them are
 // reported at the constant's name.
@@ -122,8 +240,7 @@ func (c *checker) constDecl(obj *Const, typ, init syntax.Expr, iota int, inherit
 		if !isValid(t) {
 			return
 		}
-		if !isConstType(t) {
-			c.notSupported(typ.Pos(), 10, "constants of type "+t.String())
+		if !isConstType(t) && !c.computedType(typ.Pos(), t) {
 			return
 		}
 	}
@@ -131,16 +248,24 @@ func (c *checker) constDecl(obj *Const, typ, init syntax.Expr, iota int, inherit
 		return
 	}
 	var x operand
+	if obj.parent == c.pkg.Scope {
+		c.declConst, c.declInit = obj, init
+	}
 	c.expr(&x, init)
+	c.declConst, c.declInit = nil, nil
 	if x.mode == invalid {
 		return
 	}
 	if x.mode != constant_ {
-		if call, ok := unparen(init).(*syntax.CallExpr); ok && x.mode != typexpr && !c.isConversion(call) {
-			c.notSupported(init.Pos(), 10, "compile-time evaluation of calls in constant declarations")
-		} else {
-			c.errorf(init.Pos(), "decl.const.go", "%s is not constant", &x)
+		if (x.mode == value || x.mode == variable || x.mode == mapindex || x.mode == commaok) && c.computes(init) {
+			c.computedConst(obj, t, &x, init)
+			return
 		}
+		c.errorf(init.Pos(), "decl.const.go", "%s is not constant", &x)
+		return
+	}
+	if t != nil && !isConstType(t) {
+		c.errorf(init.Pos(), "ct.const.typed", "a constant of type %s must be computed by a function call", t)
 		return
 	}
 	if t != nil {
@@ -151,6 +276,114 @@ func (c *checker) constDecl(obj *Const, typ, init syntax.Expr, iota int, inherit
 		}
 	}
 	obj.typ, obj.Val = x.typ, x.val
+}
+
+// computes reports whether the initializer of a constant contains a call
+// of a function, a composite literal or a computed constant, which makes
+// the constant computed at compile time (ct.const.call).
+func (c *checker) computes(init syntax.Expr) bool {
+	found := false
+	syntax.Walk(init, func(n syntax.Node) bool {
+		switch n := n.(type) {
+		case *syntax.CallExpr:
+			if !c.isConversion(n) {
+				found = true
+			}
+		case *syntax.CompositeLit:
+			found = true
+		case *syntax.Name:
+			if k, ok := c.info.Uses[n].(*Const); ok && k.Computed {
+				found = true
+			}
+		case *syntax.FuncLit:
+			return false
+		}
+		return !found
+	})
+	return found
+}
+
+// computedConst records a constant computed by function calls
+// (ct.const.call, ct.const.typed).
+func (c *checker) computedConst(obj *Const, t Type, x *operand, init syntax.Expr) {
+	// The initializer may use constants, functions and types only.
+	var bad *syntax.Name
+	syntax.Walk(init, func(n syntax.Node) bool {
+		if id, ok := n.(*syntax.Name); ok && bad == nil {
+			if v, ok := c.info.Uses[id].(*Var); ok && !v.field {
+				bad = id
+			}
+		}
+		_, lit := n.(*syntax.FuncLit)
+		return bad == nil && !lit
+	})
+	if bad != nil {
+		c.errorf(bad.Pos(), "decl.const.go", "%s is not constant: it uses the variable %s", exprString(init), bad.Name)
+		return
+	}
+	if t != nil {
+		c.assignment(x, t, "constant declaration")
+		if x.mode == invalid {
+			return
+		}
+	} else {
+		c.defaultUntyped(x)
+		t = x.typ
+	}
+	if !c.computedType(init.Pos(), t) {
+		return
+	}
+	obj.typ, obj.Init, obj.Computed = t, init, true
+	c.info.Computed = append(c.info.Computed, obj)
+}
+
+// computedType reports whether a computed constant may have type t, and
+// reports an error if not (ct.const.types).
+func (c *checker) computedType(pos syntax.Pos, t Type) bool {
+	if bad := constTypeViolation(t, map[Type]bool{}); bad != nil {
+		c.errorf(pos, "ct.const.types", "a constant cannot have type %s: it contains %s", t, bad)
+		return false
+	}
+	return true
+}
+
+func constTypeViolation(t Type, seen map[Type]bool) Type {
+	if seen[t] {
+		return nil
+	}
+	seen[t] = true
+	switch u := t.Underlying().(type) {
+	case *Basic:
+		return nil
+	case *Array:
+		return constTypeViolation(u.Elem, seen)
+	case *Slice:
+		return constTypeViolation(u.Elem, seen)
+	case *Map:
+		if bad := constTypeViolation(u.Key, seen); bad != nil {
+			return bad
+		}
+		return constTypeViolation(u.Elem, seen)
+	case *Struct:
+		for _, f := range u.Fields {
+			if bad := constTypeViolation(f.typ, seen); bad != nil {
+				return bad
+			}
+		}
+		return nil
+	case *Enum:
+		for _, v := range u.Variants {
+			for _, f := range v.fields {
+				if bad := constTypeViolation(f.typ, seen); bad != nil {
+					return bad
+				}
+			}
+		}
+		return nil
+	case *Interface:
+		return nil // the dynamic value is checked when it is computed
+	}
+	return t
 }
 
 // isConversion reports whether call is a conversion T(x).
@@ -385,6 +618,14 @@ func (c *checker) validType(root *Named, t Type, path []*Named) {
 func (c *checker) funcType(ft *syntax.FuncType, literal bool) *Signature {
 	sig := &Signature{}
 	sig.Params, sig.Variadic = c.params(ft.Params, true)
+	if n := sig.Params.Len(); n > 0 {
+		if _, ok := sig.Params.Vars[n-1].typ.(*TupleType); ok {
+			sig.AnyTuple, sig.Variadic = true, false
+			if literal {
+				c.errorf(ft.Pos(), "ct.any.tuple", "a function literal cannot have a ...any parameter")
+			}
+		}
+	}
 	sig.Results, _ = c.params(ft.Results, false)
 	// Parameter and result names share one block (decl.visibility.go).
 	seen := map[string]bool{}
@@ -420,13 +661,14 @@ func (c *checker) params(list *syntax.FieldList, isParams bool) (*Tuple, bool) {
 			}
 		}
 		var typ Type
+		anyTuple := false
 		if id, ok := unparen(ftype).(*syntax.Name); ok && id.Name == "any" && variadic && c.lookup(id.Name) == universeAny {
-			c.notSupported(ftype.Pos(), 10, "...any parameters")
-			typ = Typ[Invalid]
+			// A compile-time tuple (ct.any.tuple).
+			typ, anyTuple = &TupleType{Elems: c.instTuple}, true
 		} else {
 			typ = c.typExpr(ftype)
 		}
-		if variadic && i == len(list.List)-1 {
+		if variadic && i == len(list.List)-1 && !anyTuple {
 			typ = &Slice{Elem: typ}
 		}
 		inout := false

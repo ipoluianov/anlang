@@ -1,6 +1,9 @@
 package syntax
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // Parse parses one Anlang source file. It returns the file and all lexical
 // and syntax errors; the file is nil only if the package clause is
@@ -1339,7 +1342,13 @@ func (p *parser) simpleStmt(labelOK, rangeOK bool) Stmt {
 			x := p.expr()
 			return &AssignStmt{Lhs: lhs, TokPos: pos, Tok: tok, Rhs: []Expr{&UnaryExpr{OpPos: rpos, Op: Range, X: x}}}
 		}
-		return &AssignStmt{Lhs: lhs, TokPos: pos, Tok: tok, Rhs: p.exprList()}
+		rhs := p.exprList()
+		if tok == Assign && len(rhs) == 1 {
+			if call := p.asmCall(rhs[0]); call != nil {
+				return &AsmStmt{Lhs: lhs, TokPos: pos, Call: call, Text: p.asmText()}
+			}
+		}
+		return &AssignStmt{Lhs: lhs, TokPos: pos, Tok: tok, Rhs: rhs}
 	}
 	if len(lhs) > 1 {
 		p.errorExpected("':=' or '='")
@@ -1365,7 +1374,31 @@ func (p *parser) simpleStmt(labelOK, rangeOK bool) Stmt {
 		p.next()
 		return s
 	}
+	if call := p.asmCall(x); call != nil {
+		return &AsmStmt{Call: call, Text: p.asmText()}
+	}
 	return &ExprStmt{X: x}
+}
+
+// asmCall returns x if it is the beginning asm(regs) of an asm statement:
+// a call of the contextual word asm followed by a raw string literal
+// (stmt.asm.syntax).
+func (p *parser) asmCall(x Expr) *CallExpr {
+	call, ok := x.(*CallExpr)
+	if !ok || p.mode != AnlangMode || p.tok.Kind != String || !strings.HasPrefix(p.tok.Lit, "`") {
+		return nil
+	}
+	if n, ok := call.Fun.(*Name); !ok || n.Name != "asm" || call.Ellipsis.IsValid() || len(call.Args) > 1 {
+		return nil
+	}
+	return call
+}
+
+// asmText parses the instruction text of an asm statement.
+func (p *parser) asmText() *BasicLit {
+	lit := &BasicLit{ValuePos: p.tok.Pos, Kind: p.tok.Kind, Value: p.tok.Lit}
+	p.next()
+	return lit
 }
 
 func (p *parser) ifStmt() *IfStmt {

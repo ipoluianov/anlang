@@ -1,0 +1,38 @@
+// want: ok
+
+package main
+
+import "an/fmt"
+
+type Runner interface {
+	Run()
+}
+
+type Named interface {
+	Run()
+	Name() string
+}
+
+type Task struct{}
+
+func (t Task) Run()         { fmt.Println("task") }
+func (t Task) Name() string { return "task" }
+
+// effects: run none
+// exec: run Console Panic
+func run(rs [2]Runner) {
+	for _, r := range rs {
+		if r != nil {
+			r.Run()
+		}
+	}
+}
+
+func toRunner(n Named) Runner {
+	return n
+}
+
+func main() {
+	var n Named = Task{}
+	run([2]Runner{toRunner(n), nil})
+}

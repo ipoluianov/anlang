@@ -1,0 +1,29 @@
+// want: ok
+
+package main
+
+// effects: recv Block
+func recv(c chan int) int {
+	return <-c
+}
+
+// effects: send Block Panic
+func send(c chan int) {
+	c <- 1
+}
+
+// effects: poll none
+func poll(c chan int) bool {
+	select {
+	case <-c:
+		return true
+	default:
+		return false
+	}
+}
+
+func main() {
+	_ = poll
+	_ = recv
+	_ = send
+}

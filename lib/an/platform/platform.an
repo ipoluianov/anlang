@@ -1,0 +1,55 @@
+// Package platform describes platforms (spec/13-targets.md §13.4): what
+// an environment provides to programs, how a program starts and ends,
+// and how it reaches the services of the environment.
+package platform
+
+profile core, app, ui
+
+import (
+	"an/arch"
+	"an/effect"
+)
+
+// Platform is a platform description (target.platform.schema).
+type Platform struct {
+	// Name is the platform name used in targets and file suffixes.
+	Name string
+	// Provides are the environment effects the platform can provide.
+	Provides []effect.Effect
+	// Dynamic tells whether the platform has dynamic loading.
+	Dynamic bool
+	// Rules implement the platform operations start, exit and write
+	// (target.arch.ops) for the architectures of the platform.
+	Rules []arch.Rule
+	// Formats are the kinds of the binary formats the platform accepts.
+	Formats []string
+	// Profiles are the profiles allowed for package main.
+	Profiles []string
+	// OnPanic is the default panic action.
+	OnPanic PanicAction
+}
+
+// PanicAction is what a panic does (spec/19-runtime.md §19.4). The zero
+// value DefaultPanic, in a target description, stands for the default
+// of the platform.
+type PanicAction enum {
+	DefaultPanic
+	PrintAndExit
+	Reset
+	Halt
+}
+
+// DOS is MS-DOS and compatible systems on the 8086: programs reach the
+// system through int 21h and end with function 4Ch.
+const DOS = Platform{
+	Name:     "dos",
+	Provides: []effect.Effect{effect.Console, effect.Video, effect.File, effect.Keyboard, effect.Clock, effect.StaticAlloc},
+	Rules: []arch.Rule{
+		{Op: "start", Code: "CLD"},
+		{Op: "exit", Code: "MOV AX, {x}\nMOV AH, 0x4C\nINT 0x21"},
+		{Op: "write", Code: "MOV BX, {x}\nMOV DX, {p}\nMOV CX, {y}\nMOV AH, 0x40\nINT 0x21"},
+	},
+	Formats:  []string{"flat", "mz"},
+	Profiles: []string{"core"},
+	OnPanic:  PrintAndExit,
+}

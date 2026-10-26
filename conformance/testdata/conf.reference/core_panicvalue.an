@@ -1,0 +1,23 @@
+// want: ok
+
+// An explicit panic runs the deferred calls, then prints its value.
+package main
+
+profile core
+
+import "an/fmt"
+
+type Code u8
+
+func check(c Code) {
+	if c > 3 {
+		panic("bad code")
+	}
+	fmt.Println("code", c)
+}
+
+func main() {
+	defer fmt.Println("cleanup")
+	check(1)
+	check(7)
+}

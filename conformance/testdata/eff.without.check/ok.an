@@ -1,0 +1,20 @@
+// want: ok
+// checks: eff.without.form
+
+package main
+
+import "an/effect"
+
+func sum(xs [4]int) int {
+	ensures effect.Without(effect.Alloc, effect.Console)
+
+	t := 0
+	for _, x := range xs {
+		t += x
+	}
+	return t
+}
+
+func main() {
+	_ = sum([4]int{1, 2, 3, 4})
+}

@@ -1,0 +1,16 @@
+// want: ok
+// checks: expr.bounds.check
+
+// A slice expression out of bounds panics with the message of Go.
+package main
+
+profile core
+
+import "an/fmt"
+
+func window(s string, lo, hi int) string { return s[lo:hi] }
+
+func main() {
+	fmt.Println(window("abcdef", 1, 4))
+	fmt.Println(window("abcdef", 2, 9))
+}

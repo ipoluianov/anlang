@@ -1202,6 +1202,17 @@ func (p *printer) stmt(stmt syntax.Stmt, nextIsRBrace bool) {
 		p.print(s.Tok, blank)
 		p.exprList(s.TokPos, s.Rhs, depth, 0, syntax.Pos{})
 
+	case *syntax.AsmStmt:
+		if len(s.Lhs) > 0 {
+			p.exprList(s.Pos(), s.Lhs, 1, 0, s.TokPos)
+			p.print(blank)
+			p.setPos(s.TokPos)
+			p.print(syntax.Assign, blank)
+		}
+		p.expr0(s.Call, 1)
+		p.print(blank)
+		p.expr(s.Text)
+
 	case *syntax.GoStmt:
 		p.print(syntax.Go, blank)
 		p.expr(s.Call)

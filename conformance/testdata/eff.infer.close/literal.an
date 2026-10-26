@@ -1,0 +1,28 @@
+// want: ok
+// checks: eff.infer.rules
+
+package main
+
+import "an/fmt"
+
+// The literal calls a parameter of the enclosing function: the
+// reference belongs to twice.
+// effects: twice Alloc
+func twice(f func()) func() {
+	return func() {
+		f()
+		f()
+	}
+}
+
+// effects: useTwice Alloc Console Panic
+func useTwice() {
+	g := twice(func() { fmt.Println("x") })
+	if g != nil {
+		g()
+	}
+}
+
+func main() {
+	useTwice()
+}

@@ -1,0 +1,26 @@
+// want: ok
+
+package main
+
+import "an/fmt"
+
+// effects: even Console Panic
+func even(n uint) bool {
+	if n == 0 {
+		return true
+	}
+	return odd(n - 1)
+}
+
+// effects: odd Console Panic
+func odd(n uint) bool {
+	if n == 0 {
+		fmt.Println("odd reached zero")
+		return false
+	}
+	return even(n - 1)
+}
+
+func main() {
+	_ = even(4)
+}

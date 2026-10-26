@@ -1,0 +1,30 @@
+// want: ok
+
+// fmt.Printf with a constant format, checked at compile time, in the
+// core profile.
+package main
+
+profile core
+
+import "an/fmt"
+
+type Level u8
+
+func (l Level) String() string {
+	if l > 2 {
+		return "high"
+	}
+	return "low"
+}
+
+func main() {
+	fmt.Printf("%d %5d|%-5d|%05d %+d % d\n", 42, -42, 42, -42, 7, 7)
+	fmt.Printf("%x %X %#x %o %#o %b %#b\n", 255, 255, 255, 8, 8, 5, 5)
+	fmt.Printf("%.3d %8.3d %d %d\n", 7, -7, i64(-9000000000000000000), u64(18000000000000000000))
+	fmt.Printf("[%s] [%8s] [%-8s] [%.2s] [%5.1s]\n", "abc", "abc", "abc", "héllo", "xyz")
+	fmt.Printf("%t %6t %-6t| %c%c%c %v %v\n", true, false, true, 'A', 'é', 0x4E16, 12, "str")
+	fmt.Printf("%v %s %d%%\n", Level(1), Level(3), 100)
+	var w u8 = 200
+	var n i16 = -1234
+	fmt.Printf("%3d|%-6d|%x|%v\n", w, n, w, n)
+}

@@ -1,0 +1,9 @@
+package jsonparse
+
+import "an/fmt"
+
+// Parse parses s.
+func Parse(s string) int {
+	fmt.Println("parsing", s)
+	return len(s)
+}

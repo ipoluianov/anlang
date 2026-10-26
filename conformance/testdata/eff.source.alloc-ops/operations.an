@@ -1,0 +1,135 @@
+// want: ok
+
+package main
+
+type Point struct {
+	X, Y int
+}
+
+type Color enum {
+	Red
+	Green
+}
+
+type Named interface {
+	Name() string
+}
+
+func (p Point) Name() string { return "point" }
+
+func (c Color) Name() string { return "color" }
+
+// effects: arrays none
+func arrays() [4]int {
+	var a [4]int
+	a[1] = 2
+	b := a
+	b[0] = 1
+	return b
+}
+
+// effects: makeSlice Alloc
+func makeSlice() []int {
+	return make([]int, 3)
+}
+
+// effects: emptyLiteral none
+func emptyLiteral() []int {
+	return []int{}
+}
+
+// effects: literal Alloc
+func literal() []int {
+	return []int{1, 2}
+}
+
+// effects: appendOne Alloc
+func appendOne(s []int) []int {
+	return append(s, 1)
+}
+
+// effects: appendNone none
+func appendNone(s []int) []int {
+	return append(s)
+}
+
+// effects: concat Alloc
+func concat(a, b string) string {
+	return a + b
+}
+
+// effects: constConcat none
+func constConcat() string {
+	return "a" + "b"
+}
+
+// effects: toBytes Alloc
+func toBytes(s string) []u8 {
+	return []u8(s)
+}
+
+// effects: mapWrite Alloc
+func mapWrite(m map[string]int) {
+	m["a"] = 1
+}
+
+// effects: mapRead none
+func mapRead(m map[string]int) int {
+	return m["a"]
+}
+
+// effects: sliceWrite Alloc Panic
+func sliceWrite(s []int) {
+	s[0] = 1
+}
+
+// effects: sliceRead Panic
+func sliceRead(s []int) int {
+	return s[0]
+}
+
+// effects: boxStruct Alloc
+func boxStruct(p Point) Named {
+	return p
+}
+
+// effects: boxSmall none
+func boxSmall(c Color) Named {
+	return c
+}
+
+// effects: capture Alloc
+func capture(n int) func() int {
+	return func() int { return n }
+}
+
+// effects: noCapture none
+func noCapture() func(int) int {
+	return func(x int) int { return x }
+}
+
+// effects: methodValue Alloc
+func methodValue(p Point) func() string {
+	return p.Name
+}
+
+func main() {
+	_ = arrays()
+	_ = makeSlice()
+	_ = emptyLiteral()
+	_ = literal()
+	_ = appendOne(nil)
+	_ = appendNone(nil)
+	_ = concat("a", "b")
+	_ = constConcat()
+	_ = toBytes("x")
+	mapWrite(nil)
+	_ = mapRead(nil)
+	sliceWrite(nil)
+	_ = sliceRead(nil)
+	_ = boxStruct(Point{})
+	_ = boxSmall(Red)
+	_ = capture(1)
+	_ = noCapture()
+	_ = methodValue(Point{})
+}

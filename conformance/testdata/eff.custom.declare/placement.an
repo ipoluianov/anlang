@@ -1,0 +1,11 @@
+// want: eff.custom.declare
+
+package main
+
+import "an/effect"
+
+func main() {
+	const Local = effect.Declare("Local")
+	_ = effect.Declare("Expr")
+	_ = Local
+}

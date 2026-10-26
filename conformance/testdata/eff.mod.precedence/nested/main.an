@@ -1,0 +1,10 @@
+// want: eff.mod.deny
+// checks: eff.mod.precedence
+
+package main
+
+import "conf/jsonparse"
+
+func main() {
+	_ = jsonparse.Parse("x")
+}

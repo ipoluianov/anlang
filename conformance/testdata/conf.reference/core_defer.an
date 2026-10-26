@@ -1,0 +1,30 @@
+// want: ok
+
+// Deferred calls run when a function returns and when the program
+// panics, in the core profile.
+package main
+
+profile core
+
+import "an/fmt"
+
+func step(name string, n int) {
+	fmt.Println("deferred", name, n)
+}
+
+func work() int {
+	defer step("work", 1)
+	defer step("work", 2)
+	fmt.Println("working")
+	return 7
+}
+
+func main() {
+	defer fmt.Println("main done")
+	fmt.Println(work())
+	var a [3]int
+	i := 3
+	defer step("main", i)
+	a[i%4] = 1
+	fmt.Println("not reached")
+}

@@ -1,0 +1,13 @@
+// want: eff.profile.allowed
+
+package main
+
+profile core
+
+func grow(s []int) []int {
+	return append(s, 1)
+}
+
+func main() {
+	_ = grow(nil)
+}

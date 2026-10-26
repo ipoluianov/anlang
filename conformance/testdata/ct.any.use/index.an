@@ -1,0 +1,12 @@
+// want: ct.any.use
+
+package main
+
+func first(args ...any) {
+	x := args
+	_ = x
+}
+
+func main() {
+	first(1)
+}

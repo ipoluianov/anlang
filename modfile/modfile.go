@@ -11,15 +11,39 @@ import (
 
 // File is a parsed anlang.mod.
 type File struct {
-	Module  string   // module name
-	Edition string   // language edition, for example "1.0"
-	Targets []string // default targets
+	Module  string       // module name
+	Edition string       // language edition, for example "1.0"
+	Targets []string     // default targets
+	Effects []EffectRule // rules of the effects directive
+}
+
+// EffectRule is a rule of the effects directive (eff.mod.syntax).
+type EffectRule struct {
+	Pattern string   // package pattern relative to the module root
+	Allow   bool     // allow; otherwise deny
+	Effects []string // bare effect names
+	Line    int
+}
+
+// Matches reports whether the rule's pattern matches the package with
+// path rel relative to the module root, "" for the root (eff.mod.pattern).
+func (r EffectRule) Matches(rel string) bool {
+	switch {
+	case r.Pattern == "...":
+		return true
+	case strings.HasSuffix(r.Pattern, "/..."):
+		dir := strings.TrimSuffix(r.Pattern, "/...")
+		return rel == dir || strings.HasPrefix(rel, dir+"/")
+	}
+	return rel == r.Pattern
 }
 
 var (
 	moduleName = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)  // decl.import.module
 	edition    = regexp.MustCompile(`^[0-9]+\.[0-9]+$`)   // Edition
 	targetName = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`) // TargetName
+	effectRule = regexp.MustCompile(`^(\.\.\.|[a-z][a-z0-9_]*(?:/[a-z][a-z0-9_]*)*(?:/\.\.\.)?)[ \t]+(allow|deny)[ \t]*\{([^}]*)\}$`)
+	identifier = regexp.MustCompile(`^[\pL_][\pL\pN_]*$`)
 	directive  = regexp.MustCompile(`^(module|anlang|targets|effects|generate)\b`)
 )
 
@@ -29,6 +53,20 @@ var onceRule = map[string]string{
 	"anlang":  "tool.mod.edition",
 	"targets": "tool.mod.targets",
 	"effects": "tool.mod.effects",
+}
+
+func parseEffectRule(text string) (EffectRule, bool) {
+	m := effectRule.FindStringSubmatch(text)
+	if m == nil {
+		return EffectRule{}, false
+	}
+	r := EffectRule{Pattern: m[1], Allow: m[2] == "allow"}
+	for _, name := range strings.Split(m[3], ",") {
+		if name = strings.TrimSpace(name); name != "" {
+			r.Effects = append(r.Effects, name)
+		}
+	}
+	return r, true
 }
 
 // Parse parses the contents of an anlang.mod file. The name is used in
@@ -46,7 +84,8 @@ func Parse(name string, data []byte) (*File, []*syntax.Error) {
 	seen := map[string]int{}
 
 	lines := strings.Split(string(data), "\n")
-	for i, raw := range lines {
+	for i := 0; i < len(lines); i++ {
+		raw := lines[i]
 		line := i + 1
 		text := raw
 		if j := strings.Index(text, "//"); j >= 0 {
@@ -90,7 +129,43 @@ func Parse(name string, data []byte) (*File, []*syntax.Error) {
 				}
 				f.Targets = append(f.Targets, t)
 			}
-		case "effects", "generate":
+		case "effects":
+			if arg != "(" {
+				errorf(line, "eff.mod.syntax", "want \"effects (\" followed by one rule per line and \")\"")
+				continue
+			}
+			closed := false
+			for i+1 < len(lines) {
+				i++
+				text := lines[i]
+				if j := strings.Index(text, "//"); j >= 0 {
+					text = text[:j]
+				}
+				text = strings.TrimSpace(text)
+				if text == "" {
+					continue
+				}
+				if text == ")" {
+					closed = true
+					break
+				}
+				r, ok := parseEffectRule(text)
+				if !ok {
+					errorf(i+1, "eff.mod.syntax", "invalid effect rule %q: want <pattern> allow|deny {<effects>}", text)
+					continue
+				}
+				r.Line = i + 1
+				for _, name := range r.Effects {
+					if !identifier.MatchString(name) {
+						errorf(i+1, "eff.mod.syntax", "invalid effect name %q", name)
+					}
+				}
+				f.Effects = append(f.Effects, r)
+			}
+			if !closed {
+				errorf(line, "eff.mod.syntax", "effects directive without a closing \")\"")
+			}
+		case "generate":
 			errorf(line, "", "%s directive: not supported yet by this compiler", m)
 		}
 	}

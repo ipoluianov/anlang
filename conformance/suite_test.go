@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"an/build"
+	"an/effects"
 	"an/interp"
 	"an/lower"
 	"an/syntax"
@@ -62,11 +63,14 @@ func loadSuite(t *testing.T) []suiteTest {
 				tests = append(tests, suiteTest{rule: r.Name(), name: e.Name(), path: path, dir: true})
 			case strings.HasSuffix(e.Name(), ".an"):
 				tests = append(tests, suiteTest{rule: r.Name(), name: strings.TrimSuffix(e.Name(), ".an"), path: path})
-			case strings.HasSuffix(e.Name(), ".out"):
+			case strings.HasSuffix(e.Name(), ".out"), strings.HasSuffix(e.Name(), ".in"), strings.HasSuffix(e.Name(), ".screen"):
+				// Expected output, keyboard input and expected screen of a
+				// reference program (conf.suite.layout).
+				base := strings.TrimSuffix(e.Name(), filepath.Ext(e.Name()))
 				if !slices.ContainsFunc(entries, func(f os.DirEntry) bool {
-					return f.Name() == strings.TrimSuffix(e.Name(), ".out") || f.Name() == strings.TrimSuffix(e.Name(), ".out")+".an"
+					return f.Name() == base || f.Name() == base+".an"
 				}) {
-					t.Errorf("%s: no test named %s", path, strings.TrimSuffix(e.Name(), ".out"))
+					t.Errorf("%s: no test named %s", path, base)
 				}
 			default:
 				t.Errorf("%s: want .an files and project directories only", path)
@@ -102,6 +106,7 @@ func TestSuite(t *testing.T) {
 				}
 				t.Fatalf("rules %s, want %s; diagnostics:%s", show(got), show(want), b.String())
 			}
+			tt.checkEffects(t, infos, len(want) == 0)
 			out, err := os.ReadFile(filepath.Join("testdata", tt.rule, tt.name+".out"))
 			if err == nil {
 				if len(want) > 0 {
@@ -118,19 +123,7 @@ func TestSuite(t *testing.T) {
 // it is empty for "// want: ok".
 func (tt suiteTest) expectation(t *testing.T) (want, checks []string) {
 	t.Helper()
-	files := []string{tt.path}
-	if tt.dir {
-		files = nil
-		err := filepath.WalkDir(tt.path, func(path string, d os.DirEntry, err error) error {
-			if err == nil && !d.IsDir() && (strings.HasSuffix(path, ".an") || d.Name() == "anlang.mod") {
-				files = append(files, path)
-			}
-			return err
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
+	files := tt.files(t)
 	nwant := 0
 	for _, f := range files {
 		data, err := os.ReadFile(f)
@@ -159,6 +152,24 @@ func (tt suiteTest) expectation(t *testing.T) (want, checks []string) {
 	}
 	slices.Sort(want)
 	return slices.Compact(want), checks
+}
+
+// files returns the source files and anlang.mod of the test.
+func (tt suiteTest) files(t *testing.T) []string {
+	if !tt.dir {
+		return []string{tt.path}
+	}
+	var files []string
+	err := filepath.WalkDir(tt.path, func(path string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && (strings.HasSuffix(path, ".an") || d.Name() == "anlang.mod") {
+			files = append(files, path)
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
 }
 
 // run checks the test and returns the type information of its packages,
@@ -190,6 +201,84 @@ func (tt suiteTest) run(t *testing.T) ([]*types.Info, []*syntax.Error) {
 	return infos, diags
 }
 
+// checkEffects compares the // effects: and // exec: expectations of
+// the test with the inferred effects (conf.suite.layout, item 8).
+func (tt suiteTest) checkEffects(t *testing.T, infos []*types.Info, positive bool) {
+	t.Helper()
+	type expect struct {
+		kind, fn string
+		want     []string
+	}
+	var expects []expect
+	for _, f := range tt.files(t) {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, line := range strings.Split(string(data), "\n") {
+			line = strings.TrimSpace(line)
+			for _, kind := range []string{"effects", "exec"} {
+				if rest, ok := strings.CutPrefix(line, "// "+kind+":"); ok {
+					fields := strings.Fields(rest)
+					if len(fields) < 2 {
+						t.Fatalf("%s: want \"// %s: <function> <effect> ...\"", f, kind)
+					}
+					want := fields[1:]
+					if len(want) == 1 && want[0] == "none" {
+						want = nil
+					}
+					slices.Sort(want)
+					expects = append(expects, expect{kind, fields[0], want})
+				}
+			}
+		}
+	}
+	if len(expects) == 0 {
+		return
+	}
+	if !positive {
+		t.Fatalf("effect expectations in a negative test")
+	}
+	var in []effects.Input
+	for _, info := range infos {
+		in = append(in, effects.Input{Info: info})
+	}
+	prog := effects.NewProgram(effects.AnalyzeAll(in, nil))
+	root := infos[len(infos)-1].Pkg.Path
+	for _, x := range expects {
+		key := root + "." + x.fn
+		s := prog.Summary(key)
+		if s == nil {
+			t.Errorf("// %s: no function %s", x.kind, x.fn)
+			continue
+		}
+		set := s.C
+		if x.kind == "exec" {
+			set = prog.Exec(key)
+		}
+		var got []string
+		for e := range set {
+			got = append(got, e.Name())
+		}
+		slices.Sort(got)
+		if !slices.Equal(got, x.want) {
+			var chains []string
+			for e := range set {
+				chains = append(chains, strings.Join(prog.Chain(key, e, x.kind == "exec"), " → "))
+			}
+			slices.Sort(chains)
+			t.Errorf("%s of %s: got %s, want %s\n\t%s\n\t%s", x.kind, x.fn, effectList(got), effectList(x.want), s, strings.Join(chains, "\n\t"))
+		}
+	}
+}
+
+func effectList(es []string) string {
+	if len(es) == 0 {
+		return "none"
+	}
+	return strings.Join(es, " ")
+}
+
 // interpret runs a reference program in the IR interpreter and compares
 // its observable behavior with the expected output (conf.reference):
 // what the program writes to standard output and standard error, in
@@ -206,6 +295,12 @@ func (tt suiteTest) interpret(t *testing.T, infos []*types.Info, want string) {
 	prog.IntBits = 64
 	var out strings.Builder
 	err := interp.Run(prog, interp.Options{Stdout: &out, Stderr: &out, MaxSteps: 1e8})
+	var ne *interp.NotExecutableError
+	if errors.As(err, &ne) {
+		// A program for one target: its emulator runs it (TestBackendDOS).
+		t.Logf("not run in the IR interpreter: %v", err)
+		return
+	}
 	if err != nil {
 		out.WriteString("exit status 2\n")
 	}
@@ -250,6 +345,11 @@ func TestLowerSuite(t *testing.T) {
 			if len(diags) > 0 {
 				t.Skip("rejected; TestSuite reports it")
 			}
+			var in []effects.Input
+			for _, info := range infos {
+				in = append(in, effects.Input{Info: info})
+			}
+			effects.NewProgram(effects.AnalyzeAll(in, nil))
 			prog, errs := lower.Program(infos...)
 			for _, err := range errs {
 				if !strings.Contains(err.Msg, "not supported yet") {

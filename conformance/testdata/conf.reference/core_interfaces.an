@@ -1,0 +1,61 @@
+// want: ok
+
+// Interfaces over values without allocation, in the core profile.
+package main
+
+profile core
+
+import "an/fmt"
+
+type Celsius i16
+
+func (c Celsius) String() string {
+	if c < 0 {
+		return "frost"
+	}
+	return "warm"
+}
+
+type Meters u32
+
+func (m Meters) String() string { return "meters" }
+
+type Namer interface {
+	String() string
+}
+
+type Kelvin u8
+
+func (k Kelvin) String() string { return "kelvin" }
+
+func describe(n Namer) string {
+	if n == nil {
+		return "nil"
+	}
+	return n.String()
+}
+
+func kind(x Namer) string {
+	switch x.(type) {
+	case Meters:
+		return "meters"
+	case Celsius:
+		return "celsius"
+	}
+	return "other"
+}
+
+func main() {
+	var n Namer = Celsius(-5)
+	fmt.Println(describe(n), describe(Celsius(20)), describe(Meters(3)))
+	fmt.Println(Celsius(-1), Meters(100))
+	fmt.Println(kind(Meters(3)), kind(Celsius(2)), kind(Kelvin(1)))
+	var x Namer = Meters(42)
+	if v, ok := x.(Meters); ok {
+		fmt.Println("meters", v+1, u32(v))
+	}
+	_, isCelsius := x.(Celsius)
+	fmt.Println(isCelsius, x, x == Namer(Meters(42)), x != Namer(Meters(43)), x == Namer(Celsius(42)))
+	var e Namer
+	fmt.Println(e == nil, e, describe(e))
+}

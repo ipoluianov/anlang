@@ -386,6 +386,23 @@ type AssignStmt struct {
 	Rhs    []Expr
 }
 
+// AsmStmt is [Lhs =] asm(Regs) `Text` (stmt.asm.syntax). Call is the
+// call asm(Regs), whose argument is the struct of input registers.
+type AsmStmt struct {
+	Lhs    []Expr // nil without output registers
+	TokPos Pos    // position of "=", if Lhs
+	Call   *CallExpr
+	Text   *BasicLit
+}
+
+// Regs returns the expression of the input registers, or nil.
+func (s *AsmStmt) Regs() Expr {
+	if len(s.Call.Args) == 0 {
+		return nil
+	}
+	return s.Call.Args[0]
+}
+
 // GoStmt is go Call.
 type GoStmt struct {
 	Go   Pos
@@ -673,14 +690,20 @@ func (*MapType) exprNode()        {}
 func (*ChanType) exprNode()       {}
 func (*EnumType) exprNode()       {}
 
-func (s *BadStmt) Pos() Pos        { return s.From }
-func (s *DeclStmt) Pos() Pos       { return s.Decl.Pos() }
-func (s *EmptyStmt) Pos() Pos      { return s.Semicolon }
-func (s *LabeledStmt) Pos() Pos    { return s.Label.Pos() }
-func (s *ExprStmt) Pos() Pos       { return s.X.Pos() }
-func (s *SendStmt) Pos() Pos       { return s.Chan.Pos() }
-func (s *IncDecStmt) Pos() Pos     { return s.X.Pos() }
-func (s *AssignStmt) Pos() Pos     { return s.Lhs[0].Pos() }
+func (s *BadStmt) Pos() Pos     { return s.From }
+func (s *DeclStmt) Pos() Pos    { return s.Decl.Pos() }
+func (s *EmptyStmt) Pos() Pos   { return s.Semicolon }
+func (s *LabeledStmt) Pos() Pos { return s.Label.Pos() }
+func (s *ExprStmt) Pos() Pos    { return s.X.Pos() }
+func (s *SendStmt) Pos() Pos    { return s.Chan.Pos() }
+func (s *IncDecStmt) Pos() Pos  { return s.X.Pos() }
+func (s *AssignStmt) Pos() Pos  { return s.Lhs[0].Pos() }
+func (s *AsmStmt) Pos() Pos {
+	if len(s.Lhs) > 0 {
+		return s.Lhs[0].Pos()
+	}
+	return s.Call.Pos()
+}
 func (s *GoStmt) Pos() Pos         { return s.Go }
 func (s *DeferStmt) Pos() Pos      { return s.Defer }
 func (s *ReturnStmt) Pos() Pos     { return s.Return }
@@ -709,6 +732,7 @@ func (s *ExprStmt) End() Pos    { return s.X.End() }
 func (s *SendStmt) End() Pos    { return s.Value.End() }
 func (s *IncDecStmt) End() Pos  { return s.TokPos.Advance("++") }
 func (s *AssignStmt) End() Pos  { return s.Rhs[len(s.Rhs)-1].End() }
+func (s *AsmStmt) End() Pos     { return s.Text.End() }
 func (s *GoStmt) End() Pos      { return s.Call.End() }
 func (s *DeferStmt) End() Pos   { return s.Call.End() }
 func (s *ReturnStmt) End() Pos {
@@ -757,6 +781,7 @@ func (*ExprStmt) stmtNode()       {}
 func (*SendStmt) stmtNode()       {}
 func (*IncDecStmt) stmtNode()     {}
 func (*AssignStmt) stmtNode()     {}
+func (*AsmStmt) stmtNode()        {}
 func (*GoStmt) stmtNode()         {}
 func (*DeferStmt) stmtNode()      {}
 func (*ReturnStmt) stmtNode()     {}

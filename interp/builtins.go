@@ -2,6 +2,7 @@ package interp
 
 import (
 	"fmt"
+	"math/big"
 	"strings"
 	"unicode/utf8"
 
@@ -13,6 +14,11 @@ func (m *machine) builtin(b *ir.Builtin, c *ir.Call, args []value) value {
 	switch b.Bname {
 	case "len":
 		return int64(m.length(args[0]))
+	case "effect.Mark", "effect.Defer":
+		return nil // effects are checked at compile time (spec/07-effects.md)
+	case "unsafe.Data":
+		// The interpreter has no addresses (spec/22-compiler.md §22.10.3).
+		return uint64(0)
 	case "cap":
 		switch x := args[0].(type) {
 		case sliceVal:
@@ -115,6 +121,14 @@ func (m *machine) builtin(b *ir.Builtin, c *ir.Call, args []value) value {
 		return nil
 	case "fmt.Sprint", "fmt.Sprintln":
 		return m.sprint(b.Bname == "fmt.Sprintln", c, args)
+	case "fmt.Printf", "fmt.Sprintf":
+		format := args[0].(iface).v.(string)
+		s := m.sprintf(format, args[1:])
+		if b.Bname == "fmt.Sprintf" {
+			return s
+		}
+		fmt.Fprint(m.opts.Stdout, s)
+		return nil
 	case "mapkeys":
 		mp, _ := args[0].(*mapObj)
 		var keys []value
@@ -127,6 +141,10 @@ func (m *machine) builtin(b *ir.Builtin, c *ir.Call, args []value) value {
 		i := int(args[1].(int64))
 		r, w := utf8.DecodeRuneInString(s[i:])
 		return []value{int64(r), int64(w)}
+	case "bits.WrappingAdd", "bits.WrappingSub", "bits.WrappingMul",
+		"bits.SaturatingAdd", "bits.SaturatingSub", "bits.SaturatingMul",
+		"bits.CheckedAdd", "bits.CheckedSub", "bits.CheckedMul":
+		return m.bitsOp(b, args[0], args[1])
 	case "Option.Get":
 		o := args[0].(*aggregate)
 		if o.variant == 1 {
@@ -136,6 +154,66 @@ func (m *machine) builtin(b *ir.Builtin, c *ir.Call, args []value) value {
 		return []value{m.zero(tu.At(0).Type()), false}
 	}
 	panic("interp: built-in " + b.Bname)
+}
+
+// bitsOp computes a function of an/bits from the mathematical result
+// (expr.bits.functions).
+func (m *machine) bitsOp(b *ir.Builtin, x, y value) value {
+	name := b.Bname[len("bits."):]
+	t := b.Typ
+	if tu, ok := t.(*types.Tuple); ok {
+		t = tu.At(0).Type()
+	}
+	n, signed := m.intSize(t)
+	toBig := func(v value) *big.Int {
+		if s, ok := v.(int64); ok {
+			return big.NewInt(s)
+		}
+		return new(big.Int).SetUint64(v.(uint64))
+	}
+	r := new(big.Int)
+	switch name[len(name)-3:] {
+	case "Add":
+		r.Add(toBig(x), toBig(y))
+	case "Sub":
+		r.Sub(toBig(x), toBig(y))
+	case "Mul":
+		r.Mul(toBig(x), toBig(y))
+	}
+	lo, hi := new(big.Int), new(big.Int).Lsh(big.NewInt(1), uint(n))
+	if signed {
+		lo.Neg(new(big.Int).Lsh(big.NewInt(1), uint(n-1)))
+		hi.Lsh(big.NewInt(1), uint(n-1))
+	}
+	hi.Sub(hi, big.NewInt(1))
+	fits := r.Cmp(lo) >= 0 && r.Cmp(hi) <= 0
+	fromBig := func(r *big.Int) value {
+		if signed {
+			return r.Int64()
+		}
+		return r.Uint64()
+	}
+	switch {
+	case strings.HasPrefix(name, "Wrapping"):
+		mod := new(big.Int).Lsh(big.NewInt(1), uint(n))
+		r.Mod(r, mod) // Euclidean: 0 <= r < mod
+		if signed && r.Cmp(hi) > 0 {
+			r.Sub(r, mod)
+		}
+		return fromBig(r)
+	case strings.HasPrefix(name, "Saturating"):
+		switch {
+		case r.Cmp(lo) < 0:
+			return fromBig(lo)
+		case r.Cmp(hi) > 0:
+			return fromBig(hi)
+		}
+		return fromBig(r)
+	}
+	if !fits {
+		return []value{m.zero(t), false}
+	}
+	return []value{fromBig(r), true}
 }
 
 // appendValues appends vals to s. The buffer of s is reused if s ends at
@@ -154,6 +232,7 @@ func (m *machine) appendValues(s sliceVal, vals []value, et types.Type) value {
 		return s
 	}
 	c := max(n, 2*s.cap, 4)
+	m.alloc(c)
 	elems := make([]value, c)
 	for i := range s.len {
 		elems[i] = share(s.buf.elems[s.off+i])

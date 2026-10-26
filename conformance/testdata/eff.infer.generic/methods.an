@@ -1,0 +1,60 @@
+// want: ok
+// checks: eff.infer.rules
+
+package main
+
+import "an/fmt"
+
+type Shower interface {
+	Show()
+}
+
+type Loud struct{}
+
+func (l Loud) Show() { fmt.Println("loud") }
+
+type Calm struct{}
+
+func (c Calm) Show() {}
+
+type Box[T Shower] struct {
+	item T
+}
+
+// effects: Box.Show none
+func (b Box[T]) Show() {
+	b.item.Show()
+}
+
+// effects: loudBox Console Panic
+func loudBox() {
+	b := Box[Loud]{}
+	b.Show()
+}
+
+// effects: calmBox none
+func calmBox() {
+	b := Box[Calm]{}
+	b.Show()
+}
+
+// Converting a value of a type parameter to an interface records the
+// methods of the type argument as implementations.
+// effects: keep Alloc
+func keep[T Shower](x T) [1]Shower {
+	return [1]Shower{x}
+}
+
+// effects: showAll none
+// exec: showAll Console Panic
+func showAll(s [1]Shower) {
+	if s[0] != nil {
+		s[0].Show()
+	}
+}
+
+func main() {
+	loudBox()
+	calmBox()
+	showAll(keep(Loud{}))
+}

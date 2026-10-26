@@ -130,7 +130,7 @@ func methodType(m *Func) *Signature {
 	if sig.Recv == nil {
 		return sig
 	}
-	return &Signature{Params: sig.Params, Results: sig.Results, Variadic: sig.Variadic}
+	return &Signature{Params: sig.Params, Results: sig.Results, Variadic: sig.Variadic, AnyTuple: sig.AnyTuple}
 }
 
 // missingMethod returns why type v does not implement interface t, or ""

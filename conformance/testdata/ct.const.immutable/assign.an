@@ -1,0 +1,14 @@
+// want: ct.const.immutable
+
+package main
+
+const table = [4]int{1, 2, 3, 4}
+
+func bump(x inout int) {
+	x++
+}
+
+func main() {
+	table[0] = 5
+	bump(table[1])
+}

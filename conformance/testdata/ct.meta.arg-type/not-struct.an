@@ -1,0 +1,12 @@
+// want: ct.meta.arg-type
+
+package main
+
+import "an/meta"
+
+func main() {
+	for const f := range meta.Fields(int) {
+		_ = f
+	}
+	_ = meta.Variants(string)
+}

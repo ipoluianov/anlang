@@ -1,0 +1,22 @@
+// want: eff.without.check
+
+package main
+
+import (
+	"an/effect"
+	"an/fmt"
+)
+
+// Each calls f; its own body has no effects.
+func each(xs [2]int, f func(int)) {
+	ensures effect.Without(effect.Console)
+
+	for _, x := range xs {
+		f(x)
+	}
+}
+
+func main() {
+	each([2]int{}, func(n int) {})
+	each([2]int{}, func(n int) { fmt.Println(n) })
+}

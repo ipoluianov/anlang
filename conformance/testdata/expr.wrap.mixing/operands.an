@@ -1,0 +1,15 @@
+// want: expr.wrap.mixing
+
+package main
+
+import "an/wrap"
+
+func main() {
+	var h wrap.U32 = 1
+	var n u32 = 2
+	var g wrap.U16 = 3
+	_ = h + n
+	_ = h == wrap.U32(g)
+	_ = h * wrap.U32(n)
+	_ = g < h
+}

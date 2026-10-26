@@ -345,6 +345,16 @@ for i, c := range []u8("HELLO") {
 v, ok := conv.Narrow[u8](n)               // n not known to fit
 ```
 
+**type.conv.int-narrow-facts** — Until the solver of [08-contracts](08-contracts.md) is available (roadmap step 20), the compiler proves that the value of `x` is representable in `T` from these facts only, each of which gives an interval of values; the conversion is proven if the interval of `x` lies within the range of `T`:
+
+1. a constant has its value;
+2. a value of an integer type lies in the range of its type;
+3. `x & c` and `c & x` with a constant `c ≥ 0` lie in [0, `c`];
+4. `x % c` with a constant `c > 0` lies in [0, `c`-1] if `x` has an unsigned type, in [1-`c`, `c`-1] otherwise;
+5. `x >> c` with a constant `c` and `x` of an unsigned type of n bits lies in [0, 2ⁿ⁻ᶜ-1];
+6. the key variable of a `range` clause declared with `:=` that the loop body does not assign or pass as an argument lies in [0, n-1] when the range expression is an integer constant n, an array of length n, or a composite literal or a conversion of a constant string with n elements;
+7. a parenthesized expression and a conversion between integer types that is proven have the interval of their operand.
+
 **type.conv.wrap** — A conversion from any integer type to a `wrap` type, and from a `wrap` type to any `wrap` type, is always allowed and truncates modulo 2ⁿ. A conversion from a `wrap` type to an ordinary integer type follows **type.conv.int-widen** and **type.conv.int-narrow** for the corresponding integer type.
 
 **type.conv.float-int** — A conversion from a floating-point type to an integer type panics if the truncated value is not representable in the target type, unless representability is proven. Conversions from integer to floating-point types are as in Go.

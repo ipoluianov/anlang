@@ -1,0 +1,13 @@
+// want: eff.profile.allowed target.effects.provides
+// checks: eff.profile.multiple
+
+package main
+
+profile core, app
+
+import "an/effect"
+
+func main() {
+	_ = make([]int, 2)
+	effect.Mark(effect.Gpio)
+}

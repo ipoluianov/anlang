@@ -38,6 +38,12 @@ func (o *object) setType(typ Type) { o.typ = typ }
 type Const struct {
 	object
 	Val constant.Value
+	// A constant computed by function calls (ct.const.call) has no Val;
+	// Init is its initializer, which the compile-time evaluator runs, and
+	// Value its computed value (see ComputedValue).
+	Init     syntax.Expr
+	Computed bool
+	Value    any
 }
 
 // TypeName is a declared type: the name of a defined type or an alias.
@@ -48,13 +54,18 @@ type TypeName struct {
 // Var is a variable, a parameter, a result or a struct field.
 type Var struct {
 	object
-	inout    bool // an inout parameter (decl.param.inout)
-	field    bool
-	embedded bool         // an embedded struct field
-	owner    *funcContext // function or function literal that declares a local variable
-	second   bool         // holds a second-class closure (expr.closure.capture-inout)
-	param    bool         // a parameter or a result
-	used     bool
+	pointerRecv bool // a receiver written as a removed pointer type, reported already
+	readonly    bool // the iteration variable of for const over a tuple (ct.for.binding)
+	inout       bool // an inout parameter (decl.param.inout)
+	field       bool
+	embedded    bool         // an embedded struct field
+	owner       *funcContext // function or function literal that declares a local variable
+	second      bool         // holds a second-class closure (expr.closure.capture-inout)
+	param       bool         // a parameter or a result
+	used        bool
+	// Map is the address of a hardware mapping: a package-level variable
+	// initialized by unsafe.Map (mem.unsafe.map).
+	Map *Const
 }
 
 // Inout reports whether v is an inout parameter.
@@ -110,6 +121,10 @@ type Package struct {
 	Path  string
 	Name  string
 	Scope *Scope
+	// Profiles are the profiles the package declares, in the order core,
+	// app, ui; app if it has no profile clause (eff.profile.default).
+	// The standard library packages built into the compiler declare all.
+	Profiles []string
 }
 
 // Scope maps names to objects. Lookups that fail continue in the parent

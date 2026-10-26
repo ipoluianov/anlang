@@ -1,0 +1,147 @@
+// want: ok
+
+package main
+
+import "an/wrap"
+
+type Shape interface {
+	Area() int
+}
+
+// effects: add Panic
+func add(a, b int) int {
+	return a + b
+}
+
+// effects: wrapAdd none
+func wrapAdd(a, b wrap.U32) wrap.U32 {
+	return a + b
+}
+
+// effects: wrapDiv Panic
+func wrapDiv(a, b wrap.U32) wrap.U32 {
+	return a / b
+}
+
+// effects: divConst none
+func divConst(a int) int {
+	return a / 2
+}
+
+// effects: divMinusOne Panic
+func divMinusOne(a int) int {
+	return a / -1
+}
+
+// effects: unsignedDivMax none
+func unsignedDivMax(a u8) u8 {
+	return a % 255
+}
+
+// effects: shiftUnsigned none
+func shiftUnsigned(a int, n uint) int {
+	return a << n
+}
+
+// effects: shiftSigned Panic
+func shiftSigned(a int, n int) int {
+	return a << n
+}
+
+// effects: bitwise none
+func bitwise(a, b int) int {
+	return a&b | a ^ b&^a
+}
+
+// effects: arrayConst none
+func arrayConst(a [4]int) int {
+	return a[3]
+}
+
+// effects: arrayVar Panic
+func arrayVar(a [4]int, i int) int {
+	return a[i]
+}
+
+// effects: fullSlice none
+func fullSlice(s []int) []int {
+	return s[:]
+}
+
+// effects: subslice Panic
+func subslice(s []int) []int {
+	return s[1:]
+}
+
+// effects: assert Panic
+func assert(s Shape) int {
+	return s.(Sq).s
+}
+
+// effects: assertOk none
+func assertOk(s Shape) bool {
+	_, ok := s.(Sq)
+	return ok
+}
+
+// effects: compareNil none
+func compareNil(s Shape) bool {
+	return s == nil
+}
+
+// effects: compareIface Panic
+func compareIface(s, t Shape) bool {
+	return s == t
+}
+
+// effects: floatToInt Panic
+func floatToInt(f f64) int {
+	return int(f)
+}
+
+// effects: callPanic Panic
+func callPanic() {
+	panic("x")
+}
+
+// effects: incr Panic
+func incr(n int) int {
+	n++
+	return n
+}
+
+// effects: counter none
+func counter(n wrap.I8) wrap.I8 {
+	n++
+	return n
+}
+
+type Sq struct {
+	s int
+}
+
+func (q Sq) Area() int { return 0 }
+
+func main() {
+	_ = add(1, 2)
+	_ = wrapAdd(1, 2)
+	_ = wrapDiv(1, 2)
+	_ = divConst(1)
+	_ = divMinusOne(1)
+	_ = unsignedDivMax(1)
+	_ = shiftUnsigned(1, 2)
+	_ = shiftSigned(1, 2)
+	_ = bitwise(1, 2)
+	_ = arrayConst([4]int{})
+	_ = arrayVar([4]int{}, 1)
+	_ = fullSlice(nil)
+	_ = subslice(nil)
+	_ = assert(Sq{})
+	_ = assertOk(Sq{})
+	_ = compareNil(Sq{})
+	_ = compareIface(Sq{}, Sq{})
+	_ = floatToInt(1)
+	callPanic()
+	_ = incr(1)
+	_ = counter(1)
+}

@@ -1,0 +1,8 @@
+package jsonparse
+
+import "conf/jsonparse/fast"
+
+// Parse parses s.
+func Parse(s string) int {
+	return fast.Len(s)
+}

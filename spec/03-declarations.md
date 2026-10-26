@@ -11,7 +11,7 @@ TopLevelDecl  = Declaration | FunctionDecl | MethodDecl | HandlerDecl | GpuFunct
 
 **decl.package.dir** — A package is the set of source files in one directory that are selected for the current target (§3.4). All of them MUST have the same package clause.
 
-**decl.package.name** — The name in the package clause MUST equal the last element of the package's import path (§3.2), except for package `main`.
+**decl.package.name** — The name in the package clause MUST equal the last element of the package's import path (§3.2), except for package `main`. Hyphens in the last element are dropped: a target package in directory `an/target/dos-com` is `package doscom` (**target.pkg.name**); such a directory cannot be imported (**decl.import.paths**).
 
 **decl.package.main** — A program is built from a package named `main`, which MUST declare `func main()` with no parameters and no results, as in Go. Package `main` cannot be imported.
 

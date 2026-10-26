@@ -1,0 +1,10 @@
+// want: decl.import.unsafe
+
+// Only packages whose profile set is exactly {core} import an/unsafe.
+package main
+
+import "an/unsafe"
+
+func main() {
+	_ = unsafe.Data("text")
+}

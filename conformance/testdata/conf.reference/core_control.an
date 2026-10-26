@@ -1,0 +1,95 @@
+// want: ok
+
+// Control flow, functions, methods and multiple results in the core
+// profile.
+package main
+
+profile core
+
+import "an/fmt"
+
+type Point struct {
+	X, Y int
+}
+
+func (p Point) Add(q Point) Point { return Point{p.X + q.X, p.Y + q.Y} }
+
+func (p inout Point) Scale(k int) {
+	p.X *= k
+	p.Y *= k
+}
+
+func divmod(a, b int) (int, int) {
+	return a / b, a % b
+}
+
+func collatz(n int) int {
+	steps := 0
+	for n != 1 {
+		if n%2 == 0 {
+			n /= 2
+		} else {
+			n = 3*n + 1
+		}
+		steps++
+	}
+	return steps
+}
+
+func classify(n int) string {
+	switch {
+	case n < 0:
+		return "negative"
+	case n == 0:
+		return "zero"
+	case n < 10:
+		return "small"
+	}
+	return "large"
+}
+
+func swap(a, b inout int) {
+	a, b = b, a
+}
+
+func apply(f func(int) int, x int) int { return f(x) }
+
+func double(x int) int { return 2 * x }
+
+func main() {
+	q, r := divmod(17, 5)
+	fmt.Println(q, r, collatz(27), collatz(97))
+	for _, n := range [5]int{-3, 0, 7, 42, 9} {
+		fmt.Print(classify(n), " ")
+	}
+	fmt.Println()
+	p := Point{1, 2}.Add(Point{3, 4})
+	p.Scale(10)
+	fmt.Println(p, p.X, p.Y)
+	a, b := 1, 2
+	swap(a, b)
+	fmt.Println(a, b, apply(double, 21))
+	total := 0
+outer:
+	for i := range 10 {
+		for j := range 10 {
+			if j > i {
+				continue outer
+			}
+			if i+j > 12 {
+				break outer
+			}
+			total += i * j
+		}
+	}
+	fmt.Println(total)
+	switch x := total % 7; x {
+	case 0, 1:
+		fmt.Println("low", x)
+	case 2, 3, 4:
+		fmt.Println("mid", x)
+	default:
+		fmt.Println("high", x)
+	}
+	println("to standard error", 1, true)
+}

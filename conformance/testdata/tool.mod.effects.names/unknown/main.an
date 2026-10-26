@@ -1,0 +1,5 @@
+// want: tool.mod.effects.names
+
+package main
+
+func main() {}

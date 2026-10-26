@@ -1,0 +1,9 @@
+// want: eff.mod.deny
+
+package main
+
+import "conf/jsonparse"
+
+func main() {
+	_ = jsonparse.Parse("x")
+}

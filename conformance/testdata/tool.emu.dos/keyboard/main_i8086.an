@@ -1,0 +1,38 @@
+// want: ok
+
+// Keys come from the keyboard input of the emulator: DOS reads
+// characters, the BIOS also returns scan codes.
+package main
+
+profile core
+
+import (
+	"an/bios"
+	"an/dos"
+)
+
+func main() {
+	for dos.CharReady() {
+		c := dos.ReadChar()
+		if c == '\r' {
+			break
+		}
+		if c >= 'a' && c <= 'z' {
+			c -= 'a' - 'A'
+		}
+		dos.PrintChar(c)
+	}
+	dos.Print("\r\n")
+	ch, scan := bios.ReadKey()
+	dos.PrintChar(ch)
+	dos.PrintChar('0' + scan/16)
+	dos.PrintChar('0' + scan%16)
+	dos.Print("\r\n")
+	if bios.KeyReady() {
+		dos.Print("more\r\n")
+	}
+	dos.ReadChar()
+	if !bios.KeyReady() && !dos.CharReady() {
+		dos.Print("no more keys\r\n")
+	}
+}

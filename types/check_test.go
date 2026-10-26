@@ -29,7 +29,7 @@ func TestCheckErrors(t *testing.T) {
 		src string
 		msg string
 	}{
-		{"package main\nfunc main() { for const i := range 3 { _ = i } }", "for const: not supported yet"},
+		{"package main\nfunc f(n int) int {\n\trequires n > 0\n\treturn n\n}\nfunc main() { _ = f(1) }", "requires clauses: not supported yet"},
 	}
 	for _, tt := range tests {
 		_, errs := check(t, tt.src)

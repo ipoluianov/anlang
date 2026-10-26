@@ -34,3 +34,9 @@ go.work.sum
 
 # Anlang build outputs
 out/
+
+# Expected output of the reference programs (conf.suite.layout) is part of the suite.
+!conformance/testdata/**/*.out
+
+# External test suites, downloaded by scripts/ (not committed)
+external/

@@ -1,0 +1,16 @@
+// want: eff.profile.allowed target.effects.provides
+// checks: eff.deferred.attribution
+
+package main
+
+profile app
+
+import "an/effect"
+
+func later() {
+	effect.Defer(effect.Timers)
+}
+
+func main() {
+	later()
+}

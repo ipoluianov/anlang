@@ -1,0 +1,32 @@
+// want: ok
+
+// The text video memory is a hardware mapping at B800:0000; DOS output
+// appears on the screen too.
+package main
+
+profile core
+
+import (
+	"an/arch/i8086"
+	"an/dos"
+	"an/unsafe"
+)
+
+type Cell struct {
+	ch   u8
+	attr u8
+}
+
+var screen = unsafe.Map[[2000]Cell](i8086.Far(0xB800, 0))
+
+func main() {
+	dos.Print("Text mode 80x25\r\n")
+	for i, c := range []u8("HELLO") {
+		screen[5*80+10+i] = Cell{c, 0x1E}
+	}
+	screen[24*80+79] = Cell{'#', 0x70}
+	fmt := screen[5*80+12]
+	dos.PrintChar(fmt.ch)
+	dos.PrintChar('\r')
+	dos.PrintChar('\n')
+}

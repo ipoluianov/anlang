@@ -152,7 +152,7 @@ interrupt ADC1() {
 
 ## 8.7 Run-time checks
 
-**contract.check.runtime** — Integer overflow, index and slice bounds, narrowing conversions and arena generation checks ([04-expressions](04-expressions.md), [06-memory](06-memory.md)) are proof obligations of a different kind: if the solver proves that the check cannot fail, the check is removed; otherwise the check remains in the program, fails at run time with a panic, and gives the function the effect `Panic` ([07-effects](07-effects.md), **eff.source.panic**). Such checks do not make a program invalid by themselves.
+**contract.check.runtime** — Integer overflow, index and slice bounds, floating-point to integer conversion and arena generation checks ([04-expressions](04-expressions.md), [06-memory](06-memory.md)) are proof obligations of a different kind: if the solver proves that the check cannot fail, the check is removed; otherwise the check remains in the program, fails at run time with a panic, and gives the function the effect `Panic` ([07-effects](07-effects.md), **eff.source.panic**). Such checks do not make a program invalid by themselves. A narrowing conversion between integer types is not such a check: it compiles only when proven (**type.conv.int-narrow**).
 
 **contract.check.forbidden-panic** — Where `Panic` is forbidden (in `interrupt` and `trap` handlers, under `effect.Without(Panic)`, or by `anlang.mod`), every such check MUST be proven or the operation MUST be written in a form that cannot fail (`bits.WrappingAdd`, `conv.Narrow`, `wrap` types).
 

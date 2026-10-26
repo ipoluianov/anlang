@@ -1,0 +1,16 @@
+// want: ct.eval.no-env
+
+package main
+
+import "an/fmt"
+
+const answer = compute()
+
+func compute() int {
+	fmt.Println("computing")
+	return 42
+}
+
+func main() {
+	_ = answer
+}

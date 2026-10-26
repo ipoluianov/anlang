@@ -1,0 +1,4 @@
+package drv
+
+// Reset resets the device.
+func Reset() {}

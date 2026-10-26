@@ -187,6 +187,12 @@ func (c *checker) ident(x *operand, id *syntax.Name, wantType bool) {
 		if !isValid(obj.typ) {
 			return
 		}
+		if obj.Computed {
+			// A computed constant is a value that cannot be modified
+			// (ct.const.immutable).
+			x.mode, x.typ = value, obj.typ
+			return
+		}
 		x.mode, x.typ, x.val = constant_, obj.typ, obj.Val
 	case *TypeName:
 		c.objDecl(obj)
@@ -220,7 +226,14 @@ func (c *checker) ident(x *operand, id *syntax.Name, wantType bool) {
 		if !isValid(obj.typ) {
 			return
 		}
+		if _, ok := obj.typ.(*TupleType); ok && !c.tupleOK {
+			c.errorf(id.Pos(), "ct.any.use", "the ...any parameter %s may be used only in for const, in len and as the final argument of a call with ...", id.Name)
+			return
+		}
 		x.mode, x.typ, x.second = variable, obj.typ, obj.second
+		if obj.readonly {
+			x.mode = value // ct.for.binding
+		}
 	case *Func:
 		c.objDecl(obj)
 		x.mode, x.typ = value, obj.typ
@@ -241,6 +254,9 @@ func isBuiltinObj(obj Object) bool {
 
 // selector checks X.Sel: a qualified identifier or a field selector.
 func (c *checker) selector(x *operand, e *syntax.SelectorExpr) {
+	if c.descSelector(x, e) {
+		return
+	}
 	x.mode, x.expr = invalid, e
 	if id, ok := e.X.(*syntax.Name); ok {
 		if p, ok := c.lookup(id.Name).(*PkgName); ok {
@@ -445,7 +461,7 @@ func (c *checker) methodExpr(x *operand, e *syntax.SelectorExpr) {
 		recv.inout = true
 	}
 	params := append([]*Var{recv}, sig.Params.Vars...)
-	x.mode, x.typ, x.val = value, &Signature{Params: &Tuple{Vars: params}, Results: sig.Results, Variadic: sig.Variadic}, nil
+	x.mode, x.typ, x.val = value, &Signature{Params: &Tuple{Vars: params}, Results: sig.Results, Variadic: sig.Variadic, AnyTuple: sig.AnyTuple}, nil
 }
 
 func (c *checker) unary(x *operand, e *syntax.UnaryExpr) {
@@ -528,6 +544,10 @@ func (c *checker) overflow(x *operand) {
 	if !ok {
 		return
 	}
+	if b.info&IsWrapping != 0 {
+		x.val = wrapConst(x.val, b) // constant arithmetic wraps too (expr.wrap.const)
+		return
+	}
 	v, ok := c.representable(x.val, b)
 	if !ok {
 		c.errorf(x.expr.Pos(), "expr.int.const", "constant %s overflows %s", x.val, x.typ)
@@ -564,7 +584,11 @@ func (c *checker) binary(x *operand, e *syntax.BinaryExpr) {
 	}
 	if !Identical(x.typ, y.typ) {
 		if isValid(x.typ) && isValid(y.typ) {
-			c.errorf(e.OpPos, "expr.go", "invalid operation: %s (mismatched types %s and %s)", exprString(e), x.typ, y.typ)
+			rule := "expr.go"
+			if isWrapping(x.typ) || isWrapping(y.typ) {
+				rule = "expr.wrap.mixing"
+			}
+			c.errorf(e.OpPos, rule, "invalid operation: %s (mismatched types %s and %s)", exprString(e), x.typ, y.typ)
 		}
 		x.invalidate()
 		return
@@ -573,6 +597,11 @@ func (c *checker) binary(x *operand, e *syntax.BinaryExpr) {
 	switch e.Op {
 	case syntax.Add:
 		ok = isNumeric(x.typ) || isString(x.typ)
+		if tp, isTP := x.typ.(*TypeParam); isTP && !ok {
+			// Every type in the type set has +, numeric or string
+			// (type.param.go).
+			ok = c.allTerms(tp, func(t Type) bool { return isNumeric(t) || isString(t) })
+		}
 	case syntax.Sub, syntax.Mul, syntax.Quo:
 		ok = isNumeric(x.typ)
 	case syntax.Rem, syntax.And, syntax.Or, syntax.Xor, syntax.AndNot:
@@ -673,10 +702,20 @@ func (c *checker) comparison(x, y *operand, xNil, yNil bool, e *syntax.BinaryExp
 		if e.Op != syntax.Eql && e.Op != syntax.Neq {
 			rule, bad = "expr.cmp.nil", "operator "+e.Op.String()+" not defined on nil"
 		} else if !hasNil(other.typ) {
+			if id, ok := unparen(other.expr).(*syntax.Name); ok {
+				if v, ok := c.info.Uses[id].(*Var); ok && v.pointerRecv {
+					// The pointer receiver is reported (type.pointer.removed).
+					x.mode, x.typ, x.val = value, Typ[UntypedBool], nil
+					return
+				}
+			}
 			rule, bad = "expr.cmp.nil", "mismatched types "+other.typ.String()+" and untyped nil"
 		}
 	case !c.comparableTypes(x.typ, y.typ):
 		bad = "mismatched types " + x.typ.String() + " and " + y.typ.String()
+		if isWrapping(x.typ) || isWrapping(y.typ) {
+			rule = "expr.wrap.mixing"
+		}
 	case e.Op == syntax.Eql || e.Op == syntax.Neq:
 		z := x
 		if comparable(x.typ) {

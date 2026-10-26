@@ -1,0 +1,14 @@
+// want: ct.encoding.unmappable
+
+// Code page 866 has no emoji.
+package main
+
+profile core
+
+import "an/encoding"
+
+func show(s dstring) {}
+
+func main() {
+	show(encoding.CP866("smile \U0001F600"))
+}

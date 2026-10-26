@@ -1,0 +1,10 @@
+// want: ct.for.sequence
+
+package main
+
+func main() {
+	xs := []int{1, 2}
+	for const x := range xs {
+		_ = x
+	}
+}

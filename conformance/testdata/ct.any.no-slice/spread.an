@@ -1,0 +1,12 @@
+// want: ct.any.no-slice
+
+package main
+
+func count(args ...any) int {
+	return len(args)
+}
+
+func main() {
+	xs := []int{1, 2}
+	_ = count(xs...)
+}

@@ -1,0 +1,33 @@
+// want: ok
+// checks: expr.wrap.other-ops expr.wrap.convert
+
+package main
+
+import (
+	"an/fmt"
+	"an/wrap"
+)
+
+func fnv(data []u8) u64 {
+	var h wrap.U64 = 0xcbf29ce484222325
+	for _, b := range data {
+		h = (h ^ wrap.U64(b)) * 0x100000001b3
+	}
+	return u64(h)
+}
+
+func main() {
+	fmt.Println(fnv([]u8("hello")))
+	var x wrap.I8 = 127
+	x++
+	y := x
+	y--
+	min := wrap.I8(-128)
+	fmt.Println(x, y, -min, min/-1, min%-1, min>>1, wrap.U8(5)-6, wrap.I16(300)*300)
+	var u wrap.U32
+	u -= 1
+	fmt.Println(u, i8(wrap.I8(-5)), u8(wrap.U8(250)+10))
+	defer fmt.Println("division by zero still panics")
+	zero := wrap.U8(0)
+	fmt.Println(wrap.U8(1) / zero)
+}

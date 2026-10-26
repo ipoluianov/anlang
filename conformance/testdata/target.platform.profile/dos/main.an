@@ -1,0 +1,6 @@
+// want: target.platform.profile
+
+// Package main has the default profile app, which DOS does not allow.
+package main
+
+func main() {}

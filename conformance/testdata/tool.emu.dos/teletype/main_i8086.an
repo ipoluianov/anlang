@@ -1,0 +1,35 @@
+// want: ok
+
+// The BIOS teletype writes at the cursor, moves it with carriage return,
+// line feed and backspace, and scrolls the screen at the bottom.
+package main
+
+profile core
+
+import (
+	"an/bios"
+	"an/dos"
+)
+
+func puts(s string) {
+	for i := range len(s) {
+		bios.PutChar(s[i])
+	}
+}
+
+func main() {
+	bios.ClearScreen()
+	for i := range u8(30) {
+		bios.PutChar('0' + i%10)
+		puts(" line\r\n")
+	}
+	puts("abc\bX")
+	x, y := bios.Cursor()
+	bios.SetCursor(70, 0)
+	bios.WriteChar('*', 0x4F, 3)
+	bios.SetCursor(x, y)
+	puts("!")
+	x, y = bios.Cursor()
+	dos.PrintChar('0' + x)
+	dos.PrintChar('0' + y%10)
+}

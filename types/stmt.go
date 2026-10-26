@@ -1,8 +1,11 @@
 package types
 
 import (
+	"go/constant"
 	"slices"
 	"sort"
+	"strings"
+	"unicode/utf8"
 
 	"an/syntax"
 )
@@ -19,6 +22,24 @@ type funcContext struct {
 	// enclosing lists the labeled statements around the current
 	// statement, innermost last.
 	enclosing []*syntax.LabeledStmt
+}
+
+// isEffectWithout reports whether e is a call of effect.Without.
+func (c *checker) isEffectWithout(e syntax.Expr) bool {
+	call, ok := unparen(e).(*syntax.CallExpr)
+	if !ok {
+		return false
+	}
+	sel, ok := unparen(call.Fun).(*syntax.SelectorExpr)
+	if !ok {
+		return false
+	}
+	id, ok := unparen(sel.X).(*syntax.Name)
+	if !ok {
+		return false
+	}
+	pkg, ok := c.lookup(id.Name).(*PkgName)
+	return ok && pkg.Imported.Path == "an/effect" && sel.Sel.Name == "Without"
 }
 
 // stmtContext holds the statements permitted at a point of a body.
@@ -176,6 +197,9 @@ func (c *checker) stmt(ctxt stmtContext, s syntax.Stmt) {
 	case *syntax.ExprStmt:
 		c.exprStmt(s)
 
+	case *syntax.AsmStmt:
+		c.asmStmt(s)
+
 	case *syntax.SendStmt:
 		var ch, v operand
 		c.expr(&ch, s.Chan)
@@ -239,6 +263,17 @@ func (c *checker) stmt(ctxt stmtContext, s syntax.Stmt) {
 			c.stmt(0, s.Init)
 		}
 		c.condition(s.Cond, "if")
+		if tv := c.info.Types[s.Cond]; (c.instance != nil || c.unrolling) && tv.Value != nil && tv.Value.Kind() == constant.Bool {
+			// In an instance, only the branch that a constant condition
+			// takes is checked (ct.reject.call).
+			if constant.BoolVal(tv.Value) {
+				c.stmt(ctxt&^fallthroughOK, s.Body)
+			} else if s.Else != nil {
+				c.stmt(ctxt&^fallthroughOK, s.Else)
+			}
+			c.closeScope()
+			break
+		}
 		c.stmt(ctxt&^fallthroughOK, s.Body)
 		if s.Else != nil {
 			c.stmt(ctxt&^fallthroughOK, s.Else)
@@ -277,6 +312,18 @@ func (c *checker) stmt(ctxt stmtContext, s syntax.Stmt) {
 		c.rangeStmt(s)
 
 	case *syntax.ContractStmt:
+		if s.Word == "ensures" && c.isEffectWithout(s.X) {
+			// ensures effect.Without(...) is checked by effect inference
+			// (eff.without.form, eff.without.check).
+			c.inEnsures = true
+			var x operand
+			c.expr(&x, s.X)
+			c.inEnsures = false
+			if c.fn.parent != nil {
+				c.errorf(s.Pos(), "eff.without.form", "ensures effect.Without is not permitted in a function literal")
+			}
+			return
+		}
 		step := 21
 		if s.Word == "invariant" {
 			step = 23
@@ -395,6 +442,32 @@ func (c *checker) callStmt(what string, call *syntax.CallExpr) {
 	}
 }
 
+// computedRoot returns the computed constant that e is a part of, or
+// nil.
+func (c *checker) computedRoot(e syntax.Expr) *Const {
+	for {
+		switch x := unparen(e).(type) {
+		case *syntax.IndexExpr:
+			e = x.X
+		case *syntax.SelectorExpr:
+			if _, ok := c.info.Selections[x]; !ok {
+				if k, ok := c.info.Uses[x.Sel].(*Const); ok && k.Computed {
+					return k
+				}
+				return nil
+			}
+			e = x.X
+		case *syntax.Name:
+			if k, ok := c.info.Uses[x].(*Const); ok && k.Computed {
+				return k
+			}
+			return nil
+		default:
+			return nil
+		}
+	}
+}
+
 // lhsAddressable checks that the operand x of expression e can be assigned
 // to (stmt.assign.go).
 func (c *checker) lhsAddressable(e syntax.Expr, x *operand) bool {
@@ -403,6 +476,10 @@ func (c *checker) lhsAddressable(e syntax.Expr, x *operand) bool {
 		return false
 	case variable, mapindex:
 		return !c.capturedWrite(e)
+	}
+	if k := c.computedRoot(e); k != nil {
+		c.errorf(e.Pos(), "ct.const.immutable", "cannot assign to %s: the constant %s cannot be modified", exprString(e), k.name)
+		return false
 	}
 	if root := mapIndexRoot(c, e); root != nil {
 		c.errorf(e.Pos(), "expr.addr.map", "cannot assign to %s: the map element %s is not addressable", exprString(e), exprString(root))
@@ -480,6 +557,10 @@ func (c *checker) lhsVar(e syntax.Expr) (Type, bool) {
 		}
 		if v, ok := c.lookup(id.Name).(*Var); ok {
 			c.info.Uses[id] = v
+			if v.readonly {
+				c.errorf(e.Pos(), "ct.for.binding", "cannot assign to %s: the iteration variable of for const over a tuple is immutable", id.Name)
+				return Typ[Invalid], false
+			}
 			c.objDecl(v)
 			c.recordType(e, variable, v.typ, nil)
 			c.checkHeld(e)
@@ -899,7 +980,7 @@ func isReceive(e syntax.Expr) bool {
 
 func (c *checker) rangeStmt(s *syntax.RangeStmt) {
 	if s.Const {
-		c.notSupported(s.Pos(), 10, "for const")
+		c.forConst(s)
 		return
 	}
 	c.openScope()
@@ -988,6 +1069,11 @@ func (c *checker) rangeStmt(s *syntax.RangeStmt) {
 			c.declare(id, vars[i])
 			c.fn.vars = append(c.fn.vars, vars[i])
 		}
+		if id, ok := s.Key.(*syntax.Name); ok && len(vars) > 0 && vars[0].name == id.Name && x.mode != invalid {
+			if n, ok := c.rangeLength(s.X, &x); ok && !c.assigns(s.Body, id.Name) {
+				c.rangeKeys[vars[0]] = n // type.conv.int-narrow-facts 6
+			}
+		}
 	case syntax.Assign:
 		for i, e := range lhs {
 			if e == nil {
@@ -1009,6 +1095,173 @@ func (c *checker) rangeStmt(s *syntax.RangeStmt) {
 		}
 	}
 	c.stmt(breakOK|continueOK, s.Body)
+}
+
+// rangeLength returns the number of iterations of a range over x when it
+// is known: an integer constant, an array, a composite literal or a
+// conversion of a constant string (type.conv.int-narrow-facts 6).
+func (c *checker) rangeLength(e syntax.Expr, x *operand) (int64, bool) {
+	if x.mode == constant_ && isInteger(x.typ) {
+		return int64Val(x.val)
+	}
+	if a, ok := core(x.typ).(*Array); ok {
+		return a.Len, true
+	}
+	switch e := unparen(e).(type) {
+	case *syntax.CompositeLit:
+		for _, el := range e.Elts {
+			if _, ok := el.(*syntax.KeyValueExpr); ok {
+				return 0, false
+			}
+		}
+		return int64(len(e.Elts)), true
+	case *syntax.CallExpr:
+		if len(e.Args) == 1 && c.isConversion(e) {
+			if tv := c.info.Types[e.Args[0]]; tv.Value != nil && tv.Value.Kind() == constant.String {
+				str := constant.StringVal(tv.Value)
+				if s, ok := core(x.typ).(*Slice); ok && isByteOrRune(s.Elem) && s.Elem.Underlying().(*Basic).kind == I32 {
+					return int64(utf8.RuneCountInString(str)), true
+				}
+				return int64(len(str)), true
+			}
+		}
+	}
+	if x.mode == constant_ && x.val.Kind() == constant.String {
+		return int64(len(constant.StringVal(x.val))), true
+	}
+	return 0, false
+}
+
+// assigns reports whether the statements of body may modify the variable
+// named name: they assign it, increment or decrement it, or pass it as
+// an argument, which may be an inout argument. Conversions and the
+// built-in functions that do not modify their arguments are not calls
+// for this purpose.
+func (c *checker) assigns(body *syntax.BlockStmt, name string) bool {
+	found := false
+	is := func(e syntax.Expr) bool {
+		id, ok := unparen(e).(*syntax.Name)
+		return ok && id.Name == name
+	}
+	syntax.Walk(body, func(n syntax.Node) bool {
+		switch n := n.(type) {
+		case *syntax.AssignStmt:
+			if n.Tok != syntax.Define {
+				for _, e := range n.Lhs {
+					found = found || is(e)
+				}
+			}
+		case *syntax.IncDecStmt:
+			found = found || is(n.X)
+		case *syntax.CallExpr:
+			if c.readsArgs(n.Fun) {
+				break
+			}
+			for _, e := range n.Args {
+				found = found || is(e)
+			}
+		case *syntax.RangeStmt:
+			if n.Tok == syntax.Assign {
+				found = found || n.Key != nil && is(n.Key) || n.Value != nil && is(n.Value)
+			}
+		}
+		return !found
+	})
+	return found
+}
+
+// readsArgs reports whether fun, the callee of a call in a body not yet
+// checked, denotes a type or a built-in function that does not modify
+// its arguments.
+func (c *checker) readsArgs(fun syntax.Expr) bool {
+	switch f := unparen(fun).(type) {
+	case *syntax.Name:
+		switch obj := c.lookup(f.Name).(type) {
+		case *TypeName:
+			return true
+		case *Builtin:
+			return obj.id != _Copy && obj.id != _Delete && obj.id != _Clear
+		}
+	case *syntax.ArrayType, *syntax.MapType, *syntax.FuncType, *syntax.ChanType:
+		return true
+	}
+	return false
+}
+
+// interval returns bounds of the values of integer expression e from the
+// facts of type.conv.int-narrow-facts.
+func (c *checker) interval(e syntax.Expr) (lo, hi constant.Value, ok bool) {
+	if tv, ok := c.info.Types[e]; ok && tv.Value != nil {
+		v := constant.ToInt(tv.Value)
+		return v, v, v.Kind() == constant.Int
+	}
+	typeRange := func() (constant.Value, constant.Value, bool) {
+		b, ok := core(c.info.Types[e].Type).(*Basic)
+		if !ok || b.info&IsInteger == 0 || isUntyped(b) {
+			return nil, nil, false
+		}
+		bits, signed := c.intRange(b)
+		one := constant.MakeInt64(1)
+		if signed {
+			lo := constant.UnaryOp(tokenSub, constant.Shift(one, tokenShl, uint(bits-1)), 0)
+			return lo, constant.BinaryOp(constant.UnaryOp(tokenSub, lo, 0), tokenSub, one), true
+		}
+		return constant.MakeInt64(0), constant.BinaryOp(constant.Shift(one, tokenShl, uint(bits)), tokenSub, one), true
+	}
+	constOf := func(e syntax.Expr) (constant.Value, bool) {
+		if tv, ok := c.info.Types[e]; ok && tv.Value != nil {
+			v := constant.ToInt(tv.Value)
+			return v, v.Kind() == constant.Int
+		}
+		return nil, false
+	}
+	zero, one := constant.MakeInt64(0), constant.MakeInt64(1)
+	switch e := e.(type) {
+	case *syntax.ParenExpr:
+		return c.interval(e.X)
+	case *syntax.Name:
+		if v, ok := c.info.Uses[e].(*Var); ok {
+			if n, ok := c.rangeKeys[v]; ok && n >= 1 {
+				return zero, constant.MakeInt64(n - 1), true
+			}
+		}
+	case *syntax.BinaryExpr:
+		switch e.Op {
+		case syntax.And:
+			for _, x := range []syntax.Expr{e.Y, e.X} {
+				if k, ok := constOf(x); ok && constant.Sign(k) >= 0 {
+					return zero, k, true
+				}
+			}
+		case syntax.Rem:
+			if k, ok := constOf(e.Y); ok && constant.Sign(k) > 0 {
+				top := constant.BinaryOp(k, tokenSub, one)
+				if isUnsigned(c.info.Types[e.X].Type) {
+					return zero, top, true
+				}
+				return constant.UnaryOp(tokenSub, top, 0), top, true
+			}
+		case syntax.Shr:
+			b, isBasic := core(c.info.Types[e.X].Type).(*Basic)
+			if k, ok := constOf(e.Y); ok && isBasic && b.info&IsUnsigned != 0 {
+				bits, _ := c.intRange(b)
+				s, _ := constant.Int64Val(k)
+				if s >= int64(bits) {
+					return zero, zero, true
+				}
+				return zero, constant.BinaryOp(constant.Shift(one, tokenShl, uint(int64(bits)-s)), tokenSub, one), true
+			}
+		}
+	case *syntax.CallExpr:
+		if len(e.Args) == 1 && c.isConversion(e) {
+			if lo, hi, ok := c.interval(e.Args[0]); ok {
+				if tlo, thi, ok := typeRange(); ok && constant.Compare(lo, tokenGeq, tlo) && constant.Compare(hi, tokenLeq, thi) {
+					return lo, hi, true
+				}
+			}
+		}
+	}
+	return typeRange()
 }
 
 // rangeFunc returns the iteration types of an iterator function
@@ -1065,6 +1318,10 @@ func (c *checker) typeSwitchStmt(ctxt stmtContext, s *syntax.TypeSwitchStmt) {
 
 	var x operand
 	c.expr(&x, guard.X)
+	if x.mode != invalid && c.instance != nil && !isInterfaceType(x.typ) {
+		c.staticTypeSwitch(ctxt, s, lhs, &x)
+		return
+	}
 	var xi *Interface
 	if x.mode != invalid {
 		var ok bool
@@ -1162,5 +1419,49 @@ func (c *checker) goCall(call *syntax.CallExpr) {
 		if sig, ok := core(tv.Type).(*Signature); ok && len(c.inoutAccesses(call, sig)) > 0 {
 			c.notSupported(call.Pos(), 32, "inout arguments in go statements")
 		}
+	}
+}
+
+// asmStmt checks an asm statement (stmt.asm.restrictions,
+// stmt.asm.syntax): the input registers are a struct value, and the
+// output registers are assigned to a variable of a struct type.
+func (c *checker) asmStmt(s *syntax.AsmStmt) {
+	core := len(c.pkg.Profiles) > 0
+	for _, p := range c.pkg.Profiles {
+		core = core && p == "core"
+	}
+	if !core {
+		c.errorf(s.Pos(), "stmt.asm.restrictions", "an asm statement is allowed only in a package of the core profile")
+	}
+	file := strings.TrimSuffix(pathBase(s.Pos().File), ".an")
+	if c.conf.Arch == "" || !strings.HasSuffix(file, "_"+c.conf.Arch) {
+		c.errorf(s.Pos(), "stmt.asm.restrictions", "an asm statement is allowed only in a file with the suffix of its architecture, such as _%s", c.conf.Arch)
+	}
+	if r := s.Regs(); r != nil {
+		var x operand
+		c.expr(&x, r)
+		if x.mode != invalid {
+			if _, ok := x.typ.Underlying().(*Struct); !ok {
+				c.errorf(r.Pos(), "stmt.asm.syntax", "the input registers of asm must be a struct value, not %s", &x)
+			}
+		}
+	}
+	switch len(s.Lhs) {
+	case 0:
+	case 1:
+		var x operand
+		c.expr(&x, s.Lhs[0])
+		if x.mode == invalid {
+			return
+		}
+		if x.mode != variable {
+			c.errorf(s.Lhs[0].Pos(), "stmt.asm.syntax", "cannot assign the output registers of asm to %s", &x)
+			return
+		}
+		if _, ok := x.typ.Underlying().(*Struct); !ok {
+			c.errorf(s.Lhs[0].Pos(), "stmt.asm.syntax", "the output registers of asm must be assigned to a struct, not %s", &x)
+		}
+	default:
+		c.errorf(s.Lhs[1].Pos(), "stmt.asm.syntax", "asm assigns its output registers to one struct")
 	}
 }

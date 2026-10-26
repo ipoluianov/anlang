@@ -1,0 +1,14 @@
+// want: ok
+
+package main
+
+func work() {}
+
+// effects: start Tasks
+func start() {
+	go work()
+}
+
+func main() {
+	_ = start
+}

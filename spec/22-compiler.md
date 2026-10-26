@@ -47,6 +47,7 @@ The prototype is a single executable `anlang` written in Go without cgo. After t
 | `arch/...` | architecture descriptions; from them: instruction selection, assembler, instruction packages, interpreters |
 | `link` | linker and format writers: flat, MZ, ELF, PE/COFF, Mach-O, wasm, Intel HEX, UF2 |
 | `interp` | built-in interpreters for tests |
+| `lib` | the Anlang sources of the standard library, embedded in the executable (**impl.single-binary**) |
 | `diff` | semantic diff of two versions of code |
 | `server` | environment protocol and LSP |
 | `cmd/anlang` | command line |
@@ -110,6 +111,7 @@ The intermediate representation (IR) is the shared SSA form of step 5 of the pip
 - An `inout` parameter is an address. `fieldaddr`, `indexaddr` and `subsliceaddr` yield addresses of parts of values; an `inout` argument passes such an address (**mem.inout.param**, **mem.inout.subslice**).
 - Types are the types of the checker with all type parameters substituted: generic functions and types are translated by monomorphization, one function per list of type arguments.
 - Value semantics is explicit: `copy` marks every point where a value is logically copied (assignment, argument passing, return, storing into a part, capture by a closure). A backend implements it by copy-on-write (22.6); the interpreter shares the value and copies it on the first write through an address.
+- A hardware mapping (**mem.unsafe.map**) is the value `global`: the address of its memory, printed by its qualified name. An `asm` statement is the instruction `asm(regs) "text"`, whose result holds the output registers (**stmt.asm.syntax**).
 - Constructs whose translation belongs to later roadmap steps (channels, `go`, `select`, compile-time evaluation, the standard library) are reported by the IR builder as not supported yet, with the step number.
 
 ### 22.10.2 Textual format
@@ -164,7 +166,7 @@ b4: // range.done; preds: b1
 	return t15
 ```
 
-1. A function starts with a header `func NAME(PARAMS) RESULTS`, followed by `free(...)` for a function with free variables. `NAME` is the package path and the name: `conf.main`, `conf.Point.Add` for a method, `conf.Map[int,string]` for an instance of a generic function, `conf.Stack.Push[string]` for a method of an instance of a generic type, `conf.main$lit1` for a function literal, `conf.main$yield2` for the body of a range-over-func loop, `Option[int].Some` for the constructor of a variant. An `inout` parameter is written `NAME inout TYPE`.
+1. A function starts with a header `func NAME(PARAMS) RESULTS`, followed by `free(...)` for a function with free variables. `NAME` is the package path and the name: `conf.main`, `conf.Point.Add` for a method, `conf.Map[int,string]` for an instance of a generic function, `conf.Stack.Push[string]` for a method of an instance of a generic type, `conf.main$lit1` for a function literal, `conf.main$yield2` for the body of a range-over-func loop, `Option[int].Some` for the constructor of a variant, `conf.Print(int,string)` for an instance of a function with a `...any` parameter, whose tuple elements are separate parameters `args$0`, `args$1`, …. An `inout` parameter is written `NAME inout TYPE`.
 2. Each block starts with a line `bN:`, optionally followed by a comment with the origin of the block and its predecessors.
 3. Each instruction is on its own line, indented by a tab. An instruction with a result is written `tK: TYPE = OPERATION`; an instruction without a result is written `OPERATION`. Result numbers are unique within a function.
 4. An operand is written as a result name `tK`, the name of a parameter or free variable, the name of a function or built-in function, or a constant `VALUE:TYPE`; the zero value of a type is written `zero:TYPE`.
@@ -194,19 +196,90 @@ The operations are:
 | `jump bN`, `if v bT bF`, `return [vs]`, `panic v` | control instructions |
 | `defer CALL` | deferred call; the arguments are evaluated when `defer` executes (**stmt.defer.go**) |
 
-Built-in functions keep their Anlang names (`len`, `append`, `copy`, `delete`, `print`); the functions of `an/fmt` that are built into the compiler until roadmap steps 9–10 are named `fmt.Print`, `fmt.Println`, `fmt.Sprint` and `fmt.Sprintln`; helpers introduced by the IR builder have names that are not Anlang identifiers of the program (`appendslice`, `appendstring`, `mapkeys`, `decoderune`, `Option.Get`).
+Built-in functions keep their Anlang names (`len`, `append`, `copy`, `delete`, `print`); the functions of `an/fmt` and `an/bits` that are built into the compiler until roadmap steps 9–10 are named `fmt.Print`, `fmt.Println`, `fmt.Sprint` and `fmt.Sprintln`, and those of `an/bits` `bits.WrappingAdd` … `bits.CheckedMul`; helpers introduced by the IR builder have names that are not Anlang identifiers of the program (`appendslice`, `appendstring`, `mapkeys`, `decoderune`, `Option.Get`).
 
 ### 22.10.3 IR interpreter
 
 `anlang run -emu ir` builds the IR of the program and executes it in the IR interpreter (**tool.emu.ir**). The interpreter:
 
 - implements value semantics by copy-on-write of shared values, so its observable behavior is the behavior defined by [06-memory](06-memory.md);
-- performs the run-time checks of the language: integer overflow (**expr.int.checked**), division by zero, bounds, float-to-integer conversions (**type.conv.float-int**), the length of an `inout` subslice (**mem.inout.subslice**);
+- computes the wrapping types of `an/wrap` modulo 2ⁿ (**expr.wrap.ops**) and the functions of `an/bits` (**expr.bits.functions**);
+- performs the run-time checks of the language, with the panic messages of Go: integer overflow (**expr.int.checked**, **expr.int.div**), division by zero, bounds, float-to-integer conversions (**type.conv.float-int**), the length of an `inout` subslice (**mem.inout.subslice**);
 - prints `fmt.Print` and `fmt.Println` output to standard output and `print`, `println` and panic messages to standard error, in the formats of Go;
 - has no addresses: in `print` output, every non-nil map, slice, function or interface value prints its pointer as `0x1`;
-- does not execute channels, `go` and `select` (roadmap step 30).
+- does not execute channels, `go` and `select` (roadmap step 30);
+- does not execute `asm` statements and calls of the functions of instruction packages, which belong to one architecture: a program that reaches them stops with an error, and `unsafe.Data` returns 0.
 
-## 22.11 Open issues
+## 22.11 Code generation
 
-1. **Format of architecture descriptions.** Deferred to implementation — step 11; owned by [13-targets](13-targets.md).
-2. **General-purpose allocator for `app`.** Deferred to implementation — step 25. Own or ported; any allocator that satisfies [06-memory](06-memory.md) and passes the fuzzing of [23-conformance](23-conformance.md).
+The code generator (package `codegen`) is the backend of every architecture. It is driven by the architecture description and the platform description and contains nothing specific to one architecture (**target.arch.no-compiler-change**). It translates the IR of the program, together with the functions of the runtime package `an/runtime` that the program uses, into machine operations, replaces each operation by the template of an instruction selection rule ([13-targets](13-targets.md), 13.5.7), and links the result into one image that the binary format writes.
+
+### 22.11.1 Data layout
+
+**comp.gen.layout** — Values are laid out in memory as follows; a value is aligned to the smaller of its size and `ABI.Align`, and multi-byte integers are stored in the byte order of the architecture.
+
+| Type | Layout |
+| --- | --- |
+| `bool` | 1 byte, 0 or 1 |
+| integer and wrapping types | their width |
+| `string` | the address of the bytes, then the length (`int`) |
+| `cstring`, `dstring` | the address of the bytes, which end with the terminator |
+| slice | the address of the elements, the length and the capacity (`int`) |
+| array | the elements in order |
+| struct | the fields in order, each at the next offset aligned for it |
+| `enum`, `Option` | the variant number (1 byte for at most 256 variants, otherwise 2), then the fields of the variant laid out as a struct; the size is that of the largest variant |
+| function | the address of its code |
+| interface | a type number of the word width, 0 for `nil`, then 8 bytes: a dynamic value of at most 8 bytes in place, a larger one by its address |
+
+The type numbers of interfaces are assigned per program to the dynamic types that occur; there is no other run-time type information (**rt.no-rtti**).
+
+### 22.11.2 Frames and calls
+
+**comp.gen.frame** — Each function has a stack frame. Below the frame base, it holds a slot for each IR value and each storage cell, and at the lowest addresses the argument area of its calls. An argument area holds the arguments in order, each aligned to `ABI.Align`, followed by the results. A function addresses its parameters and results at its frame base plus `ABI.Params` (**target.arch.abi**) and writes its results there before `leave`. An `inout` parameter is passed as an address. The caller copies the results out of its argument area after the call.
+
+**comp.gen.values** — An IR value is computed into its slot once and not changed afterwards; a constant is an operand of the template, and a string or a constant of a composite type is stored in the constant data of the image. `load` copies the value from the cell into its slot, `store` copies it into the cell, and `copy` shares the slot of its operand. A `slice` of an array in a storage cell first copies the array into the slot of the result, so that later stores into the cell do not change the slice (**mem.value.copy**).
+
+**comp.gen.escape** — A slice whose elements lie in a stack frame MUST NOT outlive the frame. Until escape analysis (roadmap step 25), the code generator rejects a function that returns a value containing such a slice, as not supported yet.
+
+### 22.11.3 Lowering of IR instructions
+
+**comp.gen.lower** — The code generator expresses the IR instructions as machine operations (**target.arch.ops**):
+
+| IR | Machine operations |
+| --- | --- |
+| arithmetic on a checked integer type | `add.s`, `add.u`, `sub.s`, … with the trap label calling `PanicOverflow` (**expr.int.checked**) |
+| arithmetic on a wrapping type | `add`, `sub`, `mul`, … (**expr.wrap.ops**) |
+| `/` and `%` | a test of the divisor calling `PanicDivide` for 0; for a checked signed type, a test of minimum by −1 calling `PanicOverflow`, and for a wrapping signed type the result of **expr.wrap.div** without dividing; then `div.s`, `div.u`, `rem.s` or `rem.u` |
+| shifts | a test of a signed count calling `PanicShift` if it is negative; a count wider than a word is limited to the largest word value; then `shl`, `shr.u` or `shr.s` |
+| comparisons | `eq` … `le.u` on integers; on strings and on composite values, calls of runtime functions or comparisons of the parts |
+| conversions between integer types | `ext.s` or `ext.u` to a wider type, `move` of the low part to a narrower one |
+| `fieldaddr`, `indexaddr`, `field`, `index` | address arithmetic with `add` and `mul`; the bounds test calls `PanicIndex` (**expr.bounds.check**) |
+| `slice`, `subsliceaddr` | address arithmetic and the bounds tests of Go, calling the `PanicSlice…` functions |
+| `alloc`, `makestruct`, `makearray`, `makevariant` | `zero`, `store` and `copy` into the slot |
+| `call` | the arguments copied into the argument area, `call` or `callind`, the results copied out |
+| `invoke` | a dispatch on the type number of the interface value to the method of each dynamic type |
+| `defer` | a record of the deferred call in the frame, linked into a chain that `return` and the panic functions run, newest first (**stmt.defer.go**) |
+| `if`, `jump` | `branch`, `jump` |
+| `return` | the deferred calls of the frame, then `leave` |
+| `panic` | the panic functions with the value printed in the format of the IR interpreter |
+| a hardware mapping | memory operations at its address: `load.far` and `store.far` at a far address |
+| calls of the instruction package, `asm` | `regin`, the instructions, `regout` and `flagsout` (**target.arch.instr-package**) |
+| `fmt.Printf` | the format, a constant, parsed at compile time; a call of a printing function of the runtime package for each directive |
+
+### 22.11.4 The runtime package
+
+**comp.gen.runtime** — The runtime package `an/runtime` is Anlang source in the `core` profile (**rt.lang.anlang**). It provides the functions the code generator calls: the printing of values for `fmt.Print`, `fmt.Println`, `print` and `println` in the formats of 22.10.3, the panic functions, which run the deferred calls and then perform the panic action of the target with the messages of the IR interpreter, and the arithmetic of the operations without rules (**target.arch.select**). Its functions `write` and `exit` are primitives that the code generator implements with the platform operations of the same names. A function of the runtime package is in the image only if the program calls it (**rt.link.piecewise**).
+
+**comp.gen.panic** — Until the debug side tables (roadmap step 41), the action `PrintAndExit` writes `panic: `, the reason and a line break to standard error, without a stack trace (**rt.panic.trace**), and exits with status 2.
+
+### 22.11.5 Linking
+
+**comp.gen.link** — The linker places the entry code (**target.platform.entry**), the functions and the constant data, in this order, at the origin of the binary format. It assembles each instruction with the generated assembler at its address; since the length of an instruction may depend on the addresses of labels, it repeats the placement until no length changes. A build whose image exceeds the size limit of its format is rejected (**target.format.size**).
+
+### 22.11.6 Coverage
+
+**comp.gen.coverage** — The code generator of roadmap step 13 translates every construct of the `core` profile except the following, which it reports as not supported yet with the roadmap step that adds them: floating-point types (step 15); `defer` statements in loops, `inout` subslices, `inout` access to hardware mappings at far addresses, and the directives of `fmt.Printf` other than `%v`, `%d`, `%s`, `%t`, `%c`, `%x`, `%X`, `%o`, `%b` with flags, width and precision (step 25).
+
+## 22.12 Open issues
+
+1. **General-purpose allocator for `app`.** Deferred to implementation — step 25. Own or ported; any allocator that satisfies [06-memory](06-memory.md) and passes the fuzzing of [23-conformance](23-conformance.md).

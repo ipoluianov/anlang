@@ -1,0 +1,13 @@
+// want: expr.int.const
+// checks: expr.wrap.mixing
+
+package main
+
+import "an/wrap"
+
+func main() {
+	var x wrap.U8 = 1
+	_ = x + 256
+	var y wrap.I8 = -129
+	_ = y
+}

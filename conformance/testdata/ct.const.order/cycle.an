@@ -1,0 +1,13 @@
+// want: ct.const.order
+
+package main
+
+const a = f()
+
+func f() int {
+	return a + 1
+}
+
+func main() {
+	_ = a
+}

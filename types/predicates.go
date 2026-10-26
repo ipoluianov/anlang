@@ -18,6 +18,7 @@ func isBasic(t Type, info BasicInfo) bool {
 func isBoolean(t Type) bool  { return isBasic(t, IsBoolean) }
 func isInteger(t Type) bool  { return isBasic(t, IsInteger) }
 func isUnsigned(t Type) bool { return isBasic(t, IsUnsigned) }
+func isWrapping(t Type) bool { return isBasic(t, IsWrapping) }
 func isFloat(t Type) bool    { return isBasic(t, IsFloat) }
 func isNumeric(t Type) bool  { return isBasic(t, IsNumeric) }
 func isString(t Type) bool   { return isBasic(t, IsString) }
@@ -295,6 +296,24 @@ func (c *checker) intRange(b *Basic) (bits int, signed bool) {
 		bits = c.addrBits
 	}
 	return bits, b.info&IsUnsigned == 0
+}
+
+// wrapConst reduces the integer constant val modulo 2ⁿ into the range of
+// the wrapping type t (type.conv.wrap, expr.wrap.const).
+func wrapConst(val constant.Value, t *Basic) constant.Value {
+	x := constant.ToInt(val)
+	if x.Kind() != constant.Int {
+		return val
+	}
+	mod := constant.Shift(constant.MakeInt64(1), tokenShl, uint(t.size))
+	x = constant.BinaryOp(x, tokenRem, mod)
+	if constant.Sign(x) < 0 {
+		x = constant.BinaryOp(x, tokenAdd, mod)
+	}
+	if t.info&IsUnsigned == 0 && constant.Compare(x, tokenGeq, constant.Shift(constant.MakeInt64(1), tokenShl, uint(t.size-1))) {
+		x = constant.BinaryOp(x, tokenSub, mod)
+	}
+	return x
 }
 
 // representable reports whether the constant val is representable in

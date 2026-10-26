@@ -1,0 +1,38 @@
+// Command videodos writes to the DOS text video memory directly.
+//
+// The screen is a hardware mapping: unsafe.Map binds the array screen to
+// the memory at B800:0000 once, and every access to it afterwards is an
+// ordinary checked index. The file name ends in _i8086 because only such
+// files may import the instruction package an/arch/i8086.
+package main
+
+profile core
+
+import (
+	"an/arch/i8086"
+	"an/dos"
+	"an/encoding"
+	"an/unsafe"
+)
+
+// Cell is a character of the text screen with its color attribute.
+type Cell struct {
+	ch   u8
+	attr u8
+}
+
+var screen = unsafe.Map[[2000]Cell](i8086.Far(0xB800, 0))
+
+// PutChar writes c with attribute attr at column x of row y. Until the
+// contracts of roadmap step 21, the index is checked at run time instead
+// of a precondition x < 80 && y < 25.
+func PutChar(x, y u16, c u8, attr u8) {
+	screen[y*80+x] = Cell{c, attr}
+}
+
+func main() {
+	dos.Print(encoding.CP866("Привет из Anlang!\r\n")) // CP866; '$' is appended at compile time
+	for i, c := range []u8("HELLO") {
+		PutChar(u16(i)+10, 5, c, 0x1E)
+	}
+}

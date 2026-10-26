@@ -1,0 +1,6 @@
+// Package bios provides the services of the PC BIOS (spec/18-stdlib.md):
+// the text screen through int 10h, the keyboard through int 16h and the
+// timer through int 1Ah.
+package bios
+
+profile core

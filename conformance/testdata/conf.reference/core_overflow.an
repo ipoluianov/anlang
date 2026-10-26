@@ -1,0 +1,17 @@
+// want: ok
+// checks: expr.int.checked
+
+// A checked 16-bit integer overflows: the program panics.
+package main
+
+profile core
+
+import "an/fmt"
+
+func main() {
+	var x i16 = 32000
+	for range 10 {
+		fmt.Println(x)
+		x += 300
+	}
+}

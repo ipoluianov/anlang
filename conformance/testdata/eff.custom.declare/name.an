@@ -1,0 +1,14 @@
+// want: eff.custom.declare
+
+package main
+
+import "an/effect"
+
+const Bad = effect.Declare("")
+
+const Number = effect.Declare(1)
+
+func main() {
+	effect.Mark(Bad)
+	effect.Mark(Number)
+}

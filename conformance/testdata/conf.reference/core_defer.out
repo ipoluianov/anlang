@@ -1,0 +1,8 @@
+working
+deferred work 2
+deferred work 1
+7
+deferred main 3
+main done
+panic: runtime error: index out of range [3] with length 3
+exit status 2

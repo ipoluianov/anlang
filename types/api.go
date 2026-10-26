@@ -164,3 +164,30 @@ func NewTuple(ts ...Type) *Tuple {
 	}
 	return t
 }
+
+// The value of a computed constant (ct.const.call) is represented by:
+//
+//	boolean, numeric and string types   constant.Value
+//	array, struct, slice                *Composite (nil for a nil slice)
+//	enum, Option                        *Composite with the variant
+//	map                                 *MapValue (nil for an empty map)
+//	interface                           *IfaceValue (nil for nil)
+
+// Composite is the computed value of an array, struct, slice or enum
+// constant: its elements, fields, or the fields of its variant.
+type Composite struct {
+	Elems   []any
+	Variant int
+}
+
+// MapValue is the computed value of a map constant, in insertion order.
+type MapValue struct {
+	Keys, Vals []any
+}
+
+// IfaceValue is the computed value of an interface constant: the
+// dynamic type and value.
+type IfaceValue struct {
+	Type  Type
+	Value any
+}

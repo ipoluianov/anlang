@@ -1,0 +1,64 @@
+// want: ok
+
+// Enums, Option and generic functions in the core profile.
+package main
+
+profile core
+
+import "an/fmt"
+
+type Shape enum {
+	Circle{r int}
+	Square{side int}
+	Empty
+}
+
+func area(s Shape) int {
+	switch s {
+	case Circle{r}:
+		return 3 * r * r
+	case Square{side}:
+		return side * side
+	case Empty:
+		return 0
+	}
+}
+
+func find(xs []int, v int) Option[int] {
+	for i, x := range xs {
+		if x == v {
+			return Some(i)
+		}
+	}
+	return None
+}
+
+func Max[T i8 | i16 | int | u32](a, b T) T {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+type Pair[T any] struct {
+	A, B T
+}
+
+func (p Pair[T]) Swap() Pair[T] { return Pair[T]{p.B, p.A} }
+
+func main() {
+	shapes := [3]Shape{Circle(2), Square(5), Empty}
+	for _, s := range shapes {
+		fmt.Println(s, area(s))
+	}
+	xs := [5]int{4, 8, 15, 16, 23}
+	if i, ok := find(xs[:], 15).Get(); ok {
+		fmt.Println("found at", i)
+	}
+	_, ok := find(xs[:], 42).Get()
+	fmt.Println(ok, find(xs[:], 23), find(xs[:], 1))
+	fmt.Println(Max(i8(-3), i8(5)), Max(1000, -1000), Max(u32(7), 3000000000))
+	p := Pair[string]{"left", "right"}.Swap()
+	fmt.Println(p, Pair[int]{1, 2}.Swap())
+	fmt.Println(shapes[0] == Circle(2), shapes[1] == Square(4), shapes[2] == Empty)
+}

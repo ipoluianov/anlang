@@ -1,6 +1,9 @@
 package lower
 
 import (
+	"go/constant"
+	"strconv"
+
 	"an/ir"
 	"an/syntax"
 	"an/types"
@@ -29,6 +32,8 @@ func (fb *funcBuilder) stmt(s syntax.Stmt) {
 		fb.declStmt(s.Decl)
 	case *syntax.AssignStmt:
 		fb.assign(s)
+	case *syntax.AsmStmt:
+		fb.asm(s)
 	case *syntax.IncDecStmt:
 		op := syntax.Add
 		if s.Tok == syntax.Dec {
@@ -293,6 +298,16 @@ func (fb *funcBuilder) ifStmt(s *syntax.IfStmt) {
 	if s.Init != nil {
 		fb.stmt(s.Init)
 	}
+	if tv := fb.info.Types[s.Cond]; tv.Value != nil && tv.Value.Kind() == constant.Bool {
+		// A constant condition: only the branch it takes, which in an
+		// instance is the only one checked.
+		if constant.BoolVal(tv.Value) {
+			fb.stmts(s.Body.List)
+		} else if s.Else != nil {
+			fb.stmt(s.Else)
+		}
+		return
+	}
 	then, done := fb.newBlock("if.then"), fb.newBlock("if.done")
 	els := done
 	if s.Else != nil {
@@ -469,3 +484,23 @@ func (fb *funcBuilder) deferStmt(s *syntax.DeferStmt) {
 }
 
 var oneConst = constOne()
+
+// asm translates an asm statement (stmt.asm.syntax): the output
+// registers are stored to the left-hand side.
+func (fb *funcBuilder) asm(s *syntax.AsmStmt) {
+	text, _ := strconv.Unquote(s.Text.Value)
+	a := &ir.Asm{Text: text}
+	if r := s.Regs(); r != nil {
+		a.In = fb.expr(r)
+	}
+	var t types.Type = types.NewTuple()
+	if len(s.Lhs) == 1 {
+		t = fb.typeOf(s.Lhs[0])
+	}
+	v := fb.emit(a, t)
+	if len(s.Lhs) == 1 {
+		if addr := fb.addr(s.Lhs[0]); addr != nil {
+			fb.store(addr, v)
+		}
+	}
+}

@@ -32,7 +32,7 @@ No construct in this file adds a keyword. `for const` is a combination of existi
 
 Go restricts constants to boolean, numeric and string values given by constant expressions. Anlang extends constant declarations without changing their syntax.
 
-**ct.const.call** — The expression of a constant declaration MAY contain calls to compile-time evaluable functions. The constant's value is the result of evaluating the expression at compile time.
+**ct.const.call** — The expression of a constant declaration MAY contain calls to compile-time evaluable functions, composite literals and other computed constants; such a constant is a *computed constant*. The constant's value is the result of evaluating the expression at compile time. The expression MUST NOT use variables.
 
 **ct.const.types** — A constant MAY have any type whose values consist only of:
 
@@ -71,6 +71,8 @@ func makeCRCTable(poly u32) [256]u32 {
 **ct.limit.bounded** — An implementation MUST bound each compile-time evaluation by a number of evaluation steps and by memory. Limits MUST NOT depend on wall-clock time.
 
 **ct.limit.deterministic** — For a given compiler version and language edition, the limits and the step count of every evaluation MUST be identical on all host machines. Whether a program compiles MUST NOT depend on the host.
+
+**ct.limit.values** — In language edition 1.0, one evaluation is bounded by 10,000,000 executed instructions of the intermediate representation ([22-compiler](22-compiler.md), 22.10) and by 16,777,216 values created in slices, arrays, structs and maps. The limits are fixed for the edition; a project cannot change them.
 
 **ct.limit.exceeded** — If a limit is exceeded, the program is rejected. The diagnostic MUST name the constant being evaluated, the limit, and the call stack at the point the limit was reached.
 
@@ -131,7 +133,7 @@ The syntax `for const` *IdentifierList* `:=` `range` *Expression* *Block* is def
 1. a compile-time sequence produced by `an/meta` (`meta.Fields(T)`, `meta.Variants(E)`, `x.Fields`);
 2. a parameter declared `...any` (see 10.6);
 3. an integer constant `n`, giving the values `0` … `n-1`;
-4. a constant of array or slice type, giving its elements.
+4. a constant of array or slice type whose initializer is a composite literal of constant expressions, giving its elements; for const is unrolled when the program is type-checked, before computed constants are evaluated.
 
 **ct.for.unroll** — The loop is unrolled at compile time: the body is instantiated once per element of the sequence, in order. In each instance the iteration variable is bound to that element.
 
@@ -150,6 +152,8 @@ The syntax of a variadic parameter is unchanged from Go. The meaning of `...any`
 **ct.any.tuple** — A final parameter declared `name ...any` is a *compile-time tuple*. At each call site, its arity and the static type of each argument are fixed by the call.
 
 **ct.any.instance** — A function with a `...any` parameter is instantiated once per distinct sequence of argument types used at its call sites, in the same way as a generic function is instantiated per type argument list.
+
+**ct.instance.check** — The body of a function with a `...any` parameter, and of a generic function whose body uses `an/meta`, `for const` or a type switch on a value of a type parameter, is type-checked once for each instance, with the type parameters denoting the type arguments and the tuple denoting the argument types; the diagnostics of an instance name it and the call that produced it. An instance that no call produces is not checked. In such an instance, and in an instance of the body of `for const`, an `if` statement whose condition is a constant is checked and compiled with the branch that the condition takes only.
 
 **ct.any.use** — Inside the function, the tuple parameter MAY be used only:
 
@@ -243,7 +247,3 @@ A generator turns an external description — an SVD file, a system call table �
 **ct.gen.package** — The output package is importable by its declared import path like a project package. `anlang gen -show <package>` prints its source ([20-toolchain](20-toolchain.md), **tool.cmd.gen**).
 
 **ct.gen.conflict** — A directory in the project with the path of a declared output package is a compile error (**tool.mod.generate.unique**).
-
-## Open issues
-
-1. **Concrete evaluation limits.** Deferred to implementation — step 10. Implementation-defined, fixed per compiler version and edition; whether a project may raise them in `anlang.mod` is decided there.

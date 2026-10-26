@@ -1,0 +1,38 @@
+// want: ok
+// checks: ct.const.typed type.conv.int-narrow-facts
+
+package main
+
+import "an/fmt"
+
+// The table of the CRC-32 polynomial (IEEE), computed at compile time.
+const crcTable = makeCRCTable(0xEDB88320)
+
+func makeCRCTable(poly u32) [256]u32 {
+	var t [256]u32
+	for i := range 256 {
+		c := u32(i)
+		for range 8 {
+			if c&1 == 1 {
+				c = poly ^ (c >> 1)
+			} else {
+				c >>= 1
+			}
+		}
+		t[i] = c
+	}
+	return t
+}
+
+func crc32(data []u8) u32 {
+	crc := ^u32(0)
+	for _, b := range data {
+		crc = crcTable[u8(crc&0xff)^b] ^ (crc >> 8)
+	}
+	return ^crc
+}
+
+func main() {
+	fmt.Println(crcTable[1], crcTable[128], crcTable[255])
+	fmt.Println(crc32([]u8("hello")), crc32([]u8("The quick brown fox jumps over the lazy dog")))
+}

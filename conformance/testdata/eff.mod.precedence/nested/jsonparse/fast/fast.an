@@ -1,0 +1,9 @@
+package fast
+
+import "an/fmt"
+
+// Len returns the length of s and prints it.
+func Len(s string) int {
+	fmt.Println(len(s))
+	return len(s)
+}

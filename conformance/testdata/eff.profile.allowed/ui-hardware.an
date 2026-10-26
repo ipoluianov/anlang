@@ -1,0 +1,11 @@
+// want: eff.profile.allowed target.effects.provides
+
+package main
+
+profile ui
+
+import "an/effect"
+
+func main() {
+	effect.Mark(effect.Uart)
+}

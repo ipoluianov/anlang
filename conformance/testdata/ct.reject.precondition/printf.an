@@ -1,0 +1,14 @@
+// want: ct.reject.precondition
+
+package main
+
+import "an/fmt"
+
+func main() {
+	name := "x"
+	fmt.Printf("%d\n", name)
+	fmt.Printf("%s %s\n", name)
+	fmt.Printf("%s\n", name, 1)
+	_ = fmt.Sprintf(name, 1)
+	fmt.Printf("%t\n", 1.5)
+}

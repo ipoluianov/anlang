@@ -1,0 +1,19 @@
+// want: ok
+
+package main
+
+import (
+	"an/fmt"
+	"an/wrap"
+)
+
+func main() {
+	var n int = 1000
+	var s i64 = -1
+	h := wrap.U8(n)
+	g := wrap.U16(s)
+	k := wrap.I8(wrap.U32(0xff))
+	var w u16 = u16(g)
+	var x i64 = i64(wrap.I32(-7))
+	fmt.Println(h, g, k, w, x)
+}

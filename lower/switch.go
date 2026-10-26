@@ -156,6 +156,10 @@ func (fb *funcBuilder) typeSwitch(s *syntax.TypeSwitchStmt, label string) {
 	if s.Init != nil {
 		fb.stmt(s.Init)
 	}
+	if idx, ok := fb.info.StaticSwitch[s]; ok {
+		fb.staticTypeSwitch(s, idx, label)
+		return
+	}
 	var guard syntax.Expr
 	var bound *syntax.Name
 	switch a := s.Assign.(type) {
@@ -240,4 +244,32 @@ func (fb *funcBuilder) bindTypeSwitchVar(bound *syntax.Name, cl *syntax.CaseClau
 	}
 	fb.store(cell, val)
 	fb.vars[v] = cell
+}
+
+// staticTypeSwitch translates a type switch resolved at compile time: the
+// chosen clause only (ct.typeswitch.static).
+func (fb *funcBuilder) staticTypeSwitch(s *syntax.TypeSwitchStmt, idx int, label string) {
+	if idx < 0 {
+		return
+	}
+	var guard syntax.Expr
+	var bound *syntax.Name
+	switch a := s.Assign.(type) {
+	case *syntax.ExprStmt:
+		guard = a.X.(*syntax.TypeAssertExpr).X
+	case *syntax.AssignStmt:
+		guard = a.Rhs[0].(*syntax.TypeAssertExpr).X
+		bound = a.Lhs[0].(*syntax.Name)
+	}
+	x := fb.copy(fb.expr(guard))
+	cl := s.Body.List[idx].(*syntax.CaseClause)
+	done := fb.newBlock("typeswitch.done")
+	if bound != nil {
+		fb.bindTypeSwitchVar(bound, cl, x)
+	}
+	fb.targets = append(fb.targets, &target{label: label, brk: done})
+	fb.stmts(cl.Body)
+	fb.targets = fb.targets[:len(fb.targets)-1]
+	fb.jump(done)
+	fb.cur = done
 }

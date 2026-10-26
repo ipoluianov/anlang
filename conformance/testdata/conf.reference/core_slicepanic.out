@@ -1,0 +1,3 @@
+bcd
+panic: runtime error: slice bounds out of range [:9] with length 6
+exit status 2

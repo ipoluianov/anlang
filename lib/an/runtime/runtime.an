@@ -1,0 +1,316 @@
+// Package runtime is the runtime of Anlang programs (spec/19-runtime.md):
+// the functions that generated code calls for printing, panics and the
+// arithmetic that the instruction selection rules of an architecture do
+// not provide (spec/22-compiler.md §22.11.4). User code cannot import it.
+package runtime
+
+profile core
+
+import (
+	"an/effect"
+	"an/wrap"
+)
+
+// The primitives: the code generator implements them with the platform
+// operations write and exit (target.arch.ops) and with the chain of
+// deferred calls.
+
+// write writes the bytes p to stream fd: 1 is standard output, 2
+// standard error.
+func write(fd int, p []u8) {
+	effect.Mark(effect.Console)
+}
+
+// writeString writes the bytes of s to stream fd.
+func writeString(fd int, s string) {
+	effect.Mark(effect.Console)
+}
+
+// exit ends the program with status code.
+func exit(code int) {}
+
+// runDefers runs the pending deferred calls of all frames, newest first.
+func runDefers() {}
+
+// Printing in the formats of fmt.Print and print.
+
+// PrintString writes s to stream fd.
+func PrintString(fd int, s string) {
+	writeString(fd, s)
+}
+
+// PrintBool writes true or false to stream fd.
+func PrintBool(fd int, b bool) {
+	if b {
+		writeString(fd, "true")
+	} else {
+		writeString(fd, "false")
+	}
+}
+
+// PrintU16 writes x in decimal to stream fd.
+func PrintU16(fd int, x u16) {
+	var buf [5]u8
+	i := len(buf)
+	for {
+		i--
+		buf[i] = u8(x%10) + '0'
+		x /= 10
+		if x == 0 {
+			break
+		}
+	}
+	write(fd, buf[i:])
+}
+
+// PrintI16 writes x in decimal to stream fd.
+func PrintI16(fd int, x i16) {
+	if x < 0 {
+		writeString(fd, "-")
+		PrintU16(fd, u16(-wrap.U16(x)))
+		return
+	}
+	PrintU16(fd, u16(wrap.U16(x)))
+}
+
+// PrintU32 writes x in decimal to stream fd.
+func PrintU32(fd int, x u32) {
+	var buf [10]u8
+	i := len(buf)
+	for {
+		i--
+		buf[i] = u8(x%10) + '0'
+		x /= 10
+		if x == 0 {
+			break
+		}
+	}
+	write(fd, buf[i:])
+}
+
+// PrintI32 writes x in decimal to stream fd.
+func PrintI32(fd int, x i32) {
+	if x < 0 {
+		writeString(fd, "-")
+		PrintU32(fd, u32(-wrap.U32(x)))
+		return
+	}
+	PrintU32(fd, u32(wrap.U32(x)))
+}
+
+// PrintU64 writes x in decimal to stream fd.
+func PrintU64(fd int, x u64) {
+	var buf [20]u8
+	i := len(buf)
+	for {
+		i--
+		buf[i] = u8(x%10) + '0'
+		x /= 10
+		if x == 0 {
+			break
+		}
+	}
+	write(fd, buf[i:])
+}
+
+// PrintI64 writes x in decimal to stream fd.
+func PrintI64(fd int, x i64) {
+	if x < 0 {
+		writeString(fd, "-")
+		PrintU64(fd, u64(-wrap.U64(x)))
+		return
+	}
+	PrintU64(fd, u64(wrap.U64(x)))
+}
+
+// Panics (spec/19-runtime.md §19.4). The messages are those of the IR
+// interpreter (spec/22-compiler.md §22.10.3).
+
+// Panic runs the deferred calls, writes the reason and exits with status
+// 2 (comp.gen.panic).
+func Panic(reason string) {
+	runDefers()
+	writeString(2, "panic: ")
+	writeString(2, reason)
+	writeString(2, "\n")
+	exit(2)
+}
+
+// PanicStart runs the deferred calls and writes the start of the message
+// of a panic whose value the generated code writes; PanicEnd ends it.
+func PanicStart() {
+	runDefers()
+	writeString(2, "panic: ")
+}
+
+// PanicEnd ends the message of a panic and exits with status 2.
+func PanicEnd() {
+	writeString(2, "\n")
+	exit(2)
+}
+
+// PanicOverflow is the panic of a checked integer operation.
+func PanicOverflow() {
+	Panic("runtime error: integer overflow")
+}
+
+// PanicDivide is the panic of a division by zero.
+func PanicDivide() {
+	Panic("runtime error: integer divide by zero")
+}
+
+// PanicShift is the panic of a shift by a negative count.
+func PanicShift() {
+	Panic("runtime error: negative shift amount")
+}
+
+// PanicIndex is the panic of an index i out of the range of a length n.
+func PanicIndex(i, n int) {
+	runDefers()
+	writeString(2, "panic: runtime error: index out of range [")
+	PrintInt(2, i)
+	if i >= 0 {
+		writeString(2, "] with length ")
+		PrintInt(2, n)
+	} else {
+		writeString(2, "]")
+	}
+	PanicEnd()
+}
+
+// PanicConvert is the panic of a conversion of a slice of length n to an
+// array of length want.
+func PanicConvert(n, want int) {
+	runDefers()
+	writeString(2, "panic: runtime error: cannot convert slice with length ")
+	PrintInt(2, n)
+	writeString(2, " to array or pointer to array with length ")
+	PrintInt(2, want)
+	PanicEnd()
+}
+
+// PrintInt writes an int in decimal to stream fd.
+func PrintInt(fd int, x int) {
+	PrintI64(fd, i64(x))
+}
+
+// CheckSlice checks the indices of a slice expression x[lo:hi] or, if
+// three is set, x[lo:hi:max], where c is the capacity of x, which is a
+// slice if isSlice is set, in the order and with the messages of Go
+// (expr.bounds.check).
+func CheckSlice(lo, hi, max, c int, three, isSlice bool) {
+	limit := "] with length "
+	if isSlice {
+		limit = "] with capacity "
+	}
+	if three {
+		if max < 0 || max > c {
+			sliceFail("[::", max, limit, c, "", "]")
+		}
+		if hi < 0 || hi > max {
+			sliceFail("[:", hi, ":", max, "]", ":]")
+		}
+		if lo < 0 || lo > hi {
+			sliceFail("[", lo, ":", hi, ":]", "::]")
+		}
+		return
+	}
+	if hi < 0 || hi > c {
+		sliceFail("[:", hi, limit, c, "", "]")
+	}
+	if lo < 0 || lo > hi {
+		sliceFail("[", lo, ":", hi, "]", ":]")
+	}
+}
+
+// sliceFail panics with "slice bounds out of range " followed by
+// prefix, x, mid, y and suffix, or by prefix, x and neg if x is negative.
+func sliceFail(prefix string, x int, mid string, y int, suffix, neg string) {
+	runDefers()
+	writeString(2, "panic: runtime error: slice bounds out of range ")
+	writeString(2, prefix)
+	PrintInt(2, x)
+	if x < 0 {
+		writeString(2, neg)
+	} else {
+		writeString(2, mid)
+		PrintInt(2, y)
+		writeString(2, suffix)
+	}
+	PanicEnd()
+}
+
+// Strings.
+
+// EqualString reports whether a and b are equal.
+func EqualString(a, b string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range len(a) {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// CompareString returns -1, 0 or 1 as a is less than, equal to or
+// greater than b.
+func CompareString(a, b string) int {
+	n := min(len(a), len(b))
+	for i := range n {
+		if a[i] != b[i] {
+			if a[i] < b[i] {
+				return -1
+			}
+			return 1
+		}
+	}
+	switch {
+	case len(a) < len(b):
+		return -1
+	case len(a) > len(b):
+		return 1
+	}
+	return 0
+}
+
+// DecodeRune decodes the UTF-8 sequence of s at byte offset i, as a range
+// loop over a string does: it returns the rune and its length in bytes,
+// or 0xFFFD and 1 for an invalid sequence.
+func DecodeRune(s string, i int) (i32, int) {
+	c := s[i]
+	n := len(s) - i
+	switch {
+	case c < 0x80:
+		return i32(c), 1
+	case c < 0xC2 || c > 0xF4:
+		return 0xFFFD, 1
+	case c < 0xE0:
+		if n < 2 || !cont(s[i+1]) {
+			return 0xFFFD, 1
+		}
+		return i32(c&0x1F)<<6 | i32(s[i+1]&0x3F), 2
+	case c < 0xF0:
+		if n < 3 || !cont(s[i+1]) || !cont(s[i+2]) {
+			return 0xFFFD, 1
+		}
+		if c == 0xE0 && s[i+1] < 0xA0 || c == 0xED && s[i+1] > 0x9F {
+			return 0xFFFD, 1
+		}
+		return i32(c&0x0F)<<12 | i32(s[i+1]&0x3F)<<6 | i32(s[i+2]&0x3F), 3
+	}
+	if n < 4 || !cont(s[i+1]) || !cont(s[i+2]) || !cont(s[i+3]) {
+		return 0xFFFD, 1
+	}
+	if c == 0xF0 && s[i+1] < 0x90 || c == 0xF4 && s[i+1] > 0x8F {
+		return 0xFFFD, 1
+	}
+	return i32(c&0x07)<<18 | i32(s[i+1]&0x3F)<<12 | i32(s[i+2]&0x3F)<<6 | i32(s[i+3]&0x3F), 4
+}
+
+// cont reports whether b is a continuation byte of UTF-8.
+func cont(b u8) bool {
+	return b&0xC0 == 0x80
+}

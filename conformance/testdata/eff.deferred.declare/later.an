@@ -1,0 +1,20 @@
+// want: ok
+// checks: eff.deferred.attribution
+
+package main
+
+import "an/effect"
+
+// effects: fetchLater none
+func fetchLater() {
+	effect.Defer(effect.Network)
+}
+
+// effects: update none
+func update() {
+	fetchLater()
+}
+
+func main() {
+	update()
+}

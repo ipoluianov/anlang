@@ -1,0 +1,4 @@
+code 1
+cleanup
+panic: bad code
+exit status 2

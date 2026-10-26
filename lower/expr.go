@@ -97,8 +97,27 @@ func (fb *funcBuilder) name(e *syntax.Name) ir.Value {
 		return zero(fb.typeOf(e))
 	case *types.Variant:
 		return fb.variantValue(e, obj)
+	case *types.Const:
+		if obj.Computed {
+			if fb.b.ready != nil && !fb.b.ready(obj) {
+				fb.b.missing = append(fb.b.missing, obj)
+			}
+			return computed(obj.Type(), obj.Value)
+		}
 	}
 	return zero(fb.typeOf(e))
+}
+
+// computed returns the IR constant of the value v of a computed constant
+// of type t (ct.const.call).
+func computed(t types.Type, v any) *ir.Const {
+	switch v := v.(type) {
+	case nil:
+		return zero(t)
+	case constant.Value:
+		return constant_(t, v)
+	}
+	return &ir.Const{Typ: t, Computed: v}
 }
 
 // funcInstance returns the IR function that identifier e denotes, with
@@ -170,7 +189,13 @@ func (fb *funcBuilder) addr(e syntax.Expr) ir.Value {
 		}
 	case *syntax.SelectorExpr:
 		sel := fb.info.Selections[e]
-		if sel == nil || sel.Kind != types.FieldVal {
+		if sel == nil {
+			if v, ok := fb.info.Uses[e.Sel].(*types.Var); ok {
+				return fb.local(v) // a qualified hardware mapping
+			}
+			return nil
+		}
+		if sel.Kind != types.FieldVal {
 			return nil
 		}
 		base := fb.addr(e.X)
@@ -361,7 +386,22 @@ func (fb *funcBuilder) convert(v ir.Value, t types.Type) ir.Value {
 	if types.Identical(vt, t) {
 		return v
 	}
-	if c, ok := v.(*ir.Const); ok {
+	if c, ok := v.(*ir.Const); ok && c.Computed != nil {
+		if b, ok := t.Underlying().(*types.Basic); ok && b.Info()&types.IsTerminated != 0 {
+			// A []u8 constant becomes a terminated string constant; the
+			// terminator is appended where the bytes are stored
+			// (type.string.terminator-const).
+			if comp, ok := c.Computed.(*types.Composite); ok {
+				bs := make([]byte, len(comp.Elems))
+				for i, x := range comp.Elems {
+					n, _ := constant.Int64Val(x.(constant.Value))
+					bs[i] = byte(n)
+				}
+				return &ir.Const{Typ: t, Val: constant.MakeString(string(bs))}
+			}
+		}
+	}
+	if c, ok := v.(*ir.Const); ok && c.Computed == nil {
 		if c.Val == nil {
 			return zero(t)
 		}
@@ -393,6 +433,9 @@ func (b *builder) addMethodSet(info *types.Info, t types.Type) {
 	ms := &ir.MethodSet{Type: t, Methods: map[string]*ir.Func{}}
 	b.prog.MethodSets = append(b.prog.MethodSets, ms)
 	for _, m := range info.MethodSet(t) {
+		if m.Decl == nil {
+			continue // a predeclared method, such as Option.Get
+		}
 		ms.Methods[m.Name()] = b.method(info, t, m)
 	}
 }

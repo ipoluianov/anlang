@@ -1,0 +1,15 @@
+// want: ok
+
+// unsafe.Data is the address of the bytes of a string or slice.
+package main
+
+profile core
+
+import "an/unsafe"
+
+func main() {
+	var a [4]u8
+	p := unsafe.Data("text")
+	q := unsafe.Data(a[:])
+	_, _ = p, q
+}

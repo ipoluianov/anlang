@@ -1,0 +1,13 @@
+// want: mem.unsafe.map
+
+// unsafe.Map initializes only package-level variables.
+package main
+
+profile core
+
+import "an/unsafe"
+
+func main() {
+	screen := unsafe.Map[[4]u8](unsafe.Flat(0x1000))
+	_ = screen
+}

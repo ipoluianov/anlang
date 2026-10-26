@@ -23,7 +23,9 @@ Most of the compiler is expected to be written by AI. Checks of `anlang` itself 
 5. A comment `// checks: <rule> {<rule>}` lists further rules the test checks (**conf.suite.naming**). A negative test MUST name the rule of its directory in `want` or `checks`.
 6. A diagnostic without a rule identifier never matches an expectation, so a negative test passes only if every error names a rule.
 7. Test files MUST be in canonical form (**lex.source.canonical**) unless they test that rule.
-8. A file `<name>.out` next to a positive test `<name>.an` or `<name>/` makes the test a reference program (**conf.reference**). The file holds the expected observable behavior: everything the program writes to standard output and standard error, in order, followed by a line `exit status N` if the exit status `N` is not 0.
+8. In a positive test, a comment `// effects: <function> <effect> {<effect>}` states the own effects (**eff.attr.own**) of a function of package `main`, written `F` or `T.M`, by bare names in any order; `none` states the empty set. A comment `// exec: <function> <effect> {<effect>}` states its execution effects (**eff.attr.exec**) in the same way.
+9. A file `<name>.out` next to a positive test `<name>.an` or `<name>/` makes the test a reference program (**conf.reference**). The file holds the expected observable behavior: everything the program writes to standard output and standard error, in order, followed by a line `exit status N` if the exit status `N` is not 0.
+10. Next to a reference program for a target with a text screen, a file `<name>.screen` holds the expected screen after the run in the format of `anlang run -screen` (**tool.emu.dos**), and a file `<name>.in` the keyboard input of the emulator.
 
 ```go
 // want: decl.func.no-init
@@ -39,11 +41,15 @@ func main() {}
 
 **conf.reference** — For each supported target, the suite MUST contain reference programs with their expected observable behavior (output, pin changes with timing, UART output, screen contents, exit status). Each MUST produce that behavior in the built-in emulator of the target (see [20-toolchain](20-toolchain.md), 20.10).
 
-Reference programs that do not depend on the target are stored as described in **conf.suite.layout**, item 8; those that test no particular rule are filed under `conf.reference`. They are run in the IR interpreter (**tool.emu.ir**) and, for each target with a backend, in the emulator of the target.
+Reference programs that do not depend on the target are stored as described in **conf.suite.layout**, item 9; those that test no particular rule are filed under `conf.reference`. They are run in the IR interpreter (**tool.emu.ir**) and, for each target with a backend, in the emulator of the target.
 
 ## 23.3 Backend cross-check
 
 **conf.backend.ir** — For every reference program and target, the output of the backend, executed in the architecture interpreter, MUST produce the same observable behavior as the interpretation of the program's IR.
+
+**conf.backend.arch** — A reference program that uses `asm` statements or instruction packages runs only in the emulator of its target, which MUST produce the behavior of its `.out` and `.screen` files.
+
+**conf.backend.select** — A reference program is run on a target if the target accepts it: its profile is one the platform allows (**target.platform.profile**) and its effects are ones the target provides (**target.effects.provides**). The suite MUST contain reference programs in the `core` profile, so that every target with a backend runs some.
 
 ## 23.4 Comparison with Go
 
@@ -72,6 +78,7 @@ Reference programs that do not depend on the target are stored as described in *
 - architecture interpreters against QEMU and processor test suites;
 - the WebAssembly interpreter against the official WebAssembly specification test suite;
 - the type checker against go/types of the Go distribution, on its test programs renamed into Anlang, for the common subset (**conf.go.common-subset**);
+- integer arithmetic, conversions and bounds checks of the IR interpreter against Go, on boundary and random operands of every integer type: Go's integer types for the wrapping types and `bits.Wrapping*`, exact arithmetic for overflow and the other functions of `an/bits`, Go slices, arrays and strings for the bounds and panic messages (**expr.int.checked**, **expr.wrap.ops**, **expr.bits.functions**, **expr.bounds.check**);
 - the IR interpreter against the expected output of the "run" test programs of the Go distribution, renamed into Anlang, for the common subset (**conf.go.common-subset**);
 - linker output against standard format inspection tools;
 - text shaping against a reference shaping test suite;

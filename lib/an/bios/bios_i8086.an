@@ -1,0 +1,66 @@
+package bios
+
+profile core
+
+import (
+	"an/arch/i8086"
+	"an/effect"
+)
+
+// ClearScreen sets the 80×25 color text mode, which clears the screen
+// and moves the cursor to the top left corner (int 10h, function 00h).
+func ClearScreen() {
+	effect.Mark(effect.Video)
+	i8086.Int(0x10, i8086.Regs{AX: 0x0003})
+}
+
+// SetCursor moves the cursor to column x of row y (function 02h).
+func SetCursor(x, y u8) {
+	effect.Mark(effect.Video)
+	i8086.Int(0x10, i8086.Regs{AX: 0x0200, DX: u16(y)<<8 | u16(x)})
+}
+
+// Cursor returns the column and the row of the cursor (function 03h).
+func Cursor() (x, y u8) {
+	effect.Mark(effect.Video)
+	r := i8086.Int(0x10, i8086.Regs{AX: 0x0300})
+	return u8(r.DX & 0xFF), u8(r.DX >> 8)
+}
+
+// PutChar writes the character c at the cursor and moves the cursor, as
+// a teletype does: carriage return, line feed and backspace move it, and
+// the screen scrolls at the bottom (function 0Eh).
+func PutChar(c u8) {
+	effect.Mark(effect.Video)
+	i8086.Int(0x10, i8086.Regs{AX: 0x0E00 | u16(c)})
+}
+
+// WriteChar writes the character c with the attribute attr n times from
+// the cursor, which stays where it is (function 09h).
+func WriteChar(c, attr u8, n u16) {
+	effect.Mark(effect.Video)
+	i8086.Int(0x10, i8086.Regs{AX: 0x0900 | u16(c), BX: u16(attr), CX: n})
+}
+
+// ReadKey waits for a key and returns its character code and its scan
+// code (int 16h, function 00h).
+func ReadKey() (char, scan u8) {
+	effect.Mark(effect.Keyboard)
+	r := i8086.Int(0x16, i8086.Regs{AX: 0x0000})
+	return u8(r.AX & 0xFF), u8(r.AX >> 8)
+}
+
+// KeyReady reports whether a key is waiting (int 16h, function 01h).
+func KeyReady() bool {
+	effect.Mark(effect.Keyboard)
+	r := i8086.Int(0x16, i8086.Regs{AX: 0x0100})
+	return r.FLAGS&0x40 == 0
+}
+
+// Ticks returns the count of timer ticks since midnight, about 18.2 per
+// second (int 1Ah, function 00h).
+func Ticks() u32 {
+	effect.Mark(effect.Clock)
+	r := i8086.Int(0x1A, i8086.Regs{AX: 0x0000})
+	return u32(r.CX)<<16 | u32(r.DX)
+}

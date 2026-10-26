@@ -72,6 +72,12 @@ func Walk(n Node, f func(Node) bool) {
 		Walk(n.Stmt, f)
 	case *ExprStmt:
 		Walk(n.X, f)
+	case *AsmStmt:
+		for _, x := range n.Lhs {
+			Walk(x, f)
+		}
+		Walk(n.Call, f)
+		Walk(n.Text, f)
 	case *SendStmt:
 		Walk(n.Chan, f)
 		Walk(n.Value, f)

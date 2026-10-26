@@ -1,6 +1,9 @@
 package lower
 
 import (
+	"go/constant"
+	"strings"
+
 	"an/ir"
 	"an/syntax"
 	"an/types"
@@ -8,6 +11,12 @@ import (
 
 // call translates a call. A call of panic ends the block.
 func (fb *funcBuilder) call(e *syntax.CallExpr, stmt bool) ir.Value {
+	if mc := fb.info.MetaCalls[e]; mc != nil {
+		return fb.metaCall(e, mc)
+	}
+	if inst := fb.info.TemplateCalls[e]; inst != nil {
+		return fb.templateCall(e, inst)
+	}
 	tv := fb.info.Types[e.Fun]
 	switch {
 	case tv.IsType():
@@ -187,7 +196,7 @@ func (fb *funcBuilder) conversion(e *syntax.CallExpr) ir.Value {
 	if types.IsInterface(t) && !types.IsInterface(x.Type()) {
 		return fb.convert(x, t)
 	}
-	if c, ok := x.(*ir.Const); ok && c.Val == nil {
+	if c, ok := x.(*ir.Const); ok && c.Val == nil && c.Computed == nil {
 		return zero(t)
 	}
 	if types.Identical(x.Type(), t) {
@@ -201,6 +210,14 @@ func (fb *funcBuilder) builtin(e *syntax.CallExpr) ir.Value {
 	if c := fb.constOf(e); c != nil {
 		return c
 	}
+	if b, ok := fb.info.Bytes[e]; ok {
+		// A []u8 constant made at compile time (ct.encoding.const).
+		elems := make([]any, len(b))
+		for i, x := range b {
+			elems[i] = constant.MakeInt64(int64(x))
+		}
+		return &ir.Const{Typ: fb.typeOf(e), Computed: &types.Composite{Elems: elems}}
+	}
 	var id *syntax.Name
 	switch f := unparen(e.Fun).(type) {
 	case *syntax.Name:
@@ -211,7 +228,7 @@ func (fb *funcBuilder) builtin(e *syntax.CallExpr) ir.Value {
 	b, _ := fb.info.Uses[id].(*types.Builtin)
 	name := b.Name()
 	if b.Pkg() != "" {
-		name = "fmt." + name
+		name = strings.TrimPrefix(b.Pkg(), "an/") + "." + name // fmt.Println, bits.WrappingAdd
 	}
 	t := fb.typeOf(e)
 	call := func(args ...ir.Value) ir.Value {
@@ -290,6 +307,18 @@ func (fb *funcBuilder) builtin(e *syntax.CallExpr) ir.Value {
 			args = append(args, fb.convert(fb.copy(fb.expr(x)), et))
 		}
 		return call(args...)
+	case "bits.WrappingAdd", "bits.WrappingSub", "bits.WrappingMul",
+		"bits.SaturatingAdd", "bits.SaturatingSub", "bits.SaturatingMul",
+		"bits.CheckedAdd", "bits.CheckedSub", "bits.CheckedMul":
+		at := t
+		if tu, ok := t.(*types.Tuple); ok {
+			at = tu.At(0).Type()
+		}
+		var args []ir.Value
+		for _, x := range e.Args {
+			args = append(args, fb.convert(fb.expr(x), at))
+		}
+		return call(args...)
 	case "min", "max":
 		var args []ir.Value
 		for _, x := range e.Args {
@@ -300,12 +329,16 @@ func (fb *funcBuilder) builtin(e *syntax.CallExpr) ir.Value {
 	vals := fb.spread(e)
 	if vals == nil {
 		for _, x := range e.Args {
+			if _, ok := fb.typeOf(x).(*types.TupleType); ok {
+				vals = append(vals, fb.tupleArgs([]syntax.Expr{x}, nil)...) // fmt.Print(args...)
+				continue
+			}
 			vals = append(vals, fb.convertArg(x))
 		}
 	}
 	var args []ir.Value
 	for _, v := range vals {
-		if b.Pkg() != "" {
+		if b.Pkg() == "an/fmt" {
 			// fmt.Print and fmt.Println take ...any: interface values, so
 			// that the methods Error and String of the dynamic types apply.
 			v = fb.convert(v, emptyInterface)

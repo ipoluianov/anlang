@@ -1,0 +1,9 @@
+// want: eff.without.form
+
+package main
+
+import "an/effect"
+
+func main() {
+	_ = effect.Without(effect.Alloc)
+}

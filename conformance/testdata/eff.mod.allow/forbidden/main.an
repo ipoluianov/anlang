@@ -1,0 +1,9 @@
+// want: eff.mod.allow
+
+package main
+
+import "conf/drv"
+
+func main() {
+	drv.Reset()
+}

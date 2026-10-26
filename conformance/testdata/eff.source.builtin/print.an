@@ -1,0 +1,44 @@
+// want: ok
+// checks: eff.source.primitive
+
+package main
+
+import "an/fmt"
+
+type Temp struct {
+	c int
+}
+
+func (t Temp) String() string { return fmt.Sprint(t.c * 10) }
+
+type Stringer interface {
+	String() string
+}
+
+// effects: show Console Panic Alloc
+func show(t Temp) {
+	fmt.Println(t)
+}
+
+// effects: debug Console
+func debug(n int) {
+	println(n)
+}
+
+// effects: showAny Console Panic
+// exec: showAny Console Panic Alloc
+func showAny(s Stringer) {
+	fmt.Print(s)
+}
+
+// effects: format Alloc
+func format(n int) string {
+	return fmt.Sprint(n)
+}
+
+func main() {
+	show(Temp{1})
+	debug(1)
+	showAny(Temp{2})
+	_ = format(1)
+}

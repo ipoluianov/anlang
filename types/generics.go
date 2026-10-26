@@ -449,7 +449,7 @@ func (c *checker) subst(t Type, m substMap) Type {
 	case *Signature:
 		p, r := c.substTuple(t.Params, m), c.substTuple(t.Results, m)
 		if p != t.Params || r != t.Results {
-			return &Signature{Recv: t.Recv, Params: p, Results: r, Variadic: t.Variadic, TypeParams: t.TypeParams, RecvTypeParams: t.RecvTypeParams}
+			return &Signature{Recv: t.Recv, Params: p, Results: r, Variadic: t.Variadic, AnyTuple: t.AnyTuple, TypeParams: t.TypeParams, RecvTypeParams: t.RecvTypeParams}
 		}
 	case *Interface:
 		changed := false

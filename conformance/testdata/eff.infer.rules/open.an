@@ -1,0 +1,48 @@
+// want: ok
+// checks: eff.attr.resolve eff.attr.exec
+
+package main
+
+import "an/fmt"
+
+type Job interface {
+	Run()
+}
+
+type Print struct{}
+
+func (p Print) Run() { fmt.Println("job") }
+
+type Queue struct {
+	jobs []Job
+	done func()
+}
+
+// Calls through values read from fields are open references: no own
+// effects, but the execution effects of the implementations.
+// effects: runAll none
+// exec: runAll Console Panic
+func runAll(q Queue) {
+	for _, j := range q.jobs {
+		if j != nil {
+			j.Run()
+		}
+	}
+}
+
+// effects: finish none
+// exec: finish Console Panic
+func finish(q Queue) {
+	if q.done != nil {
+		q.done()
+	}
+}
+
+// Converting Print to Job adds the summary of Print.Run to the function
+// that converts.
+// effects: main Alloc Console Panic
+func main() {
+	q := Queue{jobs: []Job{Print{}}, done: func() { fmt.Println("done") }}
+	runAll(q)
+	finish(q)
+}

@@ -1,0 +1,33 @@
+// want: eff.without.check
+// checks: eff.attr.resolve
+
+package main
+
+import (
+	"an/effect"
+	"an/fmt"
+)
+
+type Job interface {
+	Run()
+}
+
+type Loud struct{}
+
+func (l Loud) Run() { fmt.Println("x") }
+
+type Queue struct {
+	jobs [1]Job
+}
+
+func run(q Queue) {
+	ensures effect.Without(effect.Console)
+
+	if q.jobs[0] != nil {
+		q.jobs[0].Run()
+	}
+}
+
+func main() {
+	run(Queue{jobs: [1]Job{Loud{}}})
+}

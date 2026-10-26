@@ -14,7 +14,29 @@ import (
 
 // Panic is a panic that ended the program.
 type Panic struct {
-	Value string // the printed panic value
+	Value string   // the printed panic value
+	Stack []string // the functions being called, innermost last
+}
+
+// LimitError reports that a limit of Options was exceeded.
+type LimitError struct {
+	Limit string // "steps" or "memory"
+	Max   int64
+	Stack []string
+}
+
+func (e *LimitError) Error() string {
+	return fmt.Sprintf("the %s limit (%d) was exceeded", e.Limit, e.Max)
+}
+
+// NotExecutableError reports a call of a function of an instruction
+// package, which only a target executes (tool.emu.ir).
+type NotExecutableError struct {
+	Func string
+}
+
+func (e *NotExecutableError) Error() string {
+	return fmt.Sprintf("%s executes an instruction of its architecture: the IR interpreter cannot run it; run the program in the emulator of its target", e.Func)
 }
 
 func (p *Panic) Error() string { return "panic: " + p.Value }
@@ -37,6 +59,9 @@ type Options struct {
 	// MaxSteps bounds the number of executed instructions; 0 means no
 	// limit.
 	MaxSteps int64
+	// MaxMemory bounds the number of values the program creates in
+	// slices, arrays, structs and maps; 0 means no limit.
+	MaxMemory int64
 }
 
 // machine runs one program.
@@ -46,7 +71,9 @@ type machine struct {
 	funcs   map[*ir.Func]*funcInfo
 	consts  map[*ir.Const]value
 	steps   int64
+	memory  int64
 	intBits int
+	stack   []*ir.Func // functions being called, innermost last
 }
 
 // funcInfo is the prepared form of a function.
@@ -67,6 +94,25 @@ type frame struct {
 
 // Run runs the program. It returns a *Panic if the program panicked.
 func Run(p *ir.Program, opts Options) (err error) {
+	m := newMachine(p, opts)
+	defer m.recover(&err)
+	m.call(m.info(p.Main), nil, nil)
+	return nil
+}
+
+// Eval runs p.Main, which has no parameters and one result, and returns
+// the result as the value of a computed constant (types.Composite and
+// the other representations of types). It returns a *Panic or a
+// *LimitError if the evaluation does not complete (ct.eval.panic,
+// ct.limit.exceeded).
+func Eval(p *ir.Program, opts Options) (result any, err error) {
+	m := newMachine(p, opts)
+	defer m.recover(&err)
+	v := m.call(m.info(p.Main), nil, nil)
+	return m.constOf(v, p.Main.Sig.Results.At(0).Type())
+}
+
+func newMachine(p *ir.Program, opts Options) *machine {
 	m := &machine{prog: p, opts: opts, funcs: map[*ir.Func]*funcInfo{}, consts: map[*ir.Const]value{}, intBits: p.IntBits}
 	if m.intBits == 0 {
 		m.intBits = 64
@@ -77,23 +123,47 @@ func Run(p *ir.Program, opts Options) (err error) {
 	if opts.Stderr == nil {
 		m.opts.Stderr = io.Discard
 	}
-	defer func() {
-		if r := recover(); r != nil {
-			ap, ok := r.(*anPanic)
-			if !ok {
-				panic(r)
-			}
-			msg := m.panicString(ap)
-			fmt.Fprintf(m.opts.Stderr, "panic: %s\n", msg)
-			err = &Panic{Value: msg}
-		}
-	}()
-	m.call(m.info(p.Main), nil, nil)
-	return nil
+	return m
 }
 
-// ErrSteps is the panic value when the step limit is exceeded.
-const ErrSteps = "interp: step limit exceeded"
+// recover turns a panic of the program into an error.
+func (m *machine) recover(err *error) {
+	r := recover()
+	if r == nil {
+		return
+	}
+	switch r := r.(type) {
+	case *anPanic:
+		msg := m.panicString(r)
+		fmt.Fprintf(m.opts.Stderr, "panic: %s\n", msg)
+		*err = &Panic{Value: msg, Stack: m.stackNames()}
+	case *LimitError:
+		r.Stack = m.stackNames()
+		fmt.Fprintf(m.opts.Stderr, "%s\n", r)
+		*err = r
+	case *NotExecutableError:
+		*err = r
+	default:
+		panic(r)
+	}
+}
+
+// alloc accounts for n new values (Options.MaxMemory).
+func (m *machine) alloc(n int) {
+	m.memory += int64(n)
+	if m.opts.MaxMemory > 0 && m.memory > m.opts.MaxMemory {
+		panic(&LimitError{Limit: "memory", Max: m.opts.MaxMemory})
+	}
+}
+
+// stackNames returns the functions being called, innermost last.
+func (m *machine) stackNames() []string {
+	var names []string
+	for _, fn := range m.stack {
+		names = append(names, fmt.Sprintf("%s (%s)", fn.Name, fn.Pos))
+	}
+	return names
+}
 
 func (m *machine) info(fn *ir.Func) *funcInfo {
 	if fi, ok := m.funcs[fn]; ok {
@@ -113,7 +183,18 @@ func (m *machine) info(fn *ir.Func) *funcInfo {
 // call runs a function and returns its result: nil, a value, or a tuple
 // ([]value) for several results.
 func (m *machine) call(fi *funcInfo, args, env []value) (result value) {
+	if strings.HasPrefix(fi.fn.Name, "an/arch/") && !strings.HasSuffix(fi.fn.Name, ".Far") {
+		panic(&NotExecutableError{Func: fi.fn.Name})
+	}
 	fr := &frame{fi: fi, regs: make([]value, fi.fn.NumValues()), args: args, env: env}
+	n := len(m.stack)
+	m.stack = append(m.stack, fi.fn)
+	done := false
+	defer func() {
+		if done {
+			m.stack = m.stack[:n] // while panicking, the stack stays for the report
+		}
+	}()
 	defer func() {
 		// Deferred calls run on return and while panicking.
 		for i := len(fr.defers) - 1; i >= 0; i-- {
@@ -122,8 +203,9 @@ func (m *machine) call(fi *funcInfo, args, env []value) (result value) {
 	}()
 	b := fi.fn.Blocks[0]
 	for {
-		next, res, done := m.block(fr, b)
-		if done {
+		next, res, end := m.block(fr, b)
+		if end {
+			done = true
 			return res
 		}
 		b = next
@@ -135,7 +217,7 @@ func (m *machine) block(fr *frame, b *ir.Block) (*ir.Block, value, bool) {
 	for _, in := range b.Instrs {
 		m.steps++
 		if m.opts.MaxSteps > 0 && m.steps > m.opts.MaxSteps {
-			panic(&anPanic{v: ErrSteps, t: types.Typ[types.String], runtime: true})
+			panic(&LimitError{Limit: "steps", Max: m.opts.MaxSteps})
 		}
 		switch i := in.(type) {
 		case *ir.Jump:
@@ -170,6 +252,15 @@ func (m *machine) block(fr *frame, b *ir.Block) (*ir.Block, value, bool) {
 func (m *machine) get(fr *frame, v ir.Value) value {
 	switch v := v.(type) {
 	case *ir.Const:
+		if v.Computed != nil {
+			c, ok := m.consts[v]
+			if !ok {
+				c = m.computedValue(v.Computed, v.Typ)
+				pin(c)
+				m.consts[v] = c
+			}
+			return c
+		}
 		c, ok := m.consts[v]
 		if !ok {
 			c = m.constValue(v)
@@ -271,9 +362,7 @@ func (m *machine) exec(fr *frame, in ir.Instr) {
 		if i.High != nil {
 			hi = int(m.intValue(m.get(fr, i.High)))
 		}
-		if lo < 0 || hi < lo || hi > n {
-			panic(runtimeError(fmt.Sprintf("slice bounds out of range [%d:%d] with length %d", lo, hi, n)))
-		}
+		checkSlice(lo, hi, hi, n, false, false)
 		m.set(fr, i, &subRef{base: base, lo: lo, hi: hi})
 	case *ir.Field:
 		m.set(fr, i, m.get(fr, i.X).(*aggregate).elems[i.Field])
@@ -301,6 +390,7 @@ func (m *machine) exec(fr *frame, in ir.Instr) {
 			m.set(fr, i, v)
 		}
 	case *ir.MapUpdate:
+		m.alloc(1)
 		uniqueMap(m.get(fr, i.Map).(addr)).set(m.get(fr, i.Key), m.get(fr, i.Value))
 	case *ir.Slice:
 		m.set(fr, i, m.slice(fr, i))
@@ -326,6 +416,7 @@ func (m *machine) exec(fr *frame, in ir.Instr) {
 			panic(runtimeError("makeslice: len out of range"))
 		}
 		et := i.Type().Underlying().(*types.Slice).Elem
+		m.alloc(c)
 		buf := &buffer{elems: make([]value, c), used: n, refs: 1}
 		for j := range buf.elems {
 			buf.elems[j] = m.zero(et)
@@ -334,12 +425,14 @@ func (m *machine) exec(fr *frame, in ir.Instr) {
 	case *ir.MakeMap:
 		m.set(fr, i, &mapObj{index: map[string]int{}, refs: 1})
 	case *ir.MakeStruct:
+		m.alloc(len(i.Fields))
 		a := &aggregate{elems: make([]value, len(i.Fields)), refs: 1}
 		for j, f := range i.Fields {
 			a.elems[j] = m.get(fr, f)
 		}
 		m.set(fr, i, a)
 	case *ir.MakeArray:
+		m.alloc(len(i.Elems))
 		elems := make([]value, len(i.Elems))
 		for j, e := range i.Elems {
 			elems[j] = m.get(fr, e)
@@ -369,6 +462,8 @@ func (m *machine) exec(fr *frame, in ir.Instr) {
 		m.set(fr, i, m.doCall(fr, i))
 	case *ir.Extract:
 		m.set(fr, i, m.get(fr, i.Tuple).([]value)[i.Index])
+	case *ir.Asm:
+		panic(&NotExecutableError{Func: "asm"})
 	case *ir.Defer:
 		callee, args := m.callee(fr, i.Call), m.args(fr, i.Call)
 		c := i.Call
@@ -496,8 +591,45 @@ func (m *machine) length(x value) int {
 }
 
 func (m *machine) checkIndex(i, n int) {
-	if i < 0 || i >= n {
+	if i < 0 {
+		panic(runtimeError(fmt.Sprintf("index out of range [%d]", i)))
+	}
+	if i >= n {
 		panic(runtimeError(fmt.Sprintf("index out of range [%d] with length %d", i, n)))
+	}
+}
+
+// checkSlice checks the indices of a slice expression in the order and
+// with the messages of Go (expr.bounds.check): x[lo:hi] or x[lo:hi:max],
+// where c is the capacity of x, which is a slice if isSlice is set.
+func checkSlice(lo, hi, max, c int, three, isSlice bool) {
+	fail := func(neg, format string, args ...any) {
+		if args[0].(int) < 0 {
+			format, args = neg, args[:1]
+		}
+		panic(runtimeError("slice bounds out of range " + fmt.Sprintf(format, args...)))
+	}
+	limit := "length"
+	if isSlice {
+		limit = "capacity"
+	}
+	if three {
+		if max < 0 || max > c {
+			fail("[::%d]", "[::%d] with "+limit+" %d", max, c)
+		}
+		if hi < 0 || hi > max {
+			fail("[:%d:]", "[:%d:%d]", hi, max)
+		}
+		if lo < 0 || lo > hi {
+			fail("[%d::]", "[%d:%d:]", lo, hi)
+		}
+		return
+	}
+	if hi < 0 || hi > c {
+		fail("[:%d]", "[:%d] with "+limit+" %d", hi, c)
+	}
+	if lo < 0 || lo > hi {
+		fail("[%d:]", "[%d:%d]", lo, hi)
 	}
 }
 
@@ -526,9 +658,8 @@ func (m *machine) slice(fr *frame, i *ir.Slice) value {
 	if _, isString := x.(string); isString {
 		c = n
 	}
-	if lo < 0 || hi < lo || hi > max || max > c {
-		panic(runtimeError(fmt.Sprintf("slice bounds out of range [%d:%d] with capacity %d", lo, hi, c)))
-	}
+	_, isSlice := x.(sliceVal)
+	checkSlice(lo, hi, max, c, i.Max != nil, isSlice)
 	switch v := x.(type) {
 	case addr:
 		// The slice is a copy of the elements (mem.value.copy).
@@ -565,9 +696,6 @@ func (m *machine) intValue(v value) int64 {
 func (m *machine) panicString(p *anPanic) string {
 	if p.runtime {
 		s := fmt.Sprint(p.v)
-		if p.v == ErrSteps {
-			return s
-		}
 		return s
 	}
 	var b strings.Builder

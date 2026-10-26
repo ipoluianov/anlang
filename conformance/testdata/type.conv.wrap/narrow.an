@@ -1,0 +1,11 @@
+// want: type.conv.int-narrow
+// checks: type.conv.wrap
+
+package main
+
+import "an/wrap"
+
+func main() {
+	var h wrap.U32 = 7
+	_ = u8(h)
+}

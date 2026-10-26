@@ -1,0 +1,62 @@
+// want: ok
+
+// Integer arithmetic of every width in the core profile, on any target.
+package main
+
+profile core
+
+import (
+	"an/bits"
+	"an/fmt"
+	"an/wrap"
+)
+
+func gcd(a, b u32) u32 {
+	for b != 0 {
+		a, b = b, a%b
+	}
+	return a
+}
+
+func fact(n u64) u64 {
+	if n <= 1 {
+		return 1
+	}
+	return n * fact(n-1)
+}
+
+func main() {
+	var a8, b8 i8 = -100, 7
+	fmt.Println(a8+b8, a8-b8, a8/b8, a8%b8, -a8, a8>>2, ^a8)
+	var c8, d8 u8 = 200, 3
+	fmt.Println(c8+d8, c8-d8, c8*1, c8/d8, c8%d8, c8<<1, c8>>3, c8&d8, c8|d8, c8^d8, c8&^d8)
+	var a16, b16 i16 = -30000, 123
+	fmt.Println(a16+b16, a16/b16, a16%b16, a16>>5, a16<<1)
+	var c16 u16 = 65000
+	fmt.Println(c16/7, c16%7, c16>>8, c16+500)
+	var x32, y32 i32 = -2000000000, 46340
+	fmt.Println(x32/y32, x32%y32, x32+y32, x32-y32, y32*y32-1, x32>>7, -x32)
+	var u32a, u32b u32 = 4000000000, 65537
+	fmt.Println(u32a/u32b, u32a%u32b, u32a+u32b, u32a>>3, u32b<<15, gcd(1071, 462), gcd(u32a, 600000))
+	var x64 i64 = -9000000000000000000
+	var y64 i64 = 1234567
+	fmt.Println(x64/y64, x64%y64, x64+y64, x64>>10, x64/-1+1, y64*y64*y64)
+	var u64a u64 = 18000000000000000000
+	fmt.Println(u64a/1000, u64a%999, u64a>>40, u64a+1, fact(20))
+	n := 1000
+	m := -7
+	fmt.Println(n/m, n%m, n*m, n<<3, n>>3, m>>1, uint(1000)/3)
+	var w8 wrap.U8 = 250
+	var w16 wrap.I16 = 32767
+	var w64 wrap.U64 = 0
+	var w32 wrap.I32 = -2147483647
+	fmt.Println(w8+10, w8*3, w16+1, -w16-2, w64-1, (w32-1)/-1, (w32-1)%-1)
+	s, ok := bits.CheckedAdd(i16(32000), i16(1000))
+	fmt.Println(s, ok, bits.SaturatingAdd(i16(32000), i16(1000)), bits.SaturatingSub(u8(3), u8(5)), bits.WrappingMul(u16(300), u16(300)))
+	p, ok2 := bits.CheckedMul(i32(46341), i32(46340))
+	fmt.Println(p, ok2, bits.SaturatingMul(i8(-100), i8(2)), bits.SaturatingMul(i8(-100), i8(-2)))
+	sh := 3
+	fmt.Println(u32(1)<<sh, i64(-1)<<40>>sh, u8(255)>>sh, u64(1)<<63>>sh, i32(-1)<<31>>31)
+	fmt.Println(min(3, -2, 7), max(u8(4), 9), min(i64(-5), 2))
+	fmt.Println(i32(a16)*1000, u64(c16)<<20, i8(c16>>9), u16(wrap.U16(x32>>16)))
+}

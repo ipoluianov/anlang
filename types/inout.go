@@ -135,6 +135,9 @@ func (c *checker) inoutArg(x *operand, param *Var, context string) {
 	case x.mode == mapindex:
 		c.errorf(x.expr.Pos(), "expr.addr.map", "cannot pass %s as an inout argument: a map element is not addressable", exprString(x.expr))
 		return
+	case x.mode != variable && c.computedRoot(x.expr) != nil:
+		c.errorf(x.expr.Pos(), "ct.const.immutable", "cannot pass %s as an inout argument: the constant %s cannot be modified", exprString(x.expr), c.computedRoot(x.expr).name)
+		return
 	case x.mode != variable:
 		c.errorf(x.expr.Pos(), "expr.call.inout-arg", "cannot pass %s as an inout argument in %s: it is not addressable", x, context)
 		return
