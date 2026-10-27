@@ -1,0 +1,15 @@
+// want: contract.expr.old
+
+// A local variable has no value at the entry of the function.
+package main
+
+func f(n inout int) {
+	m := n
+	n++
+	assert(old(m) == m)
+}
+
+func main() {
+	x := 1
+	f(x)
+}

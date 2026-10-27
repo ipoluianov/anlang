@@ -134,6 +134,32 @@ func (f *fn) boundary(st *state, t types.Type, x val, pos syntax.Pos, what strin
 // postconditions, the invariants of the values of its inout parameters
 // and those of its results.
 func (f *fn) exit(st *state, pos syntax.Pos, rs []val) {
+	if len(f.deferred) > 0 {
+		// The deferred calls run after the results are set, and may
+		// change the inout arguments, among them named results.
+		st = st.clone()
+		named := len(f.results) > 0 && f.results[0].Name() != ""
+		if named {
+			for i, r := range f.results {
+				if i < len(rs) {
+					f.write(st, r, rs[i])
+				}
+			}
+		}
+		for _, e := range f.deferred {
+			// The path of an argument such as xs[i] is that of the defer
+			// statement: the whole variable gets a new value.
+			if v := f.pathRoot(e); v != nil {
+				f.write(st, v, f.received(st, v.Type(), v.Name()))
+			}
+		}
+		if named {
+			rs = nil
+			for _, r := range f.results {
+				rs = append(rs, f.read(st, r))
+			}
+		}
+	}
 	f.checkEnsures(st, pos, rs)
 	params := []*types.Var{}
 	if f.sig != nil {
@@ -153,6 +179,9 @@ func (f *fn) exit(st *state, pos syntax.Pos, rs []val) {
 		if i < len(rs) {
 			f.boundary(st, r.Type(), rs[i], pos, "of the result")
 		}
+	}
+	for _, v := range f.inoutLoops {
+		f.boundary(st, v.Type(), f.read(st, v), pos, "of inout loop variable "+v.Name()+" at the return")
 	}
 }
 

@@ -1,0 +1,21 @@
+// want: type.zero.chan-receive
+// checks: type.zero.ok-use
+
+// After the channel is closed, s would be the zero value of Shape.
+package main
+
+type Shape enum {
+	Circle{r int}
+	Rect{w, h int}
+}
+
+func take(s Shape) {}
+
+func main() {
+	c := make(chan Shape, 1)
+	close(c)
+	s, ok := <-c
+	if !ok {
+		take(s)
+	}
+}

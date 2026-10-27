@@ -19,6 +19,7 @@ func (c *checker) callExpr(x *operand, e *syntax.CallExpr) {
 		return
 	}
 	var fun operand
+	ranged := c.callee == syntax.Expr(e) // the range expression of a for statement
 	savedCallee := c.callee
 	c.callee = unparen(e.Fun)
 	c.rawExpr(&fun, e.Fun, nil)
@@ -53,6 +54,9 @@ func (c *checker) callExpr(x *operand, e *syntax.CallExpr) {
 		c.useArgs(e.Args)
 		x.invalidate()
 		return
+	}
+	if !ranged && c.borrowing(e.Fun) {
+		c.errorf(e.Pos(), "mem.ref.borrowing", "the call %s returns an iterator that holds inout access to its arguments: it may only be the range expression of a for statement", exprString(e))
 	}
 	var args []*operand
 	savedOK := c.tupleOK
@@ -544,13 +548,19 @@ func (c *checker) builtinCall(x *operand, e *syntax.CallExpr, id builtinID) {
 		return
 	}
 	c.tupleOK = id == _Len
-	if id == _Assert {
+	savedOK, savedOld := c.oldOK, c.inOld
+	switch id {
+	case _Assert:
 		c.inContract++
+		c.oldOK = true
+	case _Old:
+		c.inOld = true
 	}
 	args := c.args(e.Args, nil)
 	if id == _Assert {
 		c.inContract--
 	}
+	c.oldOK, c.inOld = savedOK, savedOld
 	c.tupleOK = false
 	args = append(args, spread...)
 	for _, a := range args {
@@ -926,6 +936,26 @@ func (c *checker) builtinCall(x *operand, e *syntax.CallExpr, id builtinID) {
 			c.defaultUntyped(a)
 		}
 
+	case _Old:
+		// The value of an expression at the entry of the function
+		// (contract.expr.old).
+		if !nargs(1, 1) {
+			return
+		}
+		if c.inContract == 0 || !c.oldOK || c.inOld {
+			c.errorf(e.Pos(), "contract.expr.old", "old may appear only in ensures clauses, loop invariants and assertions, and not inside old")
+			x.invalidate()
+			return
+		}
+		a := args[0]
+		c.defaultUntyped(a)
+		if v := c.oldVar(e.Args[0]); v != nil {
+			c.errorf(e.Args[0].Pos(), "contract.expr.old", "the argument of old may refer only to parameters and the receiver, not to %s", v.name)
+			x.invalidate()
+			return
+		}
+		x.mode, x.typ, x.expr = value, a.typ, e
+
 	case _Assert:
 		// A proof obligation at compile time (contract.assert.form).
 		if !nargs(1, 1) {
@@ -964,7 +994,7 @@ func (c *checker) builtinCall(x *operand, e *syntax.CallExpr, id builtinID) {
 			c.builtinInout(args[0], name)
 		case *Slice:
 			// Clearing a slice sets its elements to zero values (type.zero.uses).
-			c.zeroUse(args[0].expr.Pos(), u.Elem, "type.zero.uses", "clear of a slice")
+			c.zeroUse(args[0].expr.Pos(), u.Elem, "type.zero.clear", "clear of a slice")
 			c.builtinInout(args[0], name)
 		default:
 			c.errorf(args[0].expr.Pos(), "expr.go", "invalid argument: %s must be a map or slice", args[0])
@@ -1082,4 +1112,100 @@ func hasCallOrRecv(e syntax.Expr) bool {
 	}
 	walk(e)
 	return found
+}
+
+// oldVar returns a variable that the argument e of old may not refer to:
+// one other than a parameter or the receiver of the function or of a
+// quantifier predicate around it, a
+// package-level variable or a variable declared in e (contract.expr.old).
+func (c *checker) oldVar(e syntax.Expr) *Var {
+	// The parameters of the function and of the predicates of
+	// quantifiers around old.
+	allowed := map[*Var]bool{}
+	for fn := c.fn; fn != nil; fn = fn.parent {
+		if sig := fn.sig; sig != nil {
+			if sig.Recv != nil {
+				allowed[sig.Recv] = true
+			}
+			if sig.Params != nil {
+				for _, p := range sig.Params.Vars {
+					allowed[p] = true
+				}
+			}
+		}
+		if !fn.predicate {
+			break
+		}
+	}
+	syntax.Walk(e, func(n syntax.Node) bool {
+		if id, ok := n.(*syntax.Name); ok {
+			if v, ok := c.info.Defs[id].(*Var); ok {
+				allowed[v] = true
+			}
+		}
+		return true
+	})
+	var bad *Var
+	syntax.Walk(e, func(n syntax.Node) bool {
+		if id, ok := n.(*syntax.Name); ok && bad == nil {
+			if v, ok := c.info.Uses[id].(*Var); ok && !allowed[v] && !v.IsPackageLevel() { // package-level variables are rejected as uses
+				bad = v
+			}
+		}
+		return bad == nil
+	})
+	return bad
+}
+
+// IsIterator reports whether t is an iterator function type of Go 1.23
+// or of stmt.range.inout-iter.
+func IsIterator(t Type) bool { return isIterator(t) }
+
+func isIterator(t Type) bool {
+	sig, ok := core(t).(*Signature)
+	if !ok || sig.Params.Len() != 1 || sig.Results.Len() != 0 {
+		return false
+	}
+	y, ok := core(sig.Params.Vars[0].typ).(*Signature)
+	return ok && y.Params.Len() <= 2 && y.Results.Len() == 1 && isBoolean(y.Results.Vars[0].typ)
+}
+
+// borrowing reports whether a call of fun is a borrowing call: fun is a
+// borrowing function or method (mem.ref.borrowing).
+func (c *checker) borrowing(fun syntax.Expr) bool {
+	var f *Func
+	switch x := unparen(fun).(type) {
+	case *syntax.Name:
+		f, _ = c.info.Uses[x].(*Func)
+	case *syntax.SelectorExpr:
+		f, _ = c.info.Uses[x.Sel].(*Func)
+	}
+	return f != nil && borrowingFunc(f)
+}
+
+// borrowingFunc reports whether f is a borrowing function: a declared
+// function or method with an inout parameter or receiver that returns an
+// iterator (mem.ref.borrowing).
+func borrowingFunc(f *Func) bool {
+	sig, ok := f.typ.(*Signature)
+	if !ok || sig.Results.Len() != 1 || !isIterator(sig.Results.Vars[0].typ) {
+		return false
+	}
+	if sig.Recv != nil && sig.Recv.inout {
+		return true
+	}
+	for _, p := range sig.Params.Vars {
+		if p.inout {
+			return true
+		}
+	}
+	return false
+}
+
+// borrowingValue reports the use of a borrowing function f other than as
+// the callee of a call (mem.ref.borrowing).
+func (c *checker) borrowingValue(f *Func, e syntax.Expr) {
+	if c.callee != e && borrowingFunc(f) {
+		c.errorf(e.Pos(), "mem.ref.borrowing", "%s is a borrowing function: it may only be called, as the range expression of a for statement", exprString(e))
+	}
 }

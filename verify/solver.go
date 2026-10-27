@@ -1,10 +1,8 @@
 package verify
 
 import (
-	"fmt"
 	"math/big"
 	"sort"
-	"strings"
 )
 
 // DefaultSteps is the default step limit of the solver.
@@ -200,6 +198,13 @@ func (s *solver) search(ineqs []Ineq, other []NF) (*Proof, []*big.Rat, outcome) 
 		return nil, nil, unknown
 	case unsat:
 		return &Proof{Kind: Refute, Steps: steps}, nil, unsat
+	}
+	// A model that violates an inequality would be a false
+	// counterexample: the obligation stays unknown.
+	for _, q := range ineqs {
+		if !holds(NF{Kind: NIneq, Ineq: q}, model) {
+			return nil, nil, unknown
+		}
 	}
 	// A disjunction that one of the inequalities satisfies is satisfied by
 	// every model. Of the others, the one with the fewest disjuncts that
@@ -547,7 +552,10 @@ func (s *solver) theory(ineqs []Ineq) ([]Step, []*big.Rat, outcome) {
 				case found:
 				case k == nil:
 					rows = append(rows, r)
-				case isBound(r, v):
+				case isBound(r, v) && fx.satisfies(r):
+					// A bound that the value of v satisfies. One that it
+					// does not, which the substitution of a variable before
+					// may derive, gives a contradiction below.
 				default:
 					s.steps++
 					if s.steps > s.limit {
@@ -673,34 +681,53 @@ func (s *solver) theory(ineqs []Ineq) ([]Step, []*big.Rat, outcome) {
 // coefficient ±1 in an equality of rows, and the indices of the halves of
 // the equality where its coefficient is 1 and -1.
 func (s *solver) equality(rows []row, eliminated []bool) (int, int, int, bool) {
-	key := func(a []Coef, neg bool) string {
-		var b strings.Builder
+	// A hash of the coefficients, and of their negations; equal hashes
+	// are compared exactly.
+	hash := func(a []Coef, neg bool) uint64 {
+		h := uint64(14695981039346656037)
 		for _, x := range a {
-			c := x.C
-			if neg {
-				c = new(big.Int).Neg(c)
+			c := x.C.Int64()
+			if !x.C.IsInt64() {
+				c = int64(x.C.BitLen())
 			}
-			fmt.Fprintf(&b, "%d:%s,", x.Var, c)
+			if neg {
+				c = -c
+			}
+			h = (h ^ uint64(x.Var)) * 1099511628211
+			h = (h ^ uint64(c)) * 1099511628211
 		}
-		return b.String()
+		return h
 	}
-	byKey := map[string]int{}
+	byHash := map[uint64][]int{}
 	for i, r := range rows {
-		byKey[key(r.a, false)] = i
+		k := hash(r.a, false)
+		byHash[k] = append(byHash[k], i)
 	}
-	for i, r := range rows {
-		j, ok := byKey[key(r.a, true)]
-		if !ok || j == i || new(big.Int).Add(r.c, rows[j].c).Sign() != 0 {
-			continue
+	opposite := func(p, q row) bool {
+		if len(p.a) != len(q.a) || new(big.Int).Add(p.c, q.c).Sign() != 0 {
+			return false
 		}
-		for _, x := range r.a {
-			if eliminated[x.Var] || x.C.CmpAbs(one) != 0 {
+		for k := range p.a {
+			if p.a[k].Var != q.a[k].Var || new(big.Int).Add(p.a[k].C, q.a[k].C).Sign() != 0 {
+				return false
+			}
+		}
+		return true
+	}
+	for i, r := range rows {
+		for _, j := range byHash[hash(r.a, true)] {
+			if j == i || !opposite(r, rows[j]) {
 				continue
 			}
-			if x.C.Sign() > 0 {
-				return x.Var, i, j, true
+			for _, x := range r.a {
+				if eliminated[x.Var] || x.C.CmpAbs(one) != 0 {
+					continue
+				}
+				if x.C.Sign() > 0 {
+					return x.Var, i, j, true
+				}
+				return x.Var, j, i, true
 			}
-			return x.Var, j, i, true
 		}
 	}
 	return 0, 0, 0, false
@@ -717,6 +744,15 @@ func isBound(r row, v int) bool {
 type fixedVar struct {
 	v      int
 	hi, lo row
+}
+
+// satisfies reports whether the value of the variable satisfies its bound
+// r.
+func (fx fixedVar) satisfies(r row) bool {
+	if r.a[0].C.Sign() > 0 {
+		return r.c.Cmp(fx.hi.c) >= 0
+	}
+	return r.c.Cmp(fx.lo.c) >= 0
 }
 
 // propagate adds the bounds of the variables that the rows imply: for a

@@ -139,6 +139,8 @@ Its semantics, including which range expressions are permitted, are specified in
 
 **stmt.defer.inout-args** — The operand path of an `inout` argument of a deferred call (for example the index in `xs[i]`) is evaluated when the `defer` statement executes. The `inout` access itself begins only when the deferred call runs. Between the `defer` statement and the deferred call, the program MAY use the operand normally.
 
+**stmt.defer.inout-loop** — A deferred call runs when the function returns, after the access to an `inout` loop variable has ended with its iteration (**stmt.range.inout**). A deferred call MUST NOT therefore pass an `inout` loop variable, or a part of one, to an `inout` parameter or receiver, and MUST NOT call a closure that captures one (**expr.closure.capture-inout**). `inout` parameters and receivers of the function remain allowed: their access lasts until the function returns.
+
 **Note** — This matches Go's behavior with pointer receivers: `defer f.Close()` sees the state of `f` at the time `Close` runs.
 
 ## 8. Errors and discarded results

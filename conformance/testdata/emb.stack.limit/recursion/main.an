@@ -1,6 +1,7 @@
 // want: emb.stack.limit
 
-// fact calls itself with a smaller n, but only the type of n bounds it:
+// fact calls itself with a smaller n, but only the type of n bounds it
+// (65536 calls):
 // the stack for that depth of recursion exceeds the stack of the target.
 package main
 
@@ -8,7 +9,7 @@ profile core
 
 import "an/fmt"
 
-func fact(n u32) u32 {
+func fact(n u16) u16 {
 	if n <= 1 {
 		return 1
 	}

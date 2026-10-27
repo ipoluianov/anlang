@@ -141,14 +141,18 @@ func SortParallel(xs inout []i32) {
 
 **conc.sync.load** — `m.Load() T` returns a copy of the value under the lock.
 
+**conc.sync.lock-no-wait** — The body of a loop over `m.Lock()` of a `sync.Mutex[T]` or `sync.RWMutex[T]` MUST NOT have the effect `Block` ([07-effects](07-effects.md)): it contains no wait point (§9.5). So cancellation, which unwinds a task only at a wait point (**conc.cancel.delivery**), cannot end the body between two updates of the value and leave a state that breaks its type invariant ([08-contracts](08-contracts.md), **contract.type.assume**) for the next task that locks it. This generalizes **emb.lock.no-block** of [14-embedded](14-embedded.md).
+
+**conc.sync.poison** — If a panic ends the body of a loop over `m.Lock()`, the lock is released and the mutex is *poisoned*: every later `m.Lock()`, `m.Load()` and write lock of it panics. No task observes the value whose update the panic interrupted.
+
 **conc.sync.rwmutex** — `sync.RWMutex[T]` provides `Lock()` as `sync.Mutex[T]` does, and `RLock()`, an iterator that yields a copy of the value under a shared lock.
 
 **conc.sync.atomic** — Atomic types provide `Load`, `Store`, `Add`, `Swap` and `CompareAndSwap` as the atomic types of Go's `sync/atomic`. Explicit memory orders are specified in [15-os](15-os.md). On a single-core target of the `core` profile an operation runs with the interrupts disabled. Until handles (**conc.sync.handle**) are implemented, atomic values are package-level variables, and their methods take them as `inout` receivers.
 
 **conc.sync.placement** — A synchronization object is placed:
 
-- in the frame of the invocation that creates it, if no handle to it can reach a task started with `task.Detach`; structured concurrency guarantees that all users finish before the frame is released;
-- otherwise on the heap, with an atomic reference count; this requires the effect `Alloc` and is therefore not available in `core`.
+- in the frame of the invocation that creates it, if no handle to it can outlive the invocation: structured concurrency guarantees that all tasks that use it finish before the frame is released ([06-memory](06-memory.md), **mem.sync.frame**);
+- otherwise — a handle is returned, stored in a longer-lived value, sent to a longer-lived task or passed to `task.Detach` — on the heap, with an atomic reference count ([06-memory](06-memory.md), **mem.sync.heap**); this requires the effect `Alloc` and is therefore not available in `core`, except for a package-level variable.
 
 Package-level synchronization variables have static storage.
 

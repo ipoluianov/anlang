@@ -1,0 +1,19 @@
+// want: type.zero.map-index
+// checks: type.zero.ok-use
+
+// Without the key, s would be the zero value of Shape, which has none.
+package main
+
+type Shape enum {
+	Circle{r int}
+	Rect{w, h int}
+}
+
+func take(s Shape) {}
+
+func main() {
+	m := map[string]Shape{}
+	s, ok := m["a"]
+	take(s)
+	_ = ok
+}

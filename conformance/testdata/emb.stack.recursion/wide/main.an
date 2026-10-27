@@ -1,0 +1,18 @@
+// want: emb.stack.recursion
+// checks: rt.stack.core-recursion
+
+// The range of n has more than 2^20 values, so it bounds nothing.
+package main
+
+profile core
+
+func count(n u32) u32 {
+	if n == 0 {
+		return 0
+	}
+	return count(n-1) + 1
+}
+
+func main() {
+	_ = count(5)
+}

@@ -1,0 +1,20 @@
+// want: ok
+
+// The capacity beyond the length holds no values of Shape: a slice
+// expression may not reach it.
+package main
+
+import "an/fmt"
+
+type Shape enum {
+	Circle{r int}
+	Rect{w, h int}
+}
+
+func main() {
+	s := make([]Shape, 0, 4)
+	s = append(s, Circle(1))
+	fmt.Println(len(s), cap(s[:1]))
+	t := s[:2]
+	fmt.Println(len(t))
+}

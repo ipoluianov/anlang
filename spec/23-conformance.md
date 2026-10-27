@@ -80,6 +80,7 @@ Reference programs that do not depend on the target are stored as described in *
 - architecture interpreters against QEMU and processor test suites;
 - the images of the reference programs for Cortex-M targets against QEMU, on a board with the same memory map (**conf.backend.ir**);
 - the solver against the enumeration of the values of small domains (**conf.solver.enumeration**);
+- the proof obligations against the IR interpreter, on random programs (**conf.solver.vc**);
 - the WebAssembly interpreter against the official WebAssembly specification test suite: every command of the scripts of the core tests of WebAssembly 2.0, with the vector tests, MUST pass; and its validator against V8, the engine of Node.js, on the modules of those scripts, for the binary encoding of each instruction;
 - the modules of the reference programs for the target `web` against Node.js with its WASI (**conf.backend.ir**);
 - the page of the target `web` (**target.format.html**) in a headless browser driven over the DevTools protocol, with input typed while the program waits for it;
@@ -91,6 +92,10 @@ Reference programs that do not depend on the target are stored as described in *
 - GPU output against format validators.
 
 **conf.solver.enumeration** — For random obligations whose facts bound each of at most four variables to a small range, the solver MUST prove exactly those that hold for every value of the range and refute the others, never returning *unknown*; the checker MUST accept the certificate of every proof, every counterexample MUST satisfy the facts and violate the goal, and the checker MUST reject wrong certificates.
+
+**conf.solver.guaranteed** — For random obligations of the guaranteed fragment (**contract.solver.guaranteed**), half of them at its bounds, with and without facts that bound one variable, the solver MUST prove each. The facts hold for a hidden value of the variables, and the goal follows from a chain of the facts, of which a link may be a disjunction whose disjuncts both give it.
+
+**conf.solver.vc** — The certificates confirm the solver, not the obligations that the compiler creates from a program. For random programs with integers of several types, arrays, fields of structs, `Option` values, branches, loops, calls of functions with postconditions and narrowing conversions, the suite keeps the assertions, postconditions and conversions that the compiler proves, replaces each assertion with a check that panics, and runs the program in the IR interpreter, which performs every run-time check, on random inputs read from the standard input. A check that panics there, or a run-time error in an instruction whose check is marked proven (**contract.check.proven**), is a fault of the obligations: the compiler would remove a check that the program needs.
 
 **conf.oracle.scope** — External tools MAY be used only in the tests of the environment. They MUST NOT be part of the toolchain or required by any `anlang` command (see [22-compiler](22-compiler.md), **impl.single-binary**).
 

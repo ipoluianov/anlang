@@ -34,9 +34,9 @@ InvariantClause = "invariant" Expression .                               (new)
 
 ## 8.2 Contract expressions
 
-**contract.expr.pure** — A contract expression and the argument of `assert` MUST have no effects ([07-effects](07-effects.md)): every function it calls MUST have empty execution effects, except `Panic`. A call in a contract expression that could panic is itself a proof obligation that it does not panic.
+**contract.expr.pure** — A contract expression and the argument of `assert` MUST have no effects ([07-effects](07-effects.md)): every function it calls MUST have empty execution effects, except `Panic`. A call in a contract expression that could panic is itself a proof obligation that it does not panic. A `requires` clause that the compiler evaluates on constant arguments (**ct.reject.precondition** in [10-compile-time](10-compile-time.md)) MAY call compile-time evaluable functions with other effects; where its arguments are not constants, it is a proof obligation only if it satisfies this rule, and the call is rejected otherwise.
 
-**contract.expr.supported** — Until the calls of pure functions in contract expressions (roadmap step 29), a contract expression and the argument of `assert` consist of constants, variables, `result`, fields of structs, elements and slices of arrays and slices, values of enum types — variants, constructors and their comparisons —, the arithmetic `+`, `-`, the product with a constant and `/` and `%` by a positive constant, the bitwise operations `&`, `|`, `^` and `&^`, the shifts `<<` and `>>` by a constant, comparisons, `&&`, `||`, `!`, `len`, `math.Sum`, `math.ForAll` and `math.Exists` (**std.math.contract**, **std.math.quantifier**) and conversions between integer types; a program with another construct in one is rejected as not supported yet. Such expressions have no effects.
+**contract.expr.supported** — Until the calls of pure functions in contract expressions (roadmap step 29), a contract expression and the argument of `assert` consist of constants, variables, `result`, fields of structs, elements and slices of arrays and slices, values of enum types — variants, constructors and their comparisons —, the arithmetic `+`, `-`, the product with a constant and `/` and `%` by a positive constant, the bitwise operations `&`, `|`, `^` and `&^`, the shifts `<<` and `>>` by a constant, comparisons, `&&`, `||`, `!`, `len`, `old` (**contract.expr.old**), `math.Sum`, `math.ForAll` and `math.Exists` (**std.math.contract**, **std.math.quantifier**) and conversions between integer types; a program with another construct in one is rejected as not supported yet. Such expressions have no effects.
 
 **contract.expr.math** — Integer arithmetic in contract expressions is performed on unbounded mathematical integers; it never overflows and never wraps. Operands of fixed-size integer types are converted to mathematical integers before the operation. Floating-point arithmetic in contract expressions follows IEEE 754 as at run time.
 
@@ -44,13 +44,15 @@ InvariantClause = "invariant" Expression .                               (new)
 
 **contract.expr.elements** — An index or slice expression in a contract expression is not checked against the bounds of its operand: an element outside them has an unknown value of the element type.
 
-**contract.expr.scope** — A `requires` expression MAY refer to the parameters and receiver of the function, to package-level constants and to package-level variables. An `ensures` expression MAY refer additionally to `result` and to named results.
+**contract.expr.scope** — A `requires` expression MAY refer to the parameters and receiver of the function and to package-level constants. An `ensures` expression MAY refer additionally to `result` and to named results. A contract expression and the argument of `assert` MUST NOT refer to a package-level variable: such a variable is an atomic, a mutex or a hardware mapping (**mem.global.kinds** in [06-memory](06-memory.md)), which other tasks and interrupts change, and reading it has the effect `Global` (**contract.expr.pure**).
 
 **contract.expr.result** — Inside an `ensures` expression, the identifier `result` denotes the single result of a function with exactly one unnamed result. A function with several results MUST name its results to refer to them in `ensures`; in such a function `result` is not defined. Outside `ensures`, `result` is an ordinary identifier.
 
-**contract.expr.post-state** — In an `ensures` expression, a parameter or receiver passed as `inout` denotes its value at the moment of return.
+**contract.expr.post-state** — In an `ensures` expression, a parameter or receiver passed as `inout` denotes its value at the moment of return. A parameter that is not `inout` denotes its value at entry, even if the body assigns it. `old` gives the value of an `inout` parameter at entry (**contract.expr.old**).
 
-**contract.expr.result-only** — `result` is the only special name in contracts. Constraints that are not postconditions are written as calls of compiler-known functions (§8.6).
+**contract.expr.old** — `old` is a predeclared function: `old(e)` denotes the value of the expression `e` at the entry of the function, before the first statement of its body, and has the type of `e`. It MAY appear in `ensures` clauses, in loop invariants and in the argument of `assert`; in a `requires` clause, in a type invariant, outside contracts and inside the argument of another `old` it is an error. `e` MAY refer only to the parameters and the receiver of the function, to variables bound in `e` and to the parameters of the quantifier predicates around `old` (**std.math.quantifier**). In a function literal other than a quantifier predicate, the function is the literal. After a call, the caller MAY assume each `ensures` clause of the callee with `old(e)` replaced by the value of `e` for the arguments before the call (**contract.obligation.assume**).
+
+**contract.expr.result-only** — `result` is the only special name in contracts. Values at entry are written with the predeclared function `old` (**contract.expr.old**), and constraints that are not postconditions with calls of compiler-known functions (§8.6).
 
 ## 8.3 Proof obligations
 
@@ -58,7 +60,7 @@ A *proof obligation* is a condition that the solver must prove at a program poin
 
 **contract.obligation.requires** — At each call of a function `f` with `requires c`, `c` with the arguments substituted for the parameters is a proof obligation of the caller.
 
-**contract.obligation.ensures** — At each `return` of a function with `ensures c`, and at the end of a function body without results, `c` is a proof obligation of the function. An `ensures` clause states nothing about a call that panics.
+**contract.obligation.ensures** — At each `return` of a function with `ensures c`, and at the end of a function body without results, `c` is a proof obligation of the function. An `ensures` clause states nothing about a call that panics or that cancellation ends ([09-concurrency](09-concurrency.md), **conc.cancel.delivery**): neither returns to its caller.
 
 **contract.obligation.assume** — In the body of a function, the solver MAY assume every `requires` clause of the function at entry. After a call of a function `g`, the caller MAY assume every `ensures` clause of `g`, with arguments and results substituted.
 
@@ -79,7 +81,7 @@ After the loop, the solver MAY assume I and the negation of the loop condition. 
 
 **contract.loop.range** — For `for i := range n` and `for i := range xs` (and the two-variable forms), the loop header is the point before the index variable takes its next value. At that point the invariant is instantiated with the index variable equal to the number of completed iterations; on exit it is instantiated with the index equal to `n` or `len(xs)`.
 
-**contract.loop.default** — For a loop without an invariant, the solver knows after the loop only the facts about variables that the loop does not assign, and the negation of the loop condition. In its body it knows the facts before the loop about the variables that the loop does not assign, the loop condition and, for `for i := range n` and `for i := range xs` with an index, that 0 ≤ i < n or 0 ≤ i < len(xs), with the length of `xs` when the loop starts.
+**contract.loop.default** — For a loop without an invariant, the solver knows after the loop only the facts about variables that the loop does not assign, and the negation of the loop condition; storing into an element or a field of a variable assigns the variable. In its body it knows the facts before the loop about the variables that the loop does not assign, the loop condition and, for `for i := range n` and `for i := range xs` with an index, that 0 ≤ i < n or 0 ≤ i < len(xs), with the length of `xs` when the loop starts.
 
 **contract.loop.induction** — A variable `i` of a loop `for init; cond; post` whose post statement is `i++`, `i += c` with a constant c > 0 or the opposite with `--` and `-=`, and that the body does not assign, lies at the loop header at or above the value that `init` gives it, or at or below it for a decrement. This invariant holds by construction: the solver MAY assume it without a proof.
 
@@ -104,11 +106,12 @@ func Sum(xs []i32) i64 {
 
 1. after evaluation of a composite literal of type T;
 2. at the end of every function that received v through an `inout` parameter or receiver, including methods;
-3. at every point where v is passed as an argument, returned, sent on a channel, or stored into a field, element, map entry or package-level variable.
+3. at the end of every iteration of a loop over an iterator that yields an `inout` access to v, and wherever `break`, `continue` or `return` leaves its body ([05-statements](05-statements.md), **stmt.range.inout-iter**);
+4. at every point where v is passed as an argument, returned, sent on a channel, or stored into a field, element, map entry or package-level variable.
 
 Each boundary is a proof obligation. Between boundaries, inside one function, the invariant MAY be violated.
 
-**contract.type.assume** — A function MAY assume the invariant of T for every value of type T that it receives as a parameter, as a result of a call, from a channel, or by reading a field, element, map entry or package-level variable.
+**contract.type.assume** — A function MAY assume the invariant of T for every value of type T that it receives as a parameter, as a result of a call, from a channel, as an `inout` loop variable from an iterator, or by reading a field, element, map entry or package-level variable.
 
 **contract.type.zero** — If the zero value of T violates the invariant of T, T has no zero value: a variable declaration of type T without initializer, and a composite literal that omits a field of type T, are rejected. A type that contains a field of such a type also has no zero value. The same rule applies to `enum` types without a zero value ([02-types](02-types.md)).
 
@@ -197,6 +200,18 @@ The solver is built into `anlang`. External solvers are not used.
 3. a *refutation* is a sequence of steps, each of which derives an inequality as a sum of positive integer multiples of inequalities of the conjunction and of earlier steps, optionally *tightened*: divided by the greatest common divisor g of its coefficients, with the constant c replaced by ⌊c/g⌋, which holds for integer values. The last step derives 0 ≤ c with c < 0; a conjunction that contains false is refuted by no steps.
 
 The checker verifies each node with exact arithmetic, computing the normal form itself.
+
+**contract.solver.guaranteed** — An obligation is in the *guaranteed fragment* of edition 1.0 if the conjunction of **contract.solver.normal-form** of its facts (**contract.solver.steps**) and of the negation of its goal satisfies all of these:
+
+1. it has at most 16 variables;
+2. it has at most 64 inequalities, counting those inside disjunctions;
+3. it has at most 2 disjunctions, counting nested ones;
+4. each inequality has at most two variables, each with the coefficient 1 or −1;
+5. choosing one disjunct of each disjunction gives a conjunction without a solution in rational numbers.
+
+Every implementation of the edition MUST prove every obligation of the guaranteed fragment. A program whose obligations are all in it is accepted by every implementation of the edition, whatever the search of its solver.
+
+**contract.solver.versions** — Outside the guaranteed fragment, which obligations are proved depends on the solver version (**contract.solver.determinism**). A later version of the solver for an edition SHOULD prove every obligation that an earlier version for the same edition proved. A version MUST NOT be released for an edition if it rejects a program of the conformance suite that the edition accepts (**conf.suite.layout**). Rejecting more programs is allowed only in a new edition.
 
 ### 8.8.1 Solver capability levels (informative)
 

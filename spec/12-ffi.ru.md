@@ -47,7 +47,7 @@ func sqlite3_close(db ffi.Handle) i32                    = lib.Symbol("sqlite3_c
 
 **ffi.effects.foreign** — Если у связывания нет аргумента `ffi.Effects`, функция имеет единственный эффект `Foreign`.
 
-**ffi.effects.foreign-deny** — `Foreign` означает «может всё». Граница, запрещающая хотя бы один эффект, — профиль, цель, ограничение в `anlang.mod`, `effect.Without(...)`, обработчик `interrupt` или `trap` — отвергает и `Foreign` (см. [07-effects](07-effects.ru.md)).
+**ffi.effects.foreign-deny** — `Foreign` означает «может всё». Граница, запрещающая хотя бы один эффект, — профиль, цель, ограничение в `anlang.mod`, `effect.Without(...)`, обработчик `interrupt` или `trap` — отвергает и `Foreign` (см. [07-effects](07-effects.ru.md)). Каждый профиль и каждая цель запрещают какой-то эффект, поэтому программа, достигающая `Foreign`, всегда отвергается: внешняя функция, которую вызывает программа, ДОЛЖНА объявлять свои эффекты через `ffi.Effects` (**ffi.effects.declared**). `Foreign` остаётся сводкой привязки без них, которую показывает `anlang query`.
 
 **ffi.effects.unverified** — Реализации ДОЛЖНЫ отмечать объявленные эффекты внешних функций как непроверенные в отчётах об эффектах, в ответах `anlang query` и в выводе `anlang diff` и ДОЛЖНЫ сообщать об их изменениях отдельно от выведенных эффектов (см. [20-toolchain](20-toolchain.ru.md)).
 

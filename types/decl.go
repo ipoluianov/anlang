@@ -465,6 +465,9 @@ func (c *checker) initVars(vars []*Var, t Type, inits []syntax.Expr) {
 			// A new local variable may hold a second-class closure.
 			c.secondOK = c.fn != nil
 			vars[i].second = x.second && c.secondOK
+			if vars[i].second {
+				c.holdCaptures(vars[i], e)
+			}
 			c.assignment(x, t, "variable declaration")
 			c.secondOK = false
 		}

@@ -124,6 +124,18 @@ func (f *fn) stmt(st *state, s syntax.Stmt, label string) {
 		for _, a := range s.Call.Args {
 			f.eval(st, a)
 		}
+		// The deferred call may change its inout arguments after the
+		// return (stmt.defer.go).
+		if sig, _ := core(f.typeOf(s.Call.Fun)).(*types.Signature); sig != nil {
+			for i, p := range sig.Params.Vars {
+				if p.Inout() && i < len(s.Call.Args) {
+					f.deferred = append(f.deferred, s.Call.Args[i])
+				}
+			}
+		}
+		if g, recv := f.callee(s.Call); g != nil && recv != nil && g.Signature().Recv != nil && g.Signature().Recv.Inout() {
+			f.deferred = append(f.deferred, recv)
+		}
 	case *syntax.GoStmt:
 		for _, a := range s.Call.Args {
 			f.eval(st, a)
@@ -250,7 +262,7 @@ func (f *fn) assign(st *state, s *syntax.AssignStmt) {
 // storeTo records the store of x into a variable, an element or a field
 // e, whose operands are evaluated: the variable that holds e gets its new
 // value. With check, a store into an element or a field is a boundary of
-// x (contract.type.boundaries 3).
+// x (contract.type.boundaries 4).
 func (f *fn) storeTo(st *state, e syntax.Expr, x val, check bool) {
 	if _, ok := unparen(e).(*syntax.Name); !ok && check {
 		f.boundary(st, f.typeOf(e), x, e.Pos(), "stored into "+types.ExprString(e))
@@ -277,6 +289,9 @@ func (f *fn) storeTo(st *state, e syntax.Expr, x val, check bool) {
 		}
 		xs.seq = f.newSeq()
 		f.write(st, v, xs)
+	case *syntax.SliceExpr:
+		// An inout subslice: the elements of the variable change.
+		f.forget(st, e.X)
 	case *syntax.SelectorExpr:
 		// A field of a variable: x.f, x.f.g.
 		var path []int
@@ -310,24 +325,16 @@ func (f *fn) storeTo(st *state, e syntax.Expr, x val, check bool) {
 // forget gives the elements of the sequence that holds part e of a
 // variable unknown values.
 func (f *fn) forget(st *state, e syntax.Expr) {
-	for {
-		switch x := unparen(e).(type) {
-		case *syntax.IndexExpr:
-			e = x.X
-			continue
-		case *syntax.SelectorExpr:
-			e = x.X
-			continue
-		case *syntax.Name:
-			if v := f.rootVar(x); v != nil {
-				if xs := f.read(st, v); xs.kind == vSeq && xs.seq != 0 {
-					xs.seq = f.newSeq()
-					f.write(st, v, xs)
-				}
-			}
-		}
+	v := f.pathRoot(e)
+	if v == nil || !f.tracked(v) {
 		return
 	}
+	if xs := f.read(st, v); xs.kind == vSeq && xs.seq != 0 && f.rootVar(e) == v {
+		xs.seq = f.newSeq() // the elements of v, of the same length
+		f.write(st, v, xs)
+		return
+	}
+	f.write(st, v, f.fresh(st, v.Type(), v.Name()))
 }
 
 // opAssign evaluates x op= y and x++ of statement n.
@@ -494,13 +501,15 @@ func (f *fn) merge(pre *state, outs []*state) *state {
 // ---------------------------------------------------------------------
 // Loops.
 
-// assigned returns the variables that n may assign: by assignment, by
-// increment, as range variables, as inout arguments and receivers, and in
-// asm statements.
+// assigned returns the variables that n may assign, or an element or a
+// field of: by assignment, by increment, as range variables, as inout
+// arguments and receivers, and in asm statements.
 func (f *fn) assigned(n syntax.Node) map[*types.Var]bool {
 	out := map[*types.Var]bool{}
 	add := func(e syntax.Expr) {
-		if v := f.rootVar(e); v != nil {
+		// The variable that holds e: a store into an element, a subslice
+		// or a field changes it too.
+		if v := f.pathRoot(e); v != nil {
 			out[v] = true
 		}
 	}
@@ -711,12 +720,22 @@ func (f *fn) rangeStmt(st *state, s *syntax.RangeStmt, label string) {
 	known := false
 	switch {
 	case isInt(xt) && x.kind == vInt:
+		// A range over n ≤ 0 has no iterations: their number is max(n, 0).
 		n, known = x.t, true
+		if k, ok := isConstTerm(x.t); !ok || k.Sign() < 0 {
+			m := f.newVar("iterations")
+			st.assume(verify.OrOf(
+				verify.AndOf(verify.Cmp(x.t, verify.GE, cint(0)), verify.Cmp(m, verify.EQ, x.t)),
+				verify.AndOf(verify.Cmp(x.t, verify.LT, cint(0)), verify.Cmp(m, verify.EQ, cint(0)))))
+			n = m
+		}
 	case x.kind == vSeq:
 		n, known = x.t, true
 	}
 	invs := invariants(s.Body)
-	counted := known && (isInt(xt) || seqLen(xt) >= -1) && !isMapOrFunc(xt)
+	// A range over a string counts bytes in its key and decodes runes:
+	// its key is not the number of iterations.
+	counted := known && (isInt(xt) || seqLen(xt) >= -1) && !isMapOrFunc(xt) && !isString(xt)
 	if len(invs) > 0 && !counted {
 		f.errorf(invs[0].Pos(), "contract.obligation.unproven", "the invariant of a range loop over %s: not supported yet (spec/24-roadmap.md, step 24)", xt)
 		invs = nil
@@ -724,6 +743,15 @@ func (f *fn) rangeStmt(st *state, s *syntax.RangeStmt, label string) {
 	var kv *types.Var
 	if s.Key != nil {
 		kv = f.lvalue(st, s.Key, s.Tok == syntax.Define)
+	}
+	// The variable of an iterator that yields inout access: its value
+	// satisfies the invariants of its type when yielded and at the end of
+	// the iteration (contract.type.boundaries).
+	inoutVar := s.Key
+	if n := yieldsInout(xt); n == 2 {
+		inoutVar = s.Value
+	} else if n == 0 {
+		inoutVar = nil
 	}
 	// At the header, the key is the number of completed iterations k
 	// (contract.loop.range).
@@ -752,11 +780,18 @@ func (f *fn) rangeStmt(st *state, s *syntax.RangeStmt, label string) {
 	}
 	j := f.pushJump(label, true)
 	body := header.clone()
+	var iv *types.Var // the inout loop variable
 	if kv != nil {
 		key := f.fresh(body, kv.Type(), kv.Name())
+		if inoutVar == s.Key {
+			key = f.received(body, kv.Type(), kv.Name())
+			iv = kv
+		}
 		if counted && key.kind == vInt {
 			body.assume(verify.Cmp(k, verify.LT, n))
 			key = val{kind: vInt, t: k}
+		} else if known && isString(xt) && key.kind == vInt {
+			body.assume(verify.AndOf(verify.Cmp(cint(0), verify.LE, key.t), verify.Cmp(key.t, verify.LT, n)))
 		}
 		f.write(body, kv, key)
 	} else if counted {
@@ -765,13 +800,26 @@ func (f *fn) rangeStmt(st *state, s *syntax.RangeStmt, label string) {
 	if s.Value != nil {
 		if vv := f.lvalue(body, s.Value, s.Tok == syntax.Define); vv != nil {
 			v := f.fresh(body, vv.Type(), vv.Name())
+			if inoutVar == s.Value {
+				v = f.received(body, vv.Type(), vv.Name())
+				iv = vv
+			}
 			if counted && x.kind == vSeq && x.seq != 0 && isInt(vv.Type()) {
 				v = val{kind: vInt, t: f.element(body, x, k, vv.Type())} // the element k
 			}
 			f.write(body, vv, v)
 		}
 	}
+	if iv != nil {
+		f.inoutLoops = append(f.inoutLoops, iv)
+	}
 	f.stmts(body, s.Body.List)
+	if iv != nil {
+		f.inoutLoops = f.inoutLoops[:len(f.inoutLoops)-1]
+		for _, at := range append(append([]*state{body}, j.continues...), j.breaks...) {
+			f.boundary(at, iv.Type(), f.read(at, iv), s.Body.Rbrace, "of inout loop variable "+iv.Name()+" at the end of an iteration")
+		}
+	}
 	if len(invs) > 0 {
 		end := f.merge(header, append([]*state{body}, j.continues...))
 		if !end.dead {
@@ -871,6 +919,7 @@ func (f *fn) switchStmt(st *state, s *syntax.SwitchStmt, label string) {
 		conds = append(conds, clauseCond(cc))
 	}
 	k := 0
+	var fall *state // the end of a body that falls through to the next one
 	for _, c := range s.Body.List {
 		cc, ok := c.(*syntax.CaseClause)
 		if !ok {
@@ -888,7 +937,19 @@ func (f *fn) switchStmt(st *state, s *syntax.SwitchStmt, label string) {
 				f.bindVariant(b, cc, tag)
 			}
 		}
-		f.stmts(b, cc.Body)
+		if fall != nil {
+			b = f.merge(pre, []*state{b, fall})
+			fall = nil
+		}
+		body := cc.Body
+		if n := len(body); n > 0 {
+			if br, ok := body[n-1].(*syntax.BranchStmt); ok && br.Tok == syntax.Fallthrough {
+				f.stmts(b, body[:n-1])
+				fall = b
+				continue
+			}
+		}
+		f.stmts(b, body)
 		outs = append(outs, b)
 	}
 	if deflt == nil {
@@ -956,3 +1017,20 @@ func (f *fn) typeSwitch(st *state, s *syntax.TypeSwitchStmt, label string) {
 }
 
 var _ = big.NewInt
+
+// yieldsInout returns the position, 1 or 2, of the inout parameter of the
+// yield function of an iterator type t, or 0 (stmt.range.inout-iter).
+func yieldsInout(t types.Type) int {
+	sig, ok := core(t).(*types.Signature)
+	if !ok || sig.Params.Len() != 1 {
+		return 0
+	}
+	y, ok := core(sig.Params.At(0).Type()).(*types.Signature)
+	if !ok || y.Params.Len() == 0 {
+		return 0
+	}
+	if n := y.Params.Len(); y.Params.At(n - 1).Inout() {
+		return n
+	}
+	return 0
+}

@@ -1,6 +1,8 @@
 package codegen
 
 import (
+	"slices"
+
 	"an/ir"
 	"an/types"
 )
@@ -108,10 +110,13 @@ func (fn *fnGen) instr(in ir.Instr, bi int) {
 		}
 		// A closure record in the frame: the closures of the core profile
 		// do not outlive the frame that makes them (eff.source.alloc-ops).
+		rec := mref{kind: mFrame}
+		if slices.Contains(fn.f.Borrows, i.Fn) {
+			rec = mref{kind: mPtr, ptr: fn.borrowRec}
+		} else {
+			rec.off = fn.slot(g.recordSize(i.Fn))
+		}
 		boffs := g.bindingLayout(i.Fn.FreeVars)
-		last := len(boffs) - 1
-		size := boffs[last] + g.sizeof(i.Fn.FreeVars[last].Typ)
-		rec := mref{kind: mFrame, off: fn.slot(size)}
 		code := g.funcLabel(i.Fn)
 		g.addressTaken(code, sigKey(paramTypes(i.Fn), resultTypes(i.Fn.Sig)))
 		fn.writeWord(rec, operand{kind: opSym, sym: code, width: g.ptr * 8}, g.ptr)
@@ -135,6 +140,10 @@ func (fn *fnGen) instr(in ir.Instr, bi int) {
 		fn.panicValue(i.X)
 	case *ir.Defer:
 		fn.deferCall(i.Call)
+	case *ir.RunDefers:
+		if fn.deferAt != 0 {
+			fn.runDefers(operand{kind: opSlot, off: fn.deferAt, width: fn.g.ptr * 8})
+		}
 	case *ir.MakeSlice:
 		fn.unsupported(25, "make")
 	case *ir.MakeMap, *ir.Lookup, *ir.MapUpdate:

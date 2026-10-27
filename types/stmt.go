@@ -12,13 +12,15 @@ import (
 
 // funcContext is the state of the function body being checked.
 type funcContext struct {
-	parent   *funcContext // the enclosing function of a function literal
-	captures bool         // a function literal captures an inout variable (expr.closure.capture-inout)
-	name     string       // the declared function or method, for diagnostics
-	sig      *Signature
-	generic  *Signature // the enclosing generic function, if any
-	vars     []*Var     // local variables (decl.var.unused)
-	labels   map[string]*Label
+	parent    *funcContext // the enclosing function of a function literal
+	captures  bool         // a function literal captures an inout variable (expr.closure.capture-inout)
+	captured  []*Var       // the inout variables of enclosing functions that it captures
+	predicate bool         // a function literal in a contract expression: the predicate of a quantifier
+	name      string       // the declared function or method, for diagnostics
+	sig       *Signature
+	generic   *Signature // the enclosing generic function, if any
+	vars      []*Var     // local variables (decl.var.unused)
+	labels    map[string]*Label
 	// enclosing lists the labeled statements around the current
 	// statement, innermost last.
 	enclosing []*syntax.LabeledStmt
@@ -61,10 +63,11 @@ func (c *checker) funcBody(parent *Scope, sig *Signature, recv *syntax.FieldList
 	defer func() { c.scope, c.fn = savedScope, savedFn }()
 	nerrors := len(c.errors)
 	c.fn = &funcContext{sig: sig, labels: map[string]*Label{}, name: c.funcName}
-	defer func() { captures = c.fn.captures }()
+	defer func() { captures, c.litCaptured = c.fn.captures, c.fn.captured }()
 	savedHeld := c.held
 	if literal {
 		c.fn.parent = savedFn
+		c.fn.predicate = c.inContract > 0
 	} else {
 		c.held = nil
 	}
@@ -86,7 +89,7 @@ func (c *checker) funcBody(parent *Scope, sig *Signature, recv *syntax.FieldList
 		// Named results start with the zero value (type.zero.uses).
 		for _, v := range sig.Results.Vars {
 			if v.name != "" {
-				c.zeroUse(v.pos, v.typ, "type.zero.uses", "named result "+v.name)
+				c.zeroUse(v.pos, v.typ, "type.zero.named-result", "named result "+v.name)
 			}
 		}
 	}
@@ -343,13 +346,15 @@ func (c *checker) contract(s *syntax.ContractStmt) {
 	defer func() { c.scope = saved }()
 	if s.Word == "ensures" {
 		if r := c.fn.sig.Results; r.Len() == 1 && r.Vars[0].name == "" {
-			v := &Var{object: object{name: "result", typ: r.Vars[0].typ, pos: s.Pos()}}
+			v := &Var{object: object{name: "result", typ: r.Vars[0].typ, pos: s.Pos()}, owner: c.fn}
 			v.used = true
 			c.scope.Insert(v)
 			c.info.ContractResults[s] = v
 		}
 	}
+	c.oldOK = s.Word != "requires"
 	c.contractExpr(s.X, s.Word)
+	c.oldOK = false
 }
 
 // contractExpr checks the boolean expression of a contract clause.
@@ -471,6 +476,55 @@ func (c *checker) callStmt(what string, call *syntax.CallExpr) {
 	}
 	if what == "defer" {
 		c.unusedError(call, &x)
+		c.deferCall(call)
+	}
+}
+
+// holdCaptures records the captures of the closure e that v holds.
+func (c *checker) holdCaptures(v *Var, e syntax.Expr) {
+	if c.varCaptures == nil {
+		c.varCaptures = map[*Var][]*Var{}
+	}
+	c.varCaptures[v] = c.capturedBy(e)
+}
+
+// capturedBy returns the inout variables that the second-class closure e
+// captures.
+func (c *checker) capturedBy(e syntax.Expr) []*Var {
+	switch x := unparen(e).(type) {
+	case *syntax.FuncLit:
+		return c.litCaptures[x]
+	case *syntax.Name:
+		if v, ok := c.info.Uses[x].(*Var); ok {
+			return c.varCaptures[v]
+		}
+	}
+	return nil
+}
+
+// deferCall checks that a deferred call holds no access to an inout loop
+// variable, whose access ends with the iteration, before the deferred
+// call runs (stmt.defer.inout-loop).
+func (c *checker) deferCall(call *syntax.CallExpr) {
+	loopVar := func(v *Var) bool { return v != nil && v.inout && !v.param }
+	for _, v := range c.capturedBy(call.Fun) {
+		if loopVar(v) {
+			c.errorf(call.Pos(), "stmt.defer.inout-loop", "cannot defer a call of a closure that captures the inout loop variable %s: the deferred call runs after the iteration ends", v.name)
+			return
+		}
+	}
+	tv, ok := c.info.Types[call.Fun]
+	if !ok {
+		return
+	}
+	sig, ok := core(tv.Type).(*Signature)
+	if !ok {
+		return
+	}
+	for _, e := range c.inoutAccesses(call, sig) {
+		if p, ok := c.pathOf(e); ok && loopVar(p.root) {
+			c.errorf(e.Pos(), "stmt.defer.inout-loop", "cannot pass %s to an inout parameter of a deferred call: the access to the inout loop variable %s ends with the iteration", exprString(e), p.root.name)
+		}
 	}
 }
 
@@ -551,6 +605,9 @@ func (c *checker) capturedWrite(e syntax.Expr) bool {
 		return false
 	}
 	v, ok := c.info.Uses[id].(*Var)
+	if ok && v.inout && v.owner != nil && v.owner != c.fn {
+		c.useInoutVar(v) // a write captures it too
+	}
 	if !ok || v.owner == nil || v.owner == c.fn || v.inout {
 		return false // inout variables are captured by reference (expr.closure.capture-inout)
 	}
@@ -594,6 +651,9 @@ func (c *checker) lhsVar(e syntax.Expr) (Type, bool) {
 				return Typ[Invalid], false
 			}
 			c.objDecl(v)
+			if v.inout {
+				v.used = true // the assignment writes through the inout access
+			}
 			c.recordType(e, variable, v.typ, nil)
 			c.checkHeld(e)
 			if c.capturedWrite(e) {
@@ -734,6 +794,9 @@ func (c *checker) shortVarDecl(s *syntax.AssignStmt) {
 				c.secondOK = false
 				if x.mode != invalid {
 					v.typ, v.second = x.typ, second
+					if second {
+						c.holdCaptures(v, x.expr)
+					}
 				}
 			}
 		case x != nil && types[i] != nil:
@@ -784,7 +847,14 @@ func (c *checker) returnStmt(s *syntax.ReturnStmt) {
 	for i, e := range s.Results {
 		var x operand
 		c.exprHint(&x, e, results.Vars[i].typ)
+		// A borrowing function returns an iterator that captures its
+		// inout parameters (mem.ref.borrowing).
+		saved := c.secondOK
+		if x.second && c.fn.parent == nil && results.Len() == 1 && isIterator(results.Vars[i].typ) && c.ownInout(e) {
+			c.secondOK = true
+		}
 		c.assignment(&x, results.Vars[i].typ, "return statement")
+		c.secondOK = saved
 	}
 }
 
@@ -1420,4 +1490,27 @@ func (c *checker) asmStmt(s *syntax.AsmStmt) {
 	default:
 		c.errorf(s.Lhs[1].Pos(), "stmt.asm.syntax", "asm assigns its output registers to one struct")
 	}
+}
+
+// ownInout reports whether e is a function literal that captures only
+// inout parameters and the inout receiver of the function being checked.
+func (c *checker) ownInout(e syntax.Expr) bool {
+	if _, ok := unparen(e).(*syntax.FuncLit); !ok {
+		return false
+	}
+	own := map[*Var]bool{}
+	if sig := c.fn.sig; sig != nil {
+		if sig.Recv != nil {
+			own[sig.Recv] = true
+		}
+		for _, p := range sig.Params.Vars {
+			own[p] = true
+		}
+	}
+	for _, v := range c.litCaptured {
+		if !own[v] {
+			return false
+		}
+	}
+	return true
 }

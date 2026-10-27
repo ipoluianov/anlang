@@ -18,7 +18,7 @@ This file specifies how the standard library is organized and which packages it 
 
 **std.profile.effect-free** — A standard library package whose exported functions have no effects MUST declare all three profiles: `core`, `app` and `ui`.
 
-**std.io.common** — The I/O interfaces `io.Reader` and `io.Writer` (package `an/io`) MUST be the same types in all profiles. Their implementations depend on the target.
+**std.io.common** — The I/O interfaces `io.Reader` and `io.Writer` (package `an/io`) MUST be the same types in all profiles. Their implementations depend on the target. The functions of the standard library that take a reader or a writer take it as a type parameter with this constraint, as **std.fmt.fprint** does, so that `core` code passes its own readers and writers without converting them to interfaces.
 
 **std.core.no-hidden-alloc** — In the `core` profile, a standard library function MUST NOT allocate memory implicitly. A function that needs memory MUST take a buffer from the caller.
 
@@ -127,7 +127,7 @@ The specification refers to further standard library packages. They are part of 
 
 **std.fmt.print** — `fmt.Print`, `fmt.Println` and `fmt.Printf` write to the standard output of the program and return no results. If the write fails, they panic. Their effects therefore include `Console` and `Panic`.
 
-**std.fmt.fprint** — `fmt.Fprint`, `fmt.Fprintln` and `fmt.Fprintf` take an `io.Writer` as the first argument and return `(n int, err error)`, as in Go. The error is subject to **stmt.error.unused** ([05-statements](05-statements.md)).
+**std.fmt.fprint** — `fmt.Fprint`, `fmt.Fprintln` and `fmt.Fprintf` take the writer as their first argument `w inout W`, with a type parameter `W io.Writer`, and return `(n int, err error)`, as in Go. A call with a writer of a concrete type calls its methods directly: the writer is not converted to an interface, so the call allocates nothing for it (**eff.source.alloc-ops** 5) and is available in `core`. A value of type `io.Writer` is a writer too. The error is subject to **stmt.error.unused** ([05-statements](05-statements.md)).
 
 **std.fmt.sprint** — `fmt.Sprint`, `fmt.Sprintln` and `fmt.Sprintf` return a `string` and have no `Console` effect.
 
@@ -159,7 +159,7 @@ const ErrEmptyWord = errors.New("mydictionary: empty word")
 
 **Note** — Equal texts in different packages give equal errors. The convention, as in Go, is to start the text with the package name.
 
-**std.errors.enum** — The recommended form for errors that a package returns to its callers is an `enum` type with an `Error() string` method. Its identity comes from the type: values of different enum types are never equal, values of one type are equal under **type.enum.comparable** ([02-types](02-types.md)). Callers test for a variant with `errors.Is` or handle all variants with an exhaustive `switch` after `errors.As`; adding a variant then breaks every incomplete `switch`.
+**std.errors.enum** — The recommended form for errors that a package returns to its callers is an `enum` type with an `Error() string` method. Its identity comes from the type: values of different enum types are never equal, values of one type are equal under **type.enum.comparable** ([02-types](02-types.md)). Callers test for a variant with `errors.Is` or handle all variants with an exhaustive `switch` after `errors.As`; adding a variant then breaks every incomplete `switch`. In the `core` profile, converting a variant that carries data to `error` allocates (**eff.source.alloc-ops** 5): a function of `core` returns its error enum type itself, or returns as `error` only variants without data.
 
 ```go
 // Error is an error of package mydictionary.

@@ -240,6 +240,7 @@ func (p *Program) Node(info *types.Info, e syntax.Node) (map[Effect]Origin, func
 		imported: p.Summary,
 		byKey:    map[string]*fnFacts{},
 		litKeys:  map[*syntax.FuncLit]string{},
+		borrowed: map[*syntax.FuncLit]bool{},
 		pkg:      &Package{Path: info.Pkg.Path, Funcs: map[string]*Summary{}, Impls: map[Ref]map[string]bool{}, Flows: map[Ref]map[Ref]bool{}, Without: map[string][]Effect{}},
 	}
 	key := info.Pkg.Path + ".constant"

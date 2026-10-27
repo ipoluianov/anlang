@@ -185,7 +185,7 @@ return u64(h)
 
 **expr.closure.sync** — A captured value of a synchronization type is a handle to the same object ([06-memory](06-memory.md), **mem.sync.handle**). Operations on it through the closure affect the shared object.
 
-**expr.closure.capture-inout** — A function literal that uses an `inout` parameter, an `inout` receiver or an `inout` loop variable of an enclosing function captures it by reference instead of by copy and MAY modify it. Such a function value is *second-class* ([06-memory](06-memory.md), **mem.ref.second-class**): it MAY only be called directly in the function where it is created, and a program MUST NOT store, pass, return, send or convert it.
+**expr.closure.capture-inout** — A function literal that uses an `inout` parameter, an `inout` receiver or an `inout` loop variable of an enclosing function captures it by reference instead of by copy and MAY modify it. Such a function value is *second-class* ([06-memory](06-memory.md), **mem.ref.second-class**): it MAY only be called directly in the function where it is created, and a program MUST NOT store, pass, return, send or convert it, except that a borrowing function returns one (**mem.ref.borrowing**).
 
 ```go
 func Count(n inout int, xs []i32) {

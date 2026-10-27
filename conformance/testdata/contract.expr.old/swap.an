@@ -1,0 +1,42 @@
+// want: ok
+// checks: contract.expr.old contract.obligation.assume
+
+// old in postconditions, loop invariants and assertions: the facts after
+// the calls prove the index of the table in range.
+package main
+
+profile core
+
+import "an/fmt"
+
+type Pair struct {
+	a, b int
+}
+
+func swap(p inout Pair) {
+	ensures p.a == old(p.b) && p.b == old(p.a)
+	p.a, p.b = p.b, p.a
+}
+
+func step(n inout int, k int) {
+	requires 0 <= n && n <= 5 && 0 <= k && k <= 5
+	ensures n == old(n)+k
+	for i := range k {
+		invariant n == old(n)+i
+		n++
+	}
+	assert(n >= old(n))
+}
+
+func main() {
+	var table [11]int
+	for i := range 11 {
+		table[i] = i * i
+	}
+	p := Pair{a: 2, b: 9}
+	swap(p)
+	fmt.Println(p.a, p.b, table[p.b])
+	n := 3
+	step(n, 4)
+	fmt.Println(n, table[n])
+}

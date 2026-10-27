@@ -276,12 +276,18 @@ A variable, field, result, element or non-variadic parameter of type `any` MUST 
 - **type.zero.var** — `var x T` without an initializer is rejected.
 - **type.zero.literal** — A composite literal of a struct type MUST give every field whose type has no zero value.
 - **type.zero.make** — `make([]T, n)` and `make([]T, n, m)` are rejected unless `n` is the constant 0; `make` with a capacity remains allowed.
-- **type.zero.map-index** — For a map with element type `T`, the single-value index expression `m[k]` is rejected; only the comma-ok form `v, ok := m[k]` is allowed, and `v` is usable only where `ok` is true.
-- **type.zero.chan-receive** — For a channel with element type `T`, the single-value receive `<-ch` is rejected; only the comma-ok form `v, ok := <-ch` is allowed, because a receive from a closed channel yields the zero value. A receive whose value is discarded — a receive statement `<-ch`, or `case <-ch:` in `select` — is permitted.
+- **type.zero.map-index** — For a map with element type `T`, the single-value index expression `m[k]` is rejected; only the comma-ok form `v, ok := m[k]` is allowed, and `v` is usable only where `ok` is true (**type.zero.ok-use**).
+- **type.zero.chan-receive** — For a channel with element type `T`, the single-value receive `<-ch` is rejected; only the comma-ok form `v, ok := <-ch` is allowed, because a receive from a closed channel yields the zero value, and `v` is usable only where `ok` is true (**type.zero.ok-use**). A receive whose value is discarded — a receive statement `<-ch`, or `case <-ch:` in `select` — is permitted.
+- **type.zero.assert** — For a type assertion to `T`, `v` of the comma-ok form `v, ok := x.(T)` is usable only where `ok` is true (**type.zero.ok-use**); the single-value form panics instead of producing a value.
+- **type.zero.clear** — `clear(s)` of a slice whose element type is `T` is rejected.
+- **type.zero.named-result** — A named result of type `T` is rejected: it would start with the zero value.
+- **type.zero.reslice** — A slice expression on a slice whose element type is `T` checks its high and max bounds against the length of the operand instead of its capacity, and without a max bound the capacity of the result is its length: the elements beyond the length have no value. A bound beyond the length panics as a bound beyond the capacity does (**expr.bounds.check**).
+
+**type.zero.ok-use** — The value variable `v` of a comma-ok map index, receive or type assertion of a type without a zero value MUST be used only where the flow analysis of nil safety ([06-memory](06-memory.md), **mem.nil.facts**) knows that `ok` is true: in the branch where a condition that is `ok`, or `!ok` negated, holds, such as the body of `if ok` or the code after `if !ok { return }`, until `v` is assigned. Assigning `v` gives it a value; assigning `ok` ends the knowledge. `_ = v` is not a use. For a type parameter, such a use gives it the constraint of **type.zero.param-constraint** instead.
 
 **Zero values of type parameters.** No constraint expresses "has a zero value"; the requirement is inferred, like an effect summary ([07-effects](07-effects.md)).
 
-**type.zero.param-use** — Inside a generic function or method, operations that produce the zero value of a type parameter `P` (`var x P` without initializer, a composite literal omitting a field of type `P`, `make([]P, n)`, the single-value forms of map index and channel receive, `Option[P].Get`) are allowed.
+**type.zero.param-use** — Inside a generic function or method, operations that produce the zero value of a type parameter `P` (`var x P` without initializer, a composite literal omitting a field of type `P`, `make([]P, n)`, the single-value forms of map index and channel receive, `Option[P].Get`, `clear` of a slice of `P`, a named result of type `P`, a use of the value of a comma-ok form where `ok` may be false (**type.zero.ok-use**)) are allowed.
 
 **type.zero.param-constraint** — Such an operation gives `P` the inferred constraint *requires a zero value*. The constraint propagates: if a generic passes its own type parameter `Q` as the argument for a parameter that requires a zero value, `Q` requires a zero value too. The constraint is part of the generic's summary and is computed per package, like effect summaries.
 

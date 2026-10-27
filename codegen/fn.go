@@ -12,15 +12,18 @@ import (
 
 // fnGen generates the code of one function.
 type fnGen struct {
-	g     *gen
-	f     *ir.Func
-	name  string
-	frame int // bytes of slots below the frame base
-	args  int // bytes of the argument area
-	vals  map[ir.Value]*loc
-	free  map[int][]int // free temporary slots by size
-	temps []operand     // temporary slots of the current instruction
-	code  []item
+	g *gen
+	f *ir.Func
+	// borrowRec is the address of the closure record that the caller of
+	// a borrowing function provides (mem.ref.borrowing).
+	borrowRec operand
+	name      string
+	frame     int // bytes of slots below the frame base
+	args      int // bytes of the argument area
+	vals      map[ir.Value]*loc
+	free      map[int][]int // free temporary slots by size
+	temps     []operand     // temporary slots of the current instruction
+	code      []item
 
 	blocks   map[*ir.Block]string
 	traps    map[string]string // trap labels by runtime function
@@ -124,7 +127,7 @@ func (fn *fnGen) emitLines(lines []string) {
 func (fn *fnGen) emitOp(name string, lines []string) {
 	fn.emitLines(lines)
 	switch name {
-	case "jump", "leave", "leave.handler", "exit":
+	case "jump", "leave", "leave.handler", "exit", "halt":
 		if n := len(fn.code); n > 0 && fn.code[n-1].text != "" {
 			fn.code[n-1].term = true
 		}
@@ -613,6 +616,11 @@ func (g *gen) function(f *ir.Func) {
 	for i, p := range f.Params {
 		fn.vals[p] = at(mref{kind: mFrame, off: g.arch.ABI.Params + poffs[i]}, pts[i])
 	}
+	if len(f.Borrows) > 0 {
+		// The closure records of the returned literals are the caller's:
+		// their address follows the results (mem.ref.borrowing).
+		fn.borrowRec = operand{kind: opSlot, off: g.arch.ABI.Params + size, width: g.ptr * 8}
+	}
 	if len(f.FreeVars) > 0 {
 		// The closure record: its address follows the results.
 		ctxp := operand{kind: opSlot, off: g.arch.ABI.Params + size, width: g.ptr * 8}
@@ -746,4 +754,24 @@ func (fn *fnGen) trap(name string) string {
 	l := fn.g.label()
 	fn.traps[name] = l
 	return l
+}
+
+// recordSize returns the size of the closure record of function literal
+// f.
+func (g *gen) recordSize(f *ir.Func) int {
+	boffs := g.bindingLayout(f.FreeVars)
+	last := len(boffs) - 1
+	return boffs[last] + g.sizeof(f.FreeVars[last].Typ)
+}
+
+// borrowSize returns the size of the closure record that a caller of the
+// borrowing function f provides, or 0 (mem.ref.borrowing).
+func (g *gen) borrowSize(f *ir.Func) int {
+	size := 0
+	for _, lit := range f.Borrows {
+		if len(lit.FreeVars) > 0 {
+			size = max(size, g.recordSize(lit))
+		}
+	}
+	return size
 }

@@ -1,0 +1,24 @@
+// want: mem.ref.borrowing
+
+// A borrowing function may not be used as a function value: a call
+// through it could not keep the table held.
+package main
+
+type Table struct {
+	cells [4]int
+}
+
+func all(t inout Table) func(yield func(inout int) bool) {
+	return func(yield func(inout int) bool) {
+		for i := range t.cells {
+			if !yield(t.cells[i]) {
+				return
+			}
+		}
+	}
+}
+
+func main() {
+	f := all
+	_ = f
+}

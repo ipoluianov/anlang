@@ -1,0 +1,17 @@
+// want: expr.closure.capture-inout
+
+// A closure that only assigns to an inout parameter captures it by
+// reference as well, so it may not be returned.
+package main
+
+func f(n inout int) func() {
+	clr := func() {
+		n = 0
+	}
+	return clr
+}
+
+func main() {
+	x := 1
+	_ = f(x)
+}

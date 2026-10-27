@@ -4,7 +4,7 @@ The runtime is the code that the toolchain links into a program in addition to t
 
 ## 19.1 General requirements
 
-**rt.lang.anlang** — The runtime MUST be written in Anlang, in the `core` profile, and shipped as source code with the standard library (see [18-stdlib](18-stdlib.md)).
+**rt.lang.anlang** — The runtime MUST be written in Anlang and shipped as source code with the standard library (see [18-stdlib](18-stdlib.md)). The components that a program of the `core` profile links, and the allocator, which manages its memory through `an/unsafe` and does not allocate itself, are in the `core` profile. The components that only `app` and `ui` programs link and that allocate — the scheduler, asynchronous I/O, the renderer and the other components above the allocator in **rt.profile.composition** — are in the profile they serve; they may import the `core` components, not the other way round (**eff.profile.import**).
 
 **rt.lang.not-importable** — User code MUST NOT import the runtime package `an/runtime`. Its facilities are reached only through the language and the standard library.
 
@@ -73,7 +73,7 @@ The behavior of each component is specified elsewhere: memory in [06-memory](06-
 
 **rt.stack.report** — The compiler MUST report every task that needed a reserve under **rt.stack.reserve**, as part of `anlang size` and of the `-json` build report (see [20-toolchain](20-toolchain.md)).
 
-**rt.stack.core-recursion** — In the `core` profile, recursion in a task, an interrupt handler or `main` without a proven bound on depth MUST be rejected at compile time (see [14-embedded](14-embedded.md) for the stack analysis against the target's `Stack` size). The bound is proven for a function that calls itself directly and is in no other cycle of calls, when one of its integer parameters p decreases: at each call of the function in its own body, the solver proves the argument for p smaller than the value of p at entry. The value of p at entry lies in [lo, hi], the range of its type narrowed by the preconditions of the forms `p op c` and `c op p` with a constant c and op one of `<`, `<=`, `>`, `>=` and `==`, alone or as operands of `&&`; the depth is at most hi − lo + 1, and the stack analysis uses at most 2²⁰. A call of the function to itself through a function value has no bound.
+**rt.stack.core-recursion** — In the `core` profile, recursion in a task, an interrupt handler or `main` without a proven bound on depth MUST be rejected at compile time (see [14-embedded](14-embedded.md) for the stack analysis against the target's `Stack` size). The bound is proven for a function that calls itself directly and is in no other cycle of calls, when one of its integer parameters p decreases: at each call of the function in its own body, the solver proves the argument for p smaller than the value of p at entry. The value of p at entry lies in [lo, hi], the range of its type narrowed by the preconditions of the forms `p op c` and `c op p` with a constant c and op one of `<`, `<=`, `>`, `>=` and `==`, alone or as operands of `&&`; the depth is at most hi − lo + 1. A parameter whose range [lo, hi] has more than 2²⁰ values bounds nothing, so a recursion bounded only by such a parameter is rejected. A call of the function to itself through a function value has no bound.
 
 ## 19.6 Development-only components
 

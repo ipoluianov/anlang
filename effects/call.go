@@ -40,6 +40,11 @@ func (w *walker) call(n *syntax.CallExpr) {
 			w.static(n, funcKey(obj), obj.Signature(), nil, a.typeArgs(instID))
 			return
 		case *types.Var:
+			if fn.isYield(obj) {
+				// A loop body panics when called after it returned
+				// false (stmt.range.yield-after-false).
+				fn.source(Panic, pos, "call of yield")
+			}
 			if fn.paramOwner(obj) != nil {
 				fn.prefs = append(fn.prefs, prefFact{kind: ParamCall, v: obj, origin: origin(pos, "call of "+f.Name)})
 				return
@@ -75,6 +80,7 @@ func (w *walker) call(n *syntax.CallExpr) {
 			default:
 				if m.Signature().Recv != nil && m.Signature().Recv.Inout() {
 					w.write(f.X, pos)
+					w.inoutArg(f.X, pos)
 				}
 				recvArg := w.classify(f.X)
 				w.static(n, funcKey(m), m.Signature(), &recvArg, recvTypeArgs(a, recv))
@@ -171,6 +177,7 @@ func (w *walker) argContexts(n *syntax.CallExpr, sig *types.Signature) {
 		}
 		if inout {
 			w.write(e, e.Pos())
+			w.inoutArg(e, e.Pos())
 			continue
 		}
 		w.conv(e, pt)
@@ -296,7 +303,12 @@ func (w *walker) builtin(n *syntax.CallExpr) {
 			}
 		}
 	case "copy", "clear":
-		fn.source(Alloc, pos, name)
+		// The first operand is passed inout (mem.inout.builtin).
+		if _, ok := coreOf(a.typeOf(n.Args[0])).(*types.Slice); ok {
+			w.inoutArg(n.Args[0], pos)
+		} else {
+			fn.source(Alloc, pos, name)
+		}
 	case "delete":
 		fn.source(Alloc, pos, "delete")
 		if m, ok := coreOf(a.typeOf(n.Args[0])).(*types.Map); ok && hasInterface(m.Key) {
@@ -361,4 +373,20 @@ func (w *walker) builtin(n *syntax.CallExpr) {
 			}
 		}
 	}
+}
+
+// isYield reports whether v is the yield parameter of fn as an iterator:
+// fn has no results and v, its only parameter, is a function with a
+// bool result (stmt.range.inout-iter).
+func (fn *fnFacts) isYield(v *types.Var) bool {
+	sig := fn.sig
+	if sig.Params.Len() != 1 || sig.Params.At(0) != v || sig.Results.Len() != 0 {
+		return false
+	}
+	y, ok := coreOf(v.Type()).(*types.Signature)
+	if !ok || y.Results.Len() != 1 {
+		return false
+	}
+	b, ok := y.Results.At(0).Type().Underlying().(*types.Basic)
+	return ok && b.Info()&types.IsBoolean != 0
 }

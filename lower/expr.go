@@ -305,7 +305,11 @@ func (fb *funcBuilder) slice(e *syntax.SliceExpr) ir.Value {
 		}
 		return fb.expr(e)
 	}
-	return fb.emit(&ir.Slice{X: x, Low: opt(e.Low), High: opt(e.High), Max: opt(e.Max), Proven: fb.info.Proven[e]}, fb.typeOf(e))
+	toLen := false
+	if s, ok := fb.typeOf(e).Underlying().(*types.Slice); ok {
+		toLen = !types.HasZero(s.Elem)
+	}
+	return fb.emit(&ir.Slice{X: x, Low: opt(e.Low), High: opt(e.High), Max: opt(e.Max), Proven: fb.info.Proven[e], ToLen: toLen}, fb.typeOf(e))
 }
 
 func (fb *funcBuilder) unary(e *syntax.UnaryExpr) ir.Value {
@@ -723,7 +727,7 @@ func (fb *funcBuilder) funcLit(e *syntax.FuncLit) ir.Value {
 			lb.results = append(lb.results, cell)
 		}
 	}
-	lb.stmts(e.Body.List)
+	lb.body(e.Body.List)
 	lb.finish()
 	return fb.closure(fn, lb.captured, false)
 }

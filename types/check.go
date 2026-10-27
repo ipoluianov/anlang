@@ -155,6 +155,9 @@ type checker struct {
 	callee          syntax.Expr                 // the callee of the call being checked
 	secondOK        bool                        // a second-class closure may initialize a new variable
 	secondLits      map[*syntax.FuncLit]bool    // function literals that capture inout variables
+	litCaptured     []*Var                      // the inout variables that the last function literal checked captures
+	litCaptures     map[*syntax.FuncLit][]*Var  // the inout variables that a second-class function literal captures
+	varCaptures     map[*Var][]*Var             // the inout variables that the closure a variable holds captures
 	funcName        string                      // the function whose body is checked
 	zeroEdges       []zeroEdge                  // type arguments, for the zero value constraint
 	pendingZero     map[syntax.Expr]pendingZero // single-value map index and receive expressions
@@ -178,6 +181,8 @@ type checker struct {
 	declMapVar *Var // the package-level variable whose unsafe.Map initializer is checked
 	inEnsures  bool // checking the expression of an ensures clause
 	inContract int  // checking a contract expression or the argument of assert
+	oldOK      bool // old may appear: in an ensures clause, a loop invariant or assert (contract.expr.old)
+	inOld      bool // checking the argument of old
 
 	// rangeKeys are the range key variables with a known number of
 	// iterations (type.conv.int-narrow-facts 6).

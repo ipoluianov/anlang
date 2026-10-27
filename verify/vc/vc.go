@@ -447,6 +447,10 @@ type fn struct {
 	name    string
 	generic bool
 
+	// inoutLoops are the loop variables of the enclosing loops over
+	// iterators that yield inout access (contract.type.boundaries).
+	inoutLoops []*types.Var
+
 	names    []string // the variables of the solver
 	captured map[*types.Var]bool
 	locals   map[*types.Var]bool
@@ -462,6 +466,7 @@ type fn struct {
 	contract bool // the function has contracts or assertions
 	self     *types.Func
 	recCalls []recCall           // the calls of self in the body
+	deferred []syntax.Expr       // the inout arguments of deferred calls
 	nseq     int                 // the sequences of elements so far
 	zeroSeq  map[int]verify.Term // the sequences of zero elements, with their lengths
 	updates  map[int]update
@@ -1409,8 +1414,8 @@ func core(t types.Type) types.Type {
 	return types.CoreType(t)
 }
 
-// maxRecursionDepth caps the bound on the depth of a recursion, so that
-// the stack it needs stays an int; a larger bound exceeds any Stack.
+// maxRecursionDepth is the largest bound on the depth of a recursion: a
+// parameter with a larger range bounds nothing (rt.stack.core-recursion).
 const maxRecursionDepth = 1 << 20
 
 // recursionDepth returns a bound on the depth of the recursion of a
@@ -1452,10 +1457,10 @@ func (f *fn) recursionDepth(params []*types.Var) int {
 		}
 		n := new(big.Int).Sub(hi, lo)
 		n.Add(n, oneInt)
-		d := maxRecursionDepth
-		if n.IsInt64() && n.Int64() < maxRecursionDepth {
-			d = int(n.Int64())
+		if !n.IsInt64() || n.Int64() > maxRecursionDepth {
+			continue
 		}
+		d := int(n.Int64())
 		if best == 0 || d < best {
 			best = d
 		}

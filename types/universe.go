@@ -22,6 +22,7 @@ const (
 	_Print
 	_Println
 	_Assert
+	_Old
 
 	// Functions of an/fmt implemented by the compiler.
 	_FmtPrint
@@ -77,7 +78,7 @@ const (
 var builtinNames = map[builtinID]string{
 	_Append: "append", _Cap: "cap", _Clear: "clear", _Close: "close", _Copy: "copy",
 	_Delete: "delete", _Len: "len", _Make: "make", _Max: "max", _Min: "min",
-	_Panic: "panic", _Print: "print", _Println: "println", _Assert: "assert",
+	_Panic: "panic", _Print: "print", _Println: "println", _Assert: "assert", _Old: "old",
 	_FmtPrint: "Print", _FmtPrintln: "Println", _FmtSprint: "Sprint", _FmtSprintln: "Sprintln",
 	_FmtPrintf: "Printf", _FmtSprintf: "Sprintf",
 	_BitsWrappingAdd: "WrappingAdd", _BitsWrappingSub: "WrappingSub", _BitsWrappingMul: "WrappingMul",
@@ -164,7 +165,7 @@ func init() {
 	Universe.Insert(universeIota)
 	Universe.Insert(&Nil{object{name: "nil", typ: Typ[UntypedNil]}})
 
-	for id := _Append; id <= _Assert; id++ {
+	for id := _Append; id <= _Old; id++ {
 		Universe.Insert(&Builtin{object: object{name: builtinNames[id], typ: Typ[Invalid]}, id: id})
 	}
 }

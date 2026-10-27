@@ -1,0 +1,22 @@
+// want: mem.nil.call
+// checks: mem.nil.invalidate
+
+// A call of a closure that captures cb by reference may assign it, so the
+// fact that cb is not nil does not survive the call.
+package main
+
+func run(cb inout func()) {
+	if cb == nil {
+		return
+	}
+	clr := func() {
+		cb = nil
+	}
+	clr()
+	cb()
+}
+
+func main() {
+	f := func() {}
+	run(f)
+}

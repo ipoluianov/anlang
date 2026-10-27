@@ -458,7 +458,13 @@ func (fb *funcBuilder) returnStmt(s *syntax.ReturnStmt) {
 		fb.yieldReturn(s)
 		return
 	}
+	// With deferred calls, the named results are read after them
+	// (stmt.defer.go).
+	named := fb.defers && len(fb.results) > 0
 	if len(s.Results) == 0 {
+		if named {
+			fb.emitStmt(&ir.RunDefers{})
+		}
 		fb.ret(nil)
 		return
 	}
@@ -472,6 +478,17 @@ func (fb *funcBuilder) returnStmt(s *syntax.ReturnStmt) {
 	}
 	for i := range vals {
 		vals[i] = fb.convert(vals[i], sig.Results.At(i).Type())
+	}
+	if mc, ok := vals[0].(*ir.MakeClosure); ok && len(vals) == 1 && fb.borrowing() {
+		fb.fn.Borrows = append(fb.fn.Borrows, mc.Fn)
+	}
+	if named {
+		for i, v := range vals {
+			fb.store(fb.results[i], v)
+		}
+		fb.emitStmt(&ir.RunDefers{})
+		fb.ret(nil)
+		return
 	}
 	fb.emitStmt(&ir.Return{Results: vals})
 }
@@ -511,4 +528,20 @@ func (fb *funcBuilder) asm(s *syntax.AsmStmt) {
 			fb.store(addr, v)
 		}
 	}
+}
+
+// borrowing reports whether the function is a borrowing function: it has
+// an inout parameter or receiver and returns an iterator
+// (mem.ref.borrowing).
+func (fb *funcBuilder) borrowing() bool {
+	sig := fb.fn.Sig
+	if fb.parent != nil || sig.Results.Len() != 1 || !types.IsIterator(sig.Results.At(0).Type()) {
+		return false
+	}
+	for _, p := range fb.fn.Params {
+		if p.Inout {
+			return true
+		}
+	}
+	return false
 }

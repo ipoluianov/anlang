@@ -1,0 +1,25 @@
+// want: mem.ref.borrowing
+
+// The iterator of a borrowing call holds an inout access to the table, so
+// it may not outlive the loop.
+package main
+
+type Table struct {
+	cells [4]int
+}
+
+func (t inout Table) All() func(yield func(inout int) bool) {
+	return func(yield func(inout int) bool) {
+		for i := range t.cells {
+			if !yield(t.cells[i]) {
+				return
+			}
+		}
+	}
+}
+
+func main() {
+	var t Table
+	it := t.All()
+	_ = it
+}

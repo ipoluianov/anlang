@@ -14,20 +14,32 @@ import (
 // parameters and results; the other variables have their values in st.
 // It reports a construct that it does not translate if report is set.
 func (f *fn) contractIn(info *types.Info, st *state, e syntax.Expr, env map[*types.Var]val, report bool) (verify.Formula, bool) {
-	return f.translate(info, st, e, env, report, false)
+	return f.translate(info, st, e, env, report, false, f.oldOf(info))
 }
 
 // contractGoal translates a contract expression as contractIn does, for
 // the goal of an obligation: the quantifiers differ (std.math.quantifier).
 func (f *fn) contractGoal(info *types.Info, st *state, e syntax.Expr, env map[*types.Var]val, report bool) (verify.Formula, bool) {
-	return f.translate(info, st, e, env, report, true)
+	return f.translate(info, st, e, env, report, true, f.oldOf(info))
 }
 
-func (f *fn) translate(info *types.Info, st *state, e syntax.Expr, env map[*types.Var]val, report, goal bool) (verify.Formula, bool) {
+// oldOf returns the values at entry that old denotes in a contract
+// expression of package info checked in the body of f
+// (contract.expr.old).
+func (f *fn) oldOf(info *types.Info) map[*types.Var]val {
+	if info == f.info {
+		return f.entry
+	}
+	return nil
+}
+
+// translate translates a contract expression; old gives the values of the
+// parameters that old denotes.
+func (f *fn) translate(info *types.Info, st *state, e syntax.Expr, env map[*types.Var]val, report, goal bool, old map[*types.Var]val) (verify.Formula, bool) {
 	if info == nil {
 		return verify.Formula{}, false
 	}
-	c := &contract{f: f, info: info, st: st, env: env, goal: goal}
+	c := &contract{f: f, info: info, st: st, env: env, old: old, goal: goal}
 	x := c.eval(e)
 	if c.bad != nil {
 		if report {
@@ -46,8 +58,12 @@ type contract struct {
 	info *types.Info
 	st   *state
 	env  map[*types.Var]val
-	bad  syntax.Expr
-	why  string
+	// old gives the values at entry of the parameters, which the
+	// argument of old reads (contract.expr.old).
+	old   map[*types.Var]val
+	inOld bool
+	bad   syntax.Expr
+	why   string
 	// goal is set for the goal of an obligation, neg under an odd number
 	// of negations, and mixed under == or != of booleans, where a
 	// quantifier has both polarities.
@@ -82,6 +98,17 @@ func (c *contract) eval(e syntax.Expr) val {
 		v, ok := info.Uses[e].(*types.Var)
 		if !ok {
 			return c.fail(e, fmt.Sprintf("%s", e.Name))
+		}
+		if c.inOld {
+			// A parameter at entry, a variable bound in the argument,
+			// or a package-level variable, of which nothing is known.
+			if x, ok := c.old[v]; ok {
+				return x
+			}
+			if x, ok := c.env[v]; ok {
+				return x
+			}
+			return f.received(c.st, v.Type(), "old("+v.Name()+")")
 		}
 		if x, ok := c.env[v]; ok {
 			return x
@@ -169,6 +196,15 @@ func (c *contract) eval(e syntax.Expr) val {
 				return c.quantifier(e, b.Name() == "ForAll")
 			}
 		}
+		if id, ok := unparen(e.Fun).(*syntax.Name); ok && len(e.Args) == 1 {
+			if b, ok := info.Uses[id].(*types.Builtin); ok && b.Pkg() == "" && b.Name() == "old" {
+				saved := c.inOld
+				c.inOld = true
+				x := c.eval(e.Args[0])
+				c.inOld = saved
+				return x
+			}
+		}
 		if vr := variantOf(info, e.Fun); vr != nil && enumOf(tv.Type) != nil {
 			var args []val
 			for _, a := range e.Args {
@@ -181,6 +217,27 @@ func (c *contract) eval(e syntax.Expr) val {
 			x := c.eval(e.Args[0])
 			if x.kind == vInt && isInt(ftv.Type) {
 				return x // the value of an integer
+			}
+		}
+		if id, ok := unparen(e.Fun).(*syntax.Name); ok && len(e.Args) > 0 {
+			if b, ok := info.Uses[id].(*types.Builtin); ok && b.Pkg() == "" && (b.Name() == "min" || b.Name() == "max") {
+				// The least or the greatest argument.
+				r := f.newVar(b.Name())
+				rel := verify.LE
+				if b.Name() == "max" {
+					rel = verify.GE
+				}
+				var some []verify.Formula
+				for _, a := range e.Args {
+					x := c.eval(a)
+					if x.kind != vInt {
+						return c.fail(e, "the call "+types.ExprString(e))
+					}
+					c.st.assume(verify.Cmp(r, rel, x.t))
+					some = append(some, verify.Cmp(r, verify.EQ, x.t))
+				}
+				c.st.assume(verify.OrOf(some...))
+				return val{kind: vInt, t: r}
 			}
 		}
 		if id, ok := unparen(e.Fun).(*syntax.Name); ok && len(e.Args) == 1 {
@@ -398,7 +455,7 @@ func (c *contract) quantifier(e *syntax.CallExpr, all bool) val {
 		return val{kind: vBool, f: verify.AndOf(inRange(k), p)}
 	}
 	b := f.fresh(c.st, types.Typ[types.Bool], types.ExprString(e.Fun))
-	c.st.quants = append(c.st.quants[:len(c.st.quants):len(c.st.quants)], quant{b: b.f, all: all, inRange: inRange, instance: instance, offsets: offsets(vars, env), shifts: shifts(c.info, body, param)})
+	c.st.quants = append(c.st.quants[:len(c.st.quants):len(c.st.quants)], quant{b: b.f, all: all, inRange: inRange, instance: instance, offsets: offsets(vars, env, c.old), shifts: shifts(c.info, body, param)})
 	return b
 }
 

@@ -1,0 +1,54 @@
+// want: ok
+// checks: type.zero.map-index type.zero.assert
+
+// The value of a comma-ok form is used where ok is true.
+package main
+
+import "an/fmt"
+
+type Shape enum {
+	Circle{r int}
+	Rect{w, h int}
+}
+
+type Named interface {
+	Name() string
+}
+
+type Label struct{}
+
+func (Label) Name() string { return "label" }
+
+func (Shape) Name() string { return "shape" }
+
+func area(s Shape) int {
+	switch s {
+	case Circle{r}:
+		return 3 * r * r
+	case Rect{w, h}:
+		return w * h
+	}
+	return 0
+}
+
+func first(m map[string]Shape, k string) int {
+	s, ok := m[k]
+	if !ok {
+		return -1
+	}
+	return area(s)
+}
+
+func main() {
+	m := map[string]Shape{"a": Rect(2, 3)}
+	fmt.Println(first(m, "a"), first(m, "b"))
+	var x Named = Rect(1, 4)
+	if s, ok := x.(Shape); ok && area(s) > 0 {
+		fmt.Println(area(s))
+	}
+	s, ok := m["b"]
+	if !ok {
+		s = Circle(2)
+	}
+	fmt.Println(area(s))
+}

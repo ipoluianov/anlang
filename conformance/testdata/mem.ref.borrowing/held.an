@@ -1,0 +1,26 @@
+// want: stmt.range.inout-exclusive
+// checks: mem.ref.borrowing
+
+// The loop holds the table: the body may not access it directly.
+package main
+
+type Table struct {
+	cells [4]int
+}
+
+func (t inout Table) All() func(yield func(inout int) bool) {
+	return func(yield func(inout int) bool) {
+		for i := range t.cells {
+			if !yield(t.cells[i]) {
+				return
+			}
+		}
+	}
+}
+
+func main() {
+	var t Table
+	for c := range t.All() {
+		c = t.cells[0]
+	}
+}

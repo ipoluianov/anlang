@@ -1,0 +1,22 @@
+// want: ok
+
+// The access to an inout parameter lasts until the function returns, so
+// a deferred call may take it.
+package main
+
+import "an/fmt"
+
+func reset(c inout int) {
+	c = 0
+}
+
+func f(n inout int) {
+	defer reset(n)
+	n = 5
+}
+
+func main() {
+	x := 3
+	f(x)
+	fmt.Println(x)
+}

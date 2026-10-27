@@ -200,6 +200,7 @@ func (c *checker) inoutOverlap(exprs []syntax.Expr) {
 func (c *checker) useInoutVar(v *Var) {
 	for fn := c.fn; fn != nil && fn != v.owner; fn = fn.parent {
 		fn.captures = true
+		fn.captured = append(fn.captured, v)
 	}
 }
 

@@ -1,0 +1,15 @@
+// want: contract.expr.old
+
+// old does not appear in preconditions: there the values at entry are the
+// current ones.
+package main
+
+func f(n inout int) {
+	requires old(n) > 0
+	n++
+}
+
+func main() {
+	x := 1
+	f(x)
+}

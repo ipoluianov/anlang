@@ -266,10 +266,7 @@ func (fb *funcBuilder) builtin(e *syntax.CallExpr) ir.Value {
 			fb.store(a, vals[0])
 			rest = vals[1:]
 		} else {
-			a = fb.addr(e.Args[0])
-			if a == nil {
-				a = fb.inoutArg(e.Args[0])
-			}
+			a = fb.inoutArg(e.Args[0]) // a subslice denotes the elements of its operand
 			for _, x := range e.Args[1:] {
 				rest = append(rest, fb.expr(x))
 			}

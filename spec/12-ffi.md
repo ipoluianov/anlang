@@ -47,7 +47,7 @@ func sqlite3_close(db ffi.Handle) i32                    = lib.Symbol("sqlite3_c
 
 **ffi.effects.foreign** — If the binding has no `ffi.Effects` argument, the function has the single effect `Foreign`.
 
-**ffi.effects.foreign-deny** — `Foreign` means "may do anything". A boundary that denies any effect — a profile, a target, a `anlang.mod` constraint, `effect.Without(...)`, an `interrupt` or `trap` handler — also rejects `Foreign` (see [07-effects](07-effects.md)).
+**ffi.effects.foreign-deny** — `Foreign` means "may do anything". A boundary that denies any effect — a profile, a target, a `anlang.mod` constraint, `effect.Without(...)`, an `interrupt` or `trap` handler — also rejects `Foreign` (see [07-effects](07-effects.md)). Every profile and every target denies some effect, so a program that reaches `Foreign` is always rejected: an external function that a program calls MUST declare its effects with `ffi.Effects` (**ffi.effects.declared**). `Foreign` remains the summary of a binding without them, which `anlang query` shows.
 
 **ffi.effects.unverified** — Implementations MUST mark declared effects of external functions as unverified in effect reports, in `anlang query` answers and in `anlang diff` output, and MUST report changes to them separately from inferred effects (see [20-toolchain](20-toolchain.md)).
 

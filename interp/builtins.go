@@ -77,6 +77,7 @@ func (m *machine) builtin(b *ir.Builtin, c *ir.Call, args []value) value {
 					tmp[i] = share(src.buf.elems[src.off+i])
 				}
 				copy(d.buf.elems[d.off:], tmp)
+				dst.store(d) // writes an inout subslice back to its operand
 			}
 		case string:
 			n = min(d.len, len(src))
@@ -85,6 +86,7 @@ func (m *machine) builtin(b *ir.Builtin, c *ir.Call, args []value) value {
 				for i := range n {
 					d.buf.elems[d.off+i] = uint64(src[i])
 				}
+				dst.store(d)
 			}
 		}
 		return int64(n)
@@ -107,6 +109,7 @@ func (m *machine) builtin(b *ir.Builtin, c *ir.Call, args []value) value {
 				for i := range x.len {
 					x.buf.elems[x.off+i] = m.zero(et)
 				}
+				a.store(x)
 			}
 		}
 		return nil

@@ -17,6 +17,7 @@ import (
 	"an/arch/desc"
 	"an/build"
 	"an/ir"
+	"an/syntax"
 	"an/types"
 )
 
@@ -220,6 +221,14 @@ func generate(prog *ir.Program, a *desc.Arch, d *build.TargetDesc) (*gen, *build
 	}
 	if err != nil {
 		return nil, nil, []error{err}
+	}
+	if d.Stack == 0 && g.prog.Core && limit > 0 && ram < 0 {
+		// Without a Stack, the stack of a flat image grows down from the
+		// end of its format into the memory after the image
+		// (emb.stack.compute).
+		if free := limit - len(image) - g.ptr; g.stackNeed > free {
+			return nil, nil, []error{&syntax.Error{Pos: g.prog.Main.Pos, Rule: "emb.stack.limit", Msg: fmt.Sprintf("the stack needs %d bytes, more than the %d bytes between the image and the end of format %s", g.stackNeed, free, d.Formats[0].Type)}}
+		}
 	}
 	return g, &build.Image{Bytes: image}, nil
 }

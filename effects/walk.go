@@ -21,12 +21,180 @@ type walker struct {
 
 func (a *analyzer) walkBody(fn *fnFacts, body *syntax.BlockStmt) {
 	w := &walker{a: a, fn: fn, callees: map[syntax.Expr]bool{}, commaOk: map[syntax.Expr]bool{}, comms: map[syntax.Node]bool{}}
+	fn.copied = a.copiedSlices(fn, body)
+	a.borrowedLits(fn, body)
 	for _, s := range body.List {
 		if _, ok := s.(*syntax.ContractStmt); ok {
 			continue
 		}
 		syntax.Walk(s, w.visit)
 	}
+}
+
+// borrowedLits records the function literals that a borrowing function
+// returns: their closure records are in the frame of the caller
+// (mem.ref.borrowing).
+func (a *analyzer) borrowedLits(fn *fnFacts, body *syntax.BlockStmt) {
+	sig := fn.sig
+	if fn.outer != nil || sig.Results.Len() != 1 || !types.IsIterator(sig.Results.At(0).Type()) {
+		return
+	}
+	inout := sig.Recv != nil && sig.Recv.Inout()
+	for i := range sig.Params.Len() {
+		inout = inout || sig.Params.At(i).Inout()
+	}
+	if !inout {
+		return
+	}
+	syntax.Walk(body, func(n syntax.Node) bool {
+		switch n := n.(type) {
+		case *syntax.FuncLit:
+			return false
+		case *syntax.ReturnStmt:
+			if len(n.Results) == 1 {
+				if lit, ok := unparen(n.Results[0]).(*syntax.FuncLit); ok {
+					a.borrowed[lit] = true
+				}
+			}
+		}
+		return true
+	})
+}
+
+// sliceRoot returns the name at the root of a chain of slice expressions.
+func sliceRoot(e syntax.Expr) *syntax.Name {
+	switch x := unparen(e).(type) {
+	case *syntax.Name:
+		return x
+	case *syntax.SliceExpr:
+		return sliceRoot(x.X)
+	}
+	return nil
+}
+
+// copiedSlices returns the inout slice parameters of fn that body uses
+// other than in the forms that copy no value: the operand of an index or
+// slice expression that is so used, of len, cap, copy or clear, of a
+// comparison with nil or of a range without a value variable, an inout
+// argument or receiver, and the target of an assignment. A use in a
+// function literal captures a copy (mem.inout.unique).
+func (a *analyzer) copiedSlices(fn *fnFacts, body *syntax.BlockStmt) map[*types.Var]bool {
+	param := func(id *syntax.Name) *types.Var {
+		v, ok := a.info.Uses[id].(*types.Var)
+		if !ok || !v.Inout() {
+			return nil
+		}
+		if _, own := fn.params[v]; !own {
+			return nil
+		}
+		if _, isSlice := coreOf(v.Type()).(*types.Slice); !isSlice {
+			return nil
+		}
+		return v
+	}
+	keep := map[*syntax.Name]bool{}
+	var chain func(e syntax.Expr)
+	chain = func(e syntax.Expr) {
+		switch x := unparen(e).(type) {
+		case *syntax.Name:
+			keep[x] = true
+		case *syntax.SliceExpr:
+			chain(x.X)
+		}
+	}
+	isNil := func(e syntax.Expr) bool {
+		id, ok := unparen(e).(*syntax.Name)
+		if !ok {
+			return false
+		}
+		_, ok = a.info.Uses[id].(*types.Nil)
+		return ok
+	}
+	skip := func(n syntax.Node) bool {
+		if _, ok := n.(*syntax.ContractStmt); ok {
+			return true // contracts are not executed
+		}
+		c, ok := n.(*syntax.CallExpr)
+		return ok && a.builtinName(c.Fun) == "assert"
+	}
+	syntax.Walk(body, func(n syntax.Node) bool {
+		if skip(n) {
+			return false
+		}
+		switch n := n.(type) {
+		case *syntax.FuncLit:
+			return false
+		case *syntax.IndexExpr:
+			chain(n.X)
+		case *syntax.AssignStmt:
+			if n.Tok == syntax.Assign {
+				for i, e := range n.Lhs {
+					id, ok := unparen(e).(*syntax.Name)
+					if !ok {
+						continue
+					}
+					keep[id] = true
+					// xs = xs[lo:hi] replaces the only copy.
+					if v := param(id); v != nil && len(n.Lhs) == len(n.Rhs) {
+						if r := sliceRoot(n.Rhs[i]); r != nil && a.info.Uses[r] == v {
+							chain(n.Rhs[i])
+						}
+					}
+				}
+			}
+		case *syntax.RangeStmt:
+			if n.Value == nil {
+				chain(n.X)
+			}
+		case *syntax.BinaryExpr:
+			if n.Op == syntax.Eql || n.Op == syntax.Neq {
+				if isNil(n.X) {
+					chain(n.Y)
+				}
+				if isNil(n.Y) {
+					chain(n.X)
+				}
+			}
+		case *syntax.CallExpr:
+			switch a.builtinName(n.Fun) {
+			case "len", "cap", "copy", "clear":
+				for _, e := range n.Args {
+					chain(e)
+				}
+				return true
+			}
+			sig, _ := coreOf(a.typeOf(n.Fun)).(*types.Signature)
+			if sig == nil {
+				return true
+			}
+			for i, e := range n.Args {
+				if i < sig.Params.Len() && sig.Params.At(i).Inout() {
+					chain(e)
+				}
+			}
+			if sel, ok := unparen(n.Fun).(*syntax.SelectorExpr); ok && sig.Recv == nil {
+				if s := a.info.Selections[sel]; s != nil {
+					if m, ok := s.Obj.(*types.Func); ok && m.Signature().Recv != nil && m.Signature().Recv.Inout() {
+						chain(sel.X)
+					}
+				}
+			}
+		}
+		return true
+	})
+	copied := map[*types.Var]bool{}
+	syntax.Walk(body, func(n syntax.Node) bool {
+		if skip(n) {
+			return false
+		}
+		if id, ok := n.(*syntax.Name); ok && !keep[id] {
+			if v := param(id); v != nil {
+				copied[v] = true
+			}
+		}
+		return true
+	})
+	return copied
 }
 
 // AsmEffects returns the names of the effects of the instructions of an
@@ -483,8 +651,8 @@ func (w *walker) slice(n *syntax.SliceExpr) {
 }
 
 // write handles e as the target of an assignment: a write into a map
-// may grow it, a write into the elements of a slice may copy a shared
-// buffer (eff.source.alloc-ops).
+// may grow it, a write into the elements of a slice that is not unique
+// may copy a shared buffer (eff.source.alloc-ops, mem.inout.unique).
 func (w *walker) write(e syntax.Expr, pos syntax.Pos) {
 	a, fn := w.a, w.fn
 	for {
@@ -496,7 +664,9 @@ func (w *walker) write(e syntax.Expr, pos syntax.Pos) {
 				_ = u
 				return
 			case *types.Slice:
-				fn.source(Alloc, pos, "write to a slice element")
+				if !w.unique(x.X) {
+					fn.source(Alloc, pos, "write to a slice element")
+				}
 				return
 			}
 			e = x.X
@@ -508,6 +678,56 @@ func (w *walker) write(e syntax.Expr, pos syntax.Pos) {
 	}
 }
 
+// unique reports whether the slice operand e is unique: its buffer is
+// shared with no other copy, so that writing into its elements or passing
+// it to an inout parameter copies nothing (mem.inout.unique).
+func (w *walker) unique(e syntax.Expr) bool {
+	a := w.a
+	switch x := unparen(e).(type) {
+	case *syntax.SliceExpr:
+		if _, ok := coreOf(a.typeOf(x.X)).(*types.Array); ok {
+			return true
+		}
+		return w.unique(x.X)
+	case *syntax.Name:
+		switch obj := a.info.Uses[x].(type) {
+		case *types.Nil:
+			return true
+		case *types.Var:
+			_, own := w.fn.params[obj]
+			return own && obj.Inout() && !w.fn.copied[obj]
+		}
+	}
+	return false
+}
+
+// inoutSliceParam reports whether e is an inout parameter or receiver of
+// a slice type of the function.
+func (w *walker) inoutSliceParam(e syntax.Expr) bool {
+	id, ok := unparen(e).(*syntax.Name)
+	if !ok {
+		return false
+	}
+	v, ok := w.a.info.Uses[id].(*types.Var)
+	if !ok || !v.Inout() {
+		return false
+	}
+	if _, own := w.fn.params[v]; !own {
+		return false
+	}
+	_, isSlice := coreOf(v.Type()).(*types.Slice)
+	return isSlice
+}
+
+// inoutArg handles e passed to an inout parameter: a slice that is not
+// unique is made unique first, which may copy its buffer
+// (mem.inout.unique).
+func (w *walker) inoutArg(e syntax.Expr, pos syntax.Pos) {
+	if _, ok := coreOf(w.a.typeOf(e)).(*types.Slice); ok && !w.unique(e) {
+		w.fn.source(Alloc, pos, "slice passed to an inout parameter, which may copy a shared buffer")
+	}
+}
+
 func (w *walker) assign(n *syntax.AssignStmt) {
 	a := w.a
 	switch n.Tok {
@@ -516,8 +736,22 @@ func (w *walker) assign(n *syntax.AssignStmt) {
 			w.commaOk[unparen(n.Rhs[0])] = true
 		}
 		if n.Tok == syntax.Assign {
-			for _, e := range n.Lhs {
+			for i, e := range n.Lhs {
 				w.write(e, n.TokPos)
+				// A subslice passed to an inout slice parameter keeps
+				// its length (mem.inout.subslice).
+				if w.inoutSliceParam(e) {
+					w.fn.source(Panic, n.TokPos, "assignment to an inout slice parameter, which panics if it changes the length of a subslice")
+				}
+				// An inout slice parameter stays unique
+				// (mem.inout.unique).
+				if w.unique(e) {
+					if id, ok := unparen(e).(*syntax.Name); ok && id.Name != "_" && (len(n.Lhs) != len(n.Rhs) || !w.unique(n.Rhs[i])) {
+						if _, ok := coreOf(a.typeOf(e)).(*types.Slice); ok {
+							w.fn.source(Alloc, n.TokPos, "assignment to an inout slice parameter, which may copy a shared buffer")
+						}
+					}
+				}
 			}
 		}
 		if len(n.Lhs) == len(n.Rhs) {
@@ -802,7 +1036,7 @@ func (w *walker) funcLit(n *syntax.FuncLit) {
 	a.litKeys[n] = key
 	fn.lits = append(fn.lits, lit)
 	a.impl(Ref{Kind: OpenFunc, Type: sigKey(sig)}, key)
-	if a.captures(n) {
+	if a.captures(n) && !a.borrowed[n] {
 		fn.source(Alloc, n.Pos(), "function literal with captured variables")
 	}
 	a.walkBody(lit, n.Body)

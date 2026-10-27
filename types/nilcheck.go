@@ -92,14 +92,32 @@ type nilChecker struct {
 	c       *checker
 	targets []*breakTarget
 	gotos   map[string]bool // labels that are the target of a goto
+	// guards are the ok variables of the comma-ok forms, with the
+	// variables of the values that are usable only where ok is true
+	// (type.zero.ok-use).
+	guards map[*Var][]okValue
+	// guarded are those value variables.
+	guarded map[*Var]okValue
 }
+
+// okValue is the value variable of a comma-ok form.
+type okValue struct {
+	v    *Var
+	rule string
+	what string
+}
+
+// validKey is the key of the fact that the value variable v holds a
+// value of its type: the comma-ok form found one, or v was assigned
+// after it (type.zero.ok-use).
+func validKey(v *Var) string { return rootKey(v) + ".!ok" }
 
 // checkNil runs the nil safety analysis on a function body. captured
 // holds the facts known when a function literal is created; params are
 // the parameters of the function, of which those of function type are
 // known non-nil (mem.nil.func-param).
 func (c *checker) checkNil(body *syntax.BlockStmt, captured facts, params []*Var) {
-	n := &nilChecker{c: c, gotos: map[string]bool{}}
+	n := &nilChecker{c: c, gotos: map[string]bool{}, guards: map[*Var][]okValue{}, guarded: map[*Var]okValue{}}
 	syntax.Walk(body, func(node syntax.Node) bool {
 		if b, ok := node.(*syntax.BranchStmt); ok && b.Tok == syntax.Goto && b.Label != nil {
 			n.gotos[b.Label.Name] = true
@@ -464,13 +482,24 @@ func (n *nilChecker) declStmt(d *syntax.GenDecl, f facts) {
 				n.assignFacts(accessPath{root: v}, v.typ, s.Values[i], f)
 			}
 		}
+		lhs := make([]syntax.Expr, len(s.Names))
+		for i, name := range s.Names {
+			lhs[i] = name
+		}
+		n.commaOk(lhs, s.Values, f)
 	}
 }
 
 func (n *nilChecker) assign(s *syntax.AssignStmt, f facts) {
-	for _, e := range s.Rhs {
+	for i, e := range s.Rhs {
+		if len(s.Lhs) == len(s.Rhs) && isBlank(s.Lhs[i]) {
+			if _, ok := unparen(e).(*syntax.Name); ok {
+				continue // a discarded value is not used
+			}
+		}
 		n.expr(e, f)
 	}
+	defer n.commaOk(s.Lhs, s.Rhs, f)
 	for _, e := range s.Lhs {
 		// The operands of the left side, such as indices, are evaluated too.
 		n.lhsOperands(e, f)
@@ -649,6 +678,14 @@ func (n *nilChecker) cond(e syntax.Expr, f facts) (t, fa facts) {
 			t, fa = n.cond(x.X, f)
 			return fa, t
 		}
+	case *syntax.Name:
+		if b, ok := n.c.info.Uses[x].(*Var); ok && len(n.guards[b]) > 0 {
+			t, fa = f.clone(), f.clone()
+			for _, g := range n.guards[b] {
+				t[validKey(g.v)] = true
+			}
+			return t, fa
+		}
 	}
 	n.expr(e, f)
 	return f.clone(), f.clone()
@@ -725,6 +762,12 @@ func (n *nilChecker) killAssigned(f facts, nodes ...syntax.Node) {
 // expr checks the calls and method selections in e with facts f.
 func (n *nilChecker) expr(e syntax.Expr, f facts) {
 	switch x := e.(type) {
+	case *syntax.Name:
+		if v, ok := n.c.info.Uses[x].(*Var); ok {
+			if g, ok := n.guarded[v]; ok && !f[validKey(v)] {
+				n.c.zeroUse(x.Pos(), v.typ, g.rule, g.what+": "+v.name+" is used where "+n.okName(v)+" may be false")
+			}
+		}
 	case nil:
 	case *syntax.ParenExpr:
 		n.expr(x.X, f)
@@ -755,6 +798,10 @@ func (n *nilChecker) expr(e syntax.Expr, f facts) {
 					n.killPath(a, f)
 				}
 			}
+		}
+		// A closure that captures inout variables may assign them.
+		for _, v := range n.c.capturedBy(x.Fun) {
+			f.killRoot(v)
 		}
 	case *syntax.SelectorExpr:
 		n.expr(x.X, f)
@@ -885,4 +932,76 @@ func (n *nilChecker) funcArgs(call *syntax.CallExpr, f facts) {
 		}
 		n.c.errorf(a.Pos(), "mem.nil.func-param", "argument %s for a parameter of function type may be nil; pass a function or check it first", exprString(a))
 	}
+}
+
+// commaOk records the comma-ok assignment of lhs from rhs, whose value
+// variable is usable only where the ok variable is true; and, for other
+// assignments, that the assigned value variables hold values and that
+// the assigned ok variables no longer guard them (type.zero.ok-use).
+func (n *nilChecker) commaOk(lhs, rhs []syntax.Expr, f facts) {
+	varOf := func(e syntax.Expr) *Var {
+		id, ok := unparen(e).(*syntax.Name)
+		if !ok {
+			return nil
+		}
+		if v, ok := n.c.info.Defs[id].(*Var); ok {
+			return v
+		}
+		v, _ := n.c.info.Uses[id].(*Var)
+		return v
+	}
+	for _, e := range lhs {
+		if v := varOf(e); v != nil {
+			delete(n.guards, v) // ok assigned again
+			if _, ok := n.guarded[v]; ok {
+				f[validKey(v)] = true
+			}
+		}
+	}
+	if len(lhs) != 2 || len(rhs) != 1 {
+		return
+	}
+	v, b := varOf(lhs[0]), varOf(lhs[1])
+	if v == nil {
+		return
+	}
+	var g okValue
+	switch x := unparen(rhs[0]).(type) {
+	case *syntax.IndexExpr:
+		if _, ok := coreOrNil(n.c.info.Types[x.X].Type).(*Map); !ok {
+			return
+		}
+		g = okValue{v, "type.zero.map-index", "comma-ok map index " + exprString(x)}
+	case *syntax.TypeAssertExpr:
+		g = okValue{v, "type.zero.assert", "comma-ok type assertion " + exprString(x)}
+	case *syntax.UnaryExpr:
+		if x.Op != syntax.Arrow {
+			return
+		}
+		g = okValue{v, "type.zero.chan-receive", "comma-ok receive " + exprString(x)}
+	default:
+		return
+	}
+	n.guarded[v] = g
+	delete(f, validKey(v))
+	if b != nil {
+		n.guards[b] = append(n.guards[b], g)
+	}
+}
+
+// okName returns the name of the ok variable that guards v.
+func (n *nilChecker) okName(v *Var) string {
+	for b, gs := range n.guards {
+		for _, g := range gs {
+			if g.v == v {
+				return b.name
+			}
+		}
+	}
+	return "ok"
+}
+
+func isBlank(e syntax.Expr) bool {
+	id, ok := unparen(e).(*syntax.Name)
+	return ok && id.Name == "_"
 }

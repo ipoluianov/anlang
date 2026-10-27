@@ -59,9 +59,9 @@ An effect enters a program only at a *source*. Every other function obtains effe
 1. `make`; a slice or map composite literal with at least one element; `append` with at least one value or with `...`;
 2. string concatenation with `+` or `+=` that is not constant; a conversion that is not constant between a string type and `[]u8` or `[]i32`, from an integer type to a string type, and to `cstring` or `dstring`;
 3. an assignment to a map element, including assignment operations, `++` and `--`; `delete`; `clear` of a map;
-4. a write into the elements of a slice, which may copy a shared buffer (**mem.cow.slice**): an assignment, assignment operation, `++` or `--` whose target is reached through an index expression on a slice, and `copy` and `clear` of a slice;
+4. an operation that may copy a shared buffer (**mem.cow.slice**, **mem.inout.unique**): an assignment, assignment operation, `++` or `--` whose target is reached through an index expression on a slice operand that is not unique, and an `inout` access to such a target, as an argument or a receiver; a slice operand that is not unique passed to an `inout` parameter or receiver, including the first operand of `copy` and `clear` of a slice; an assignment of an operand that is not unique to an `inout` parameter of a slice type;
 5. a conversion of a value that is not constant to an interface type, unless its type is a boolean or numeric type, a struct type without fields or an `enum` type none of whose variants carry data;
-6. a function literal that uses local variables or parameters of an enclosing function; a method value;
+6. a function literal that uses local variables or parameters of an enclosing function, except one that a borrowing function returns (**mem.ref.borrowing**); a method value;
 7. `fmt.Sprint`, `fmt.Sprintln` and `fmt.Sprintf`.
 
 **eff.source.panic** — An operation that may panic has the effect `Panic`. This includes integer overflow checks, index and slice bounds checks, checks of conversions from floating-point to integer types, arena generation checks and explicit calls of `panic`; the operations are listed in **eff.source.panic-ops**. A check that the compiler removes because the solver proved it cannot fail ([08-contracts](08-contracts.md), **contract.check.runtime**) contributes no effect.
@@ -75,7 +75,8 @@ An effect enters a program only at a *source*. Every other function obtains effe
 5. a conversion that is not constant from a floating-point type to an integer type (**type.conv.float-int**), from a slice to an array, and to `cstring` or `dstring`;
 6. a type assertion that does not have the comma-ok form;
 7. `==` and `!=` on operands whose type is or contains an interface type or is a type parameter, unless an operand is `nil`; an index expression, element assignment, composite literal entry or `delete` on a map whose key type is or contains an interface type;
-8. `make` with a length or capacity that is not constant; `panic`; `close`; a channel send.
+8. `make` with a length or capacity that is not constant; `panic`; `close`; a channel send;
+9. an assignment to an `inout` parameter or receiver of a slice type, which panics if it changes the length of a subslice passed to it (**mem.inout.subslice**); in a function whose only parameter is a function with a `bool` result and which has no results, a call of that parameter, which panics if an iterator calls `yield` after it returned `false` (**stmt.range.yield-after-false**).
 
 **eff.source.builtin** — Until the standard library is compiled from Anlang source (roadmap steps 9–10 and 29), the following functions are primitives (**eff.source.primitive**): `print` and `println` have the effect `Console`; `fmt.Print`, `fmt.Println` and `fmt.Printf` have the effects `Console` and `Panic` (**std.fmt.print**). The functions of `an/fmt` call the methods `Error` and `String` of their arguments: for an argument of concrete type `T` they add the summaries of `T.Error` and `T.String`, and for an argument of an interface type with such a method they add the open reference to it.
 

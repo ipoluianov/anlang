@@ -216,6 +216,7 @@ type funcBuilder struct {
 	targets []*target
 	labels  map[string]*ir.Block
 	results []ir.Value // cells of the named results
+	defers  bool       // the body has defer statements
 
 	// For the body of a range-over-func loop: what break, continue and
 	// return do inside it.
@@ -301,8 +302,24 @@ func (fb *funcBuilder) declBody(d *syntax.FuncDecl, sig *types.Signature) {
 			fb.results = append(fb.results, cell)
 		}
 	}
-	fb.stmts(d.Body.List)
+	fb.body(d.Body.List)
 	fb.finish()
+}
+
+// body translates the statements of a function body.
+func (fb *funcBuilder) body(list []syntax.Stmt) {
+	for _, s := range list {
+		syntax.Walk(s, func(n syntax.Node) bool {
+			switch n.(type) {
+			case *syntax.FuncLit:
+				return false
+			case *syntax.DeferStmt:
+				fb.defers = true
+			}
+			return true
+		})
+	}
+	fb.stmts(list)
 }
 
 // param declares a parameter: an inout parameter is the address of the

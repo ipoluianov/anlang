@@ -31,7 +31,7 @@ type TargetDesc struct {
 	Stack    int
 	Provides []string // effect names
 	Lacks    []string
-	OnPanic  int // 1 PrintAndExit, 2 Reset, 3 Halt
+	OnPanic  int // PanicPrintAndExit, PanicReset or PanicHalt
 	Clock    int
 }
 
@@ -258,3 +258,10 @@ func checkPlatformProfile(main *loadedPkg, d *TargetDesc, target string) []*synt
 	return []*syntax.Error{{Pos: pos, Rule: "target.platform.profile", Msg: fmt.Sprintf("package main has profile %s, but platform %s of target %s allows only %s",
 		strings.Join(main.info.Pkg.Profiles, ", "), d.Platform.Name, target, strings.Join(d.Platform.Profiles, ", "))}}
 }
+
+// The panic actions of a target (target.panic.action).
+const (
+	PanicPrintAndExit = 1
+	PanicReset        = 2
+	PanicHalt         = 3
+)

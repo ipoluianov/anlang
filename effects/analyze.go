@@ -17,6 +17,7 @@ func Analyze(info *types.Info, imported func(key string) *Summary) *Package {
 		imported: imported,
 		byKey:    map[string]*fnFacts{},
 		litKeys:  map[*syntax.FuncLit]string{},
+		borrowed: map[*syntax.FuncLit]bool{},
 		pkg: &Package{
 			Path:    info.Pkg.Path,
 			Funcs:   map[string]*Summary{},
@@ -64,6 +65,7 @@ type analyzer struct {
 	fns      []*fnFacts
 	byKey    map[string]*fnFacts
 	litKeys  map[*syntax.FuncLit]string
+	borrowed map[*syntax.FuncLit]bool // literals returned by borrowing functions (mem.ref.borrowing)
 }
 
 // fnFacts are the facts of one function body from which its summary is
@@ -84,6 +86,9 @@ type fnFacts struct {
 	calls    []*callFact
 	adds     []addFact // functions whose summaries are added (rules 6, 7)
 	lits     []*fnFacts
+	// copied are the inout slice parameters that the body copies as
+	// values, which are not unique (mem.inout.unique).
+	copied map[*types.Var]bool
 
 	lifted []prefFact   // references of this literal to parameters of enclosing functions
 	liftQ  map[Ref]bool // the open references standing for lifted ones in the literal's summary

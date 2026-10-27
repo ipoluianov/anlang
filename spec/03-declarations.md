@@ -110,7 +110,7 @@ const Description = target.Desc{
 
 **decl.var.local** — Variable declarations inside functions are as in Go, subject to the zero-value rules of [02-types](02-types.md) §2.12.
 
-**decl.var.unused** — A variable declared in a function body MUST be used, as the Go compiler requires: a variable that is only assigned to is not used. Parameters, results and the blank identifier are exempt.
+**decl.var.unused** — A variable declared in a function body MUST be used, as the Go compiler requires: a variable that is only assigned to is not used. Parameters, results, `inout` loop variables, an assignment to which writes through their access, and the blank identifier are exempt.
 
 **decl.var.package-kinds** — A package-level variable MUST have one of these types:
 

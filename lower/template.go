@@ -64,7 +64,7 @@ func (b *builder) template(inst *types.TemplateInstance) *ir.Func {
 				fb.results = append(fb.results, cell)
 			}
 		}
-		fb.stmts(inst.Decl.Body.List)
+		fb.body(inst.Decl.Body.List)
 		fb.finish()
 	})
 	return fn

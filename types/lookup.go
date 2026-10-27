@@ -160,6 +160,9 @@ func (c *checker) missingMethod(v Type, t *Interface) string {
 			}
 			return fmt.Sprintf("missing method %s", m.name)
 		}
+		if _, isIface := v.Underlying().(*Interface); !isIface && borrowingFunc(have) {
+			return fmt.Sprintf("method %s is a borrowing method, which calls through interfaces cannot make (mem.ref.borrowing)", m.name)
+		}
 		if !Identical(methodType(have), methodType(m)) {
 			return fmt.Sprintf("wrong type for method %s\n\t\thave %s%s\n\t\twant %s%s", m.name, m.name, sigString(methodType(have)), m.name, sigString(methodType(m)))
 		}

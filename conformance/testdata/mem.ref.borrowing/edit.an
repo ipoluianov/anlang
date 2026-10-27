@@ -1,0 +1,43 @@
+// want: ok
+// checks: mem.part.container stmt.range.inout-exclusive
+
+// A container gives inout access to its parts through a borrowing
+// method: the iterator holds the container until the loop ends.
+package main
+
+profile core
+
+import "an/fmt"
+
+type Table struct {
+	cells [4]int
+}
+
+func (t inout Table) Edit(i int) func(yield func(inout int) bool) {
+	return func(yield func(inout int) bool) {
+		if 0 <= i && i < len(t.cells) {
+			yield(t.cells[i])
+		}
+	}
+}
+
+func (t inout Table) All() func(yield func(int, inout int) bool) {
+	return func(yield func(int, inout int) bool) {
+		for i := range t.cells {
+			if !yield(i, t.cells[i]) {
+				return
+			}
+		}
+	}
+}
+
+func main() {
+	var t Table
+	for c := range t.Edit(2) {
+		c = 7
+	}
+	for i, c := range t.All() {
+		c += i
+	}
+	fmt.Println(t.cells[0], t.cells[1], t.cells[2], t.cells[3])
+}

@@ -15,6 +15,7 @@ Terms used in the specification and their Russian equivalents. Use these terms i
 | binary format | формат бинарника | Layout of the output file: flat, MZ, ELF, PE, Mach-O, wasm, Intel HEX, UF2, BIN |
 | bit vector | битовый вектор | Value of an integer type as a sequence of n bits, with arithmetic modulo 2ⁿ; the solver encodes its operations in linear integer arithmetic |
 | borrow | заимствование | Exclusive `inout` access held for a longer region, as for `inout` arguments of `go` |
+| borrowing function / call | заимствующая функция / вызов | Function with `inout` parameters that returns an iterator holding them; its call must be a range expression (**mem.ref.borrowing**) |
 | boundary (of a type invariant) | граница (инварианта типа) | Point where a type invariant must hold: construction, end of an `inout` function, passing, returning, storing |
 | bounded quantifier | ограниченный квантор | `math.ForAll` or `math.Exists` over the integers of a range [lo, hi) |
 | bounds propagation | распространение границ | Solver step that bounds a variable by an inequality and the bounds of its other variables |
@@ -54,6 +55,7 @@ Terms used in the specification and their Russian equivalents. Use these terms i
 | formal instruction semantics | формальная семантика команд | Machine-readable meaning of each instruction, in the style of Sail |
 | frame slot | слот кадра | Location in a stack frame that holds one IR value or one storage cell |
 | generator | генератор | Anlang program run at build time with access only to declared files |
+| guaranteed fragment | гарантированный фрагмент | Class of obligations that every implementation of an edition proves (**contract.solver.guaranteed**) |
 | handle | дескриптор | Value that refers to a shared object; copies refer to the same object |
 | handle type | тип-дескриптор | Type whose values are handles: synchronization types, `ffi.Handle` |
 | hardware mapping | отображение железа | Value created by `unsafe.Map` that denotes memory-mapped hardware |
@@ -96,6 +98,7 @@ Terms used in the specification and their Russian equivalents. Use these terms i
 | permission | разрешение | Platform permission derived from effects |
 | platform | платформа | Environment description: effects provided, ABI, entry point |
 | positive test | положительный тест | Conformance test that is expected to compile without errors |
+| poisoned (mutex) | отравленный (мьютекс) | Mutex whose critical section a panic ended; every later lock of it panics (**conc.sync.poison**) |
 | precondition / postcondition | предусловие / постусловие | `requires` / `ensures` clause |
 | prefix sum | префиксная сумма | Function P of a sequence of integers with P(0) = 0 and P(j+1) − P(j) its element j; the solver gives the elements and their sums by it |
 | priority ceiling | потолок приоритета | Highest priority of all users of a lock, computed at compile time |
@@ -137,7 +140,9 @@ Terms used in the specification and their Russian equivalents. Use these terms i
 | type parameter | параметр-тип | Type name declared in the type parameter list of a generic function or type |
 | type set | множество типов | The set of types that satisfy a type constraint |
 | type without a zero value | тип без нулевого значения | Type for which `var x T` is rejected, because its zero value is invalid |
+| unique (slice operand) | уникальный (операнд-срез) | Slice operand whose buffer no other copy shares, by its form: a slice of an array or an `inout` slice parameter (**mem.inout.unique**) |
 | validator | проверка (функция) | Function converting `Untrusted[T]` into a meaningful type |
+| value at entry | значение на входе | Value of an expression over the parameters when the function is entered, written `old(e)` in contracts |
 | value semantics | семантика значений | Assignment and passing logically copy values |
 | variant pattern | шаблон варианта | `case` pattern that matches an `enum` variant and binds its data |
 | variant switch | switch по вариантам | `switch` over an `enum` value with variant patterns |

@@ -1,0 +1,17 @@
+// want: contract.obligation.unproven
+// checks: contract.expr.old
+
+// The postcondition compares with the value at entry, which the body
+// changes.
+package main
+
+func bump(n inout int) {
+	requires n < 100
+	ensures n == old(n)
+	n++
+}
+
+func main() {
+	x := 1
+	bump(x)
+}

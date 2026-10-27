@@ -26,6 +26,13 @@ func callTypes(t types.Type) []types.Type {
 // of the result: nil without results, a tuple with several
 // (comp.gen.frame).
 func (fn *fnGen) call(target string, ind *loc, args []*loc, results []types.Type) *loc {
+	return fn.callWith(target, ind, args, results, nil)
+}
+
+// callWith emits a call as call does; for a borrowing function, borrow is
+// the closure record that the caller provides, whose address is passed
+// after the results (mem.ref.borrowing).
+func (fn *fnGen) callWith(target string, ind *loc, args []*loc, results []types.Type, borrow *mref) *loc {
 	g := fn.g
 	var pts []types.Type
 	for _, a := range args {
@@ -33,6 +40,10 @@ func (fn *fnGen) call(target string, ind *loc, args []*loc, results []types.Type
 	}
 	poffs, roffs, size := g.argLayout(pts, results)
 	fn.args = max(fn.args, size)
+	if borrow != nil {
+		fn.args = max(fn.args, size+g.ptr)
+		fn.writeWord(mref{kind: mArg, off: size}, fn.addrOf(*borrow), g.ptr)
+	}
 	for k, a := range args {
 		if a.addr != nil && a.addr.kind == mFar {
 			fn.unsupported(25, "inout access to a hardware mapping at a far address")
@@ -103,7 +114,11 @@ func (fn *fnGen) callInstr(i *ir.Call) {
 		for _, a := range i.Args {
 			args = append(args, fn.loc(a))
 		}
-		if r := fn.call(fn.g.funcLabel(c.Func), nil, args, results); r != nil {
+		var borrow *mref
+		if size := fn.g.borrowSize(c.Func); size > 0 {
+			borrow = &mref{kind: mFrame, off: fn.slot(size)}
+		}
+		if r := fn.callWith(fn.g.funcLabel(c.Func), nil, args, results, borrow); r != nil {
 			r.t = i.Type()
 			fn.vals[i] = r
 		}
@@ -232,6 +247,13 @@ func (fn *fnGen) primitive(i *ir.Call, name string) bool {
 		n := fn.sub(types.Typ[types.Int], p, fn.g.ptr)
 		fn.op("write", 0, 0, map[string]operand{"x": fn.value(args[0]), "p": fn.part(p, 0), "y": fn.scalar(n)}, nil)
 	case "exit":
+		// The runtime exits only after a panic: the panic action Halt
+		// stops in the rule halt of the platform, if it has one
+		// (rt.panic.actions, target.platform.entry).
+		if fn.g.desc.OnPanic == build.PanicHalt && fn.g.hasRule("halt", 0, 0) {
+			fn.op("halt", 0, 0, nil, nil)
+			return true
+		}
 		fn.op("exit", 0, 0, map[string]operand{"x": fn.value(args[0])}, nil)
 	case "read":
 		// The address of the inout byte, and a count of 1.

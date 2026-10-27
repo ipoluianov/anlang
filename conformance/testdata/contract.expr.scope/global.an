@@ -1,0 +1,20 @@
+// want: contract.expr.scope
+
+// The device may change the register between the check and the use, so
+// no contract may depend on it.
+package main
+
+profile core
+
+import "an/unsafe"
+
+var regs = unsafe.Map[[4]u16](unsafe.Flat(0x1000))
+
+func f(n int) {
+	requires regs[0] > 0
+	_ = n
+}
+
+func main() {
+	f(1)
+}

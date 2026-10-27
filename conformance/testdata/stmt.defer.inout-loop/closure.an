@@ -1,0 +1,27 @@
+// want: stmt.defer.inout-loop
+
+// A closure that captures the loop variable by reference may not be
+// deferred either.
+package main
+
+type Table struct {
+	cells [4]int
+}
+
+func (t inout Table) All() func(yield func(inout int) bool) {
+	return func(yield func(inout int) bool) {
+		for i := range t.cells {
+			if !yield(t.cells[i]) {
+				return
+			}
+		}
+	}
+}
+
+func main() {
+	var t Table
+	for c := range t.All() {
+		clr := func() { c = 0 }
+		defer clr()
+	}
+}

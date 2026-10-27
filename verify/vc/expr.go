@@ -669,6 +669,27 @@ func contracts(g *types.Func) (requires, ensures []*syntax.ContractStmt) {
 }
 
 // rootVar returns the local variable of an argument passed inout.
+// pathRoot returns the variable that holds the operand path e: a
+// variable, or an element, a subslice or a field of one.
+func (f *fn) pathRoot(e syntax.Expr) *types.Var {
+	for {
+		switch x := unparen(e).(type) {
+		case *syntax.IndexExpr:
+			e = x.X
+			continue
+		case *syntax.SliceExpr:
+			e = x.X
+			continue
+		case *syntax.SelectorExpr:
+			if s := f.info.Selections[x]; s != nil && s.Kind == types.FieldVal {
+				e = x.X
+				continue
+			}
+		}
+		return f.rootVar(e)
+	}
+}
+
 func (f *fn) rootVar(e syntax.Expr) *types.Var {
 	if id, ok := unparen(e).(*syntax.Name); ok {
 		v, _ := f.info.Uses[id].(*types.Var)
@@ -771,7 +792,12 @@ func (f *fn) call(st *state, c *syntax.CallExpr) []val {
 		}
 	}
 	// After the call: the inout arguments have new values, and the
-	// postconditions hold (contract.obligation.assume).
+	// postconditions hold (contract.obligation.assume), with old denoting
+	// the values of the arguments before it (contract.expr.old).
+	old := make(map[*types.Var]val, len(env))
+	for p, v := range env {
+		old[p] = v
+	}
 	post := f.havocInout(st, c, g)
 	for p, v := range post {
 		env[p] = v
@@ -795,7 +821,7 @@ func (f *fn) call(st *state, c *syntax.CallExpr) []val {
 		if rv := cinfo.ContractResults[en]; rv != nil && len(rs) == 1 {
 			e2[rv] = rs[0]
 		}
-		if form, ok := f.contractIn(cinfo, st, en.X, e2, false); ok {
+		if form, ok := f.translate(cinfo, st, en.X, e2, false, false, old); ok {
 			st.assume(form)
 		}
 	}
@@ -848,6 +874,10 @@ func (f *fn) builtin(st *state, c *syntax.CallExpr, results func() []val) []val 
 		args = append(args, f.eval(st, a))
 	}
 	intVal := func(t verify.Term) []val { return []val{{kind: vInt, t: t}} }
+	if (name == "copy" || name == "clear") && len(c.Args) > 0 {
+		// The elements of the first operand change (mem.inout.builtin).
+		f.forget(st, c.Args[0])
+	}
 	switch name {
 	case "len":
 		if len(args) == 1 && args[0].kind == vSeq {

@@ -503,6 +503,9 @@ func (fn *fnGen) slice(i *ir.Slice) {
 		c = n
 		isStr = true
 	}
+	if i.ToLen {
+		c = n // elements beyond the length have no value (type.zero.reslice)
+	}
 	lo, hi, mx := fn.intLoc(0), n, c
 	if i.Low != nil {
 		lo = fn.loc(i.Low)

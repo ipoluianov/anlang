@@ -38,7 +38,13 @@ SQL injection, cross-site scripting, path traversal and passwords in logs become
 
 ### 11.2.2 Deriving secrets
 
-**safe.secret.map** — `secret.Map(s Secret[T], f func(T) U) Secret[U]` applies `f` to the contents and wraps the result. The effect set of `f` MUST NOT contain I/O, hardware, `Global`, `Foreign` or `ExposeSecret` effects. `secret.Map` itself has no `ExposeSecret` effect: the derived value stays secret.
+**safe.secret.map** — `secret.Map(s Secret[T], f func(T) U) Secret[U]` applies `f` to the contents and wraps the result. The only way out of `f` is its result, so that the contents cannot escape:
+
+1. the execution effects of `f` MUST be a subset of `Alloc` and `Panic`: no I/O, hardware, `Global`, `Foreign`, `ExposeSecret`, `Block` or `Tasks`, so `f` neither sends nor waits;
+2. `f` MUST NOT capture a value of a handle type (**mem.value.handles**, synchronization types, channels) or a function value, through which it could store the contents;
+3. a panic in `f` is reported with the value `***` instead of its own (**safe.secret.print**).
+
+`secret.Map` itself has no `ExposeSecret` effect: the derived value stays secret.
 
 **Note** — Hashing and key derivation are written with `secret.Map`: `crypto.Hash(pass)` returns `Secret[[]u8]` and exposes nothing.
 
@@ -144,7 +150,7 @@ func Search(r http.Request) (http.Response, error) {
 }
 ```
 
-**safe.untrusted.print** — Formatting functions MAY print `Untrusted[T]` values. Loggers MUST escape control characters in them.
+**safe.untrusted.print** — Functions that format values for output that the program does not read back — `fmt.Print`, `fmt.Println`, `fmt.Printf` and the loggers — MAY print `Untrusted[T]` values; loggers MUST escape control characters in them. A function that formats into a value of the program — `fmt.Sprint`, `fmt.Sprintln`, `fmt.Sprintf`, `fmt.Errorf`, the `fmt.Fprint` functions, whose writer the program may read, string conversions of `strconv` and encoders such as `json` — MUST NOT take an `Untrusted[T]` argument: the call is a compile error. Otherwise `fmt.Sprint(u)` would be a plain `string` without `untrusted.Accept` (**safe.types.distinct**). The arguments of these functions are a compile-time tuple ([10-compile-time](10-compile-time.md)), so the static type of each is known.
 
 ## 11.4 Constant-time code
 

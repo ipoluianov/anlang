@@ -1,0 +1,24 @@
+// want: ok
+
+// As in Go, a deferred call runs after the return statement sets the
+// named results, and may change them: f returns 5, g returns 3.
+package main
+
+import "an/fmt"
+
+func set(x inout int, v int) { x = v }
+
+func f() (r int) {
+	defer set(r, 5)
+	return 0
+}
+
+func g() (r int) {
+	defer set(r, 3)
+	r = 1
+	return
+}
+
+func main() {
+	fmt.Println(f(), g())
+}

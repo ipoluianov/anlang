@@ -16,6 +16,9 @@ import (
 type Panic struct {
 	Value string   // the printed panic value
 	Stack []string // the functions being called, innermost last
+	// Instr is the instruction of a run-time error, such as an index out
+	// of range; nil for a call of panic.
+	Instr ir.Instr
 }
 
 // LimitError reports that a limit of Options was exceeded.
@@ -80,6 +83,7 @@ type machine struct {
 	intBits int
 	stack   []*ir.Func // functions being called, innermost last
 	statics map[*types.Var]*cell
+	cur     ir.Instr // the instruction being executed
 }
 
 // funcInfo is the prepared form of a function.
@@ -142,7 +146,11 @@ func (m *machine) recover(err *error) {
 	case *anPanic:
 		msg := m.panicString(r)
 		fmt.Fprintf(m.opts.Stderr, "panic: %s\n", msg)
-		*err = &Panic{Value: msg, Stack: m.stackNames()}
+		p := &Panic{Value: msg, Stack: m.stackNames()}
+		if r.runtime {
+			p.Instr = m.cur
+		}
+		*err = p
 	case *LimitError:
 		r.Stack = m.stackNames()
 		fmt.Fprintf(m.opts.Stderr, "%s\n", r)
@@ -354,6 +362,7 @@ func defaultTypeOf(v constant.Value) types.Type {
 
 // exec runs an instruction that does not transfer control.
 func (m *machine) exec(fr *frame, in ir.Instr) {
+	m.cur = in
 	switch i := in.(type) {
 	case *ir.Alloc:
 		m.set(fr, i, &cell{v: m.zero(i.Type().(*ir.Pointer).Elem)})
@@ -482,6 +491,12 @@ func (m *machine) exec(fr *frame, in ir.Instr) {
 		m.set(fr, i, m.get(fr, i.Tuple).([]value)[i.Index])
 	case *ir.Asm:
 		panic(&NotExecutableError{Func: "asm"})
+	case *ir.RunDefers:
+		for len(fr.defers) > 0 {
+			d := fr.defers[len(fr.defers)-1]
+			fr.defers = fr.defers[:len(fr.defers)-1]
+			d()
+		}
 	case *ir.Defer:
 		callee, args := m.callee(fr, i.Call), m.args(fr, i.Call)
 		c := i.Call
@@ -673,8 +688,11 @@ func (m *machine) slice(fr *frame, i *ir.Slice) value {
 	if i.Max != nil {
 		max = int(m.intValue(m.get(fr, i.Max)))
 	}
-	if _, isString := x.(string); isString {
+	if _, isString := x.(string); isString || i.ToLen {
 		c = n
+		if i.Max == nil {
+			max = n
+		}
 	}
 	_, isSlice := x.(sliceVal)
 	checkSlice(lo, hi, max, c, i.Max != nil, isSlice)

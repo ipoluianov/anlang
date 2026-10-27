@@ -1,0 +1,30 @@
+// want: stmt.defer.inout-loop
+
+// The deferred call runs when the function returns, after the access to
+// the loop variable has ended: here, after the iterator released it.
+package main
+
+type Table struct {
+	cells [4]int
+}
+
+func (t inout Table) All() func(yield func(inout int) bool) {
+	return func(yield func(inout int) bool) {
+		for i := range t.cells {
+			if !yield(t.cells[i]) {
+				return
+			}
+		}
+	}
+}
+
+func reset(c inout int) {
+	c = 0
+}
+
+func main() {
+	var t Table
+	for c := range t.All() {
+		defer reset(c)
+	}
+}

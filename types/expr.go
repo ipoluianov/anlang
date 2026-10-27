@@ -104,6 +104,12 @@ func (c *checker) exprInternal(x *operand, e syntax.Expr, hint Type) {
 		sig := c.funcType(e.Type, true)
 		second := c.funcBody(c.scope, sig, nil, e.Type, e.Body, true)
 		x.mode, x.typ, x.second = value, sig, second
+		if second {
+			if c.litCaptures == nil {
+				c.litCaptures = map[*syntax.FuncLit][]*Var{}
+			}
+			c.litCaptures[e] = c.litCaptured
+		}
 
 	case *syntax.CompositeLit:
 		c.compositeLit(x, e, hint)
@@ -214,6 +220,9 @@ func (c *checker) ident(x *operand, id *syntax.Name, wantType bool) {
 	case *Var:
 		c.objDecl(obj)
 		obj.used = true
+		if c.inContract > 0 && obj.IsPackageLevel() {
+			c.errorf(id.Pos(), "contract.expr.scope", "a contract may not refer to the package-level variable %s: other tasks and interrupts change it, and reading it has the effect Global", id.Name)
+		}
 		if obj.owner != nil && obj.owner != c.fn {
 			switch {
 			case obj.inout:
@@ -237,6 +246,7 @@ func (c *checker) ident(x *operand, id *syntax.Name, wantType bool) {
 	case *Func:
 		c.objDecl(obj)
 		x.mode, x.typ = value, obj.typ
+		c.borrowingValue(obj, id)
 	case *Builtin:
 		x.mode, x.typ, x.id = builtin, Typ[Invalid], obj.id
 	case *Variant:
@@ -294,6 +304,7 @@ func (c *checker) selector(x *operand, e *syntax.SelectorExpr) {
 				x.mode, x.typ = variable, obj.typ
 			case *Func:
 				x.mode, x.typ = value, obj.typ
+				c.borrowingValue(obj, e)
 			case *Variant:
 				c.variantOperand(x, obj)
 			}
@@ -331,6 +342,7 @@ func (c *checker) selector(x *operand, e *syntax.SelectorExpr) {
 		// A method value or the callee of a method call.
 		c.info.Selections[e] = &Selection{Kind: MethodVal, Recv: x.typ, Obj: obj, Index: index}
 		c.info.Uses[e.Sel] = obj
+		c.borrowingValue(obj, e)
 		if ms, ok := obj.typ.(*Signature); ok && ms.Recv != nil && ms.Recv.inout {
 			if !c.inoutReceiver(x, e) {
 				x.invalidate()
@@ -450,6 +462,7 @@ func (c *checker) methodExpr(x *operand, e *syntax.SelectorExpr) {
 	}
 	c.info.Uses[e.Sel] = m
 	c.info.Selections[e] = &Selection{Kind: MethodExpr, Recv: t, Obj: m, Index: index}
+	c.borrowingValue(m, e)
 	sig := methodType(m)
 	recv := &Var{object: object{pos: e.Pos(), typ: t}, param: true}
 	if ms, ok := m.typ.(*Signature); ok && ms.Recv != nil && ms.Recv.inout {

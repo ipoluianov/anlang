@@ -70,6 +70,11 @@ type Func struct {
 	// a function that calls itself, or 0.
 	RecursionDepth int
 
+	// Borrows are the function literals that a borrowing function
+	// returns: the caller provides their closure records, which live
+	// until the loop over the iterator ends (mem.ref.borrowing).
+	Borrows []*Func
+
 	nvalues int
 }
 
@@ -316,6 +321,10 @@ type Slice struct {
 	X              Value
 	Low, High, Max Value
 	Proven         bool // the bounds are proven
+	// ToLen checks the bounds against the length of a slice instead of
+	// its capacity: its element type has no zero value, so the elements
+	// beyond the length have none (type.zero.reslice).
+	ToLen bool
 }
 
 // BinOp is a binary operation; the operands have the same type, except
@@ -472,6 +481,13 @@ type Defer struct {
 	Call *Call
 }
 
+// RunDefers runs the deferred calls of the function before a return
+// whose results are the named results, so that the return reads them
+// after the deferred calls (stmt.defer.go).
+type RunDefers struct {
+	anInstr
+}
+
 // Operands of the instructions.
 
 func (i *Alloc) Operands() []Value         { return nil }
@@ -508,10 +524,11 @@ func (i *Asm) Operands() []Value {
 	}
 	return []Value{i.In}
 }
-func (i *If) Operands() []Value     { return []Value{i.Cond} }
-func (i *Return) Operands() []Value { return i.Results }
-func (i *Panic) Operands() []Value  { return []Value{i.X} }
-func (i *Defer) Operands() []Value  { return i.Call.Operands() }
+func (i *If) Operands() []Value        { return []Value{i.Cond} }
+func (i *Return) Operands() []Value    { return i.Results }
+func (i *Panic) Operands() []Value     { return []Value{i.X} }
+func (i *Defer) Operands() []Value     { return i.Call.Operands() }
+func (i *RunDefers) Operands() []Value { return nil }
 
 // ---------------------------------------------------------------------
 // Construction.

@@ -62,6 +62,13 @@ Proofs use the solver ([08-contracts](08-contracts.md)).
 
 **mem.inout.subslice** — When a slice expression `s[lo:hi]` of an addressable slice or array `s` is passed as an `inout` argument, the parameter denotes the elements `lo` to `hi-1` of `s`. Modifying elements through the parameter modifies those elements of `s`. Changing the length or capacity of the parameter, by assignment or by `append`, is a run-time error that panics if it would change the length.
 
+**mem.inout.unique** — An operand of a slice type is *unique* if it is a slice expression of an array, `nil`, an `inout` parameter or receiver of a slice type of the function in which it appears that the function does not copy, or a slice expression of a unique operand. A function copies such a parameter if it uses it, or a slice expression of it, other than as the operand of an index expression, of `len`, `cap`, `copy` or `clear`, of a comparison with `nil` or of a `range` without a value variable, as an `inout` argument or receiver, or as the target of an assignment, `xs = xs[lo:hi]` included; a use in a function literal captures a copy. A copy shares the buffer, so after it a write through the parameter would be visible through the copy. While a call runs, the buffer of a slice passed to an `inout` parameter or receiver is shared with no other copy:
+
+1. before the call, the caller makes the buffer of an argument that is not unique unique, copying it if it is shared;
+2. an assignment to an `inout` parameter of a slice type of an operand that is not unique makes the buffer of the parameter unique in the same way.
+
+So a write into the elements of a unique operand copies no buffer. The copies of 1 and 2, and a write into the elements of a slice operand that is not unique, may allocate (**mem.alloc.effect**, **eff.source.alloc-ops**); a unique operand needs none, so a function of the profile `core` may write into the elements of a slice passed to it `inout`. Which operands are unique depends only on their form, not on the other uses of the buffer. The rule applies also to the first operand of `copy` and `clear` (**mem.inout.builtin**).
+
 ```go
 func SortParallel(xs inout []i32) {
     mid := len(xs) / 2
@@ -75,13 +82,25 @@ func SortParallel(xs inout []i32) {
 **mem.ref.second-class** — The following are *second-class references*: `inout` parameters and receivers, `inout` loop variables, and closures that capture them ([04-expressions](04-expressions.md), **expr.closure.capture-inout**). A program MUST NOT:
 
 1. store a second-class reference in a variable, field or element that outlives it;
-2. return it from a function;
+2. return it from a function, except as permitted by **mem.ref.borrowing**;
 3. send it on a channel;
 4. convert it to an interface type;
 5. capture it in a closure other than one permitted by **expr.closure.capture-inout**;
-6. pass it to a `go` statement, except as permitted by [09-concurrency](09-concurrency.md), or to `task.Detach`.
+6. pass it to a `go` statement, except as permitted by [09-concurrency](09-concurrency.md), or to `task.Detach`;
+7. pass an `inout` loop variable, or a closure that captures one, to a deferred call ([05-statements](05-statements.md), **stmt.defer.inout-loop**).
 
 Reading the value of an `inout` parameter or loop variable produces a copy, which is an ordinary value.
+
+**mem.ref.borrowing** — A *borrowing function* is a declared function or method with an `inout` parameter or receiver whose single result is an iterator function type (**stmt.range.inout-iter**, or of Go 1.23). It MAY return a function literal that captures its `inout` parameters and receiver. A call of a borrowing function is a *borrowing call*: it MUST be the range expression of a `for` statement, and the `inout` accesses of its arguments and receiver last until the loop ends (**stmt.range.inout-exclusive**). A borrowing function MUST NOT be used other than as the callee of a call: not as a function value, a method value or a method expression, and a borrowing method does not implement a method of an interface. The closure that a borrowing function returns is placed in the frame of the caller and needs no allocation (**eff.source.alloc-ops**).
+
+```go
+func (t inout Table) Edit(i int) func(yield func(inout int) bool) {
+    return func(yield func(inout int) bool) { yield(t.cells[i]) }
+}
+
+for c := range t.Edit(2) { c = 7 }   // t is held until the loop ends
+// it := t.Edit(2)                   // error: a borrowing call outside range
+```
 
 **mem.ref.no-other** — Safe code has no other kind of reference. Consequently no lifetime annotations exist, and a value cannot refer to itself.
 
@@ -97,7 +116,7 @@ u.SetAge(31)
 users["alice"] = u
 ```
 
-**mem.part.container** — A container type gives access to its parts through methods that return iterator functions yielding `inout` access ([05-statements](05-statements.md), **stmt.range.inout-iter**). Containers of the standard library MUST use this mechanism (`sync.Mutex[T].Lock`, `arena.Arena[T].Edit`).
+**mem.part.container** — A container type gives access to its parts through methods that return iterator functions yielding `inout` access ([05-statements](05-statements.md), **stmt.range.inout-iter**): borrowing methods with an `inout` receiver (**mem.ref.borrowing**), or methods of a handle type with a value receiver. Containers of the standard library MUST use this mechanism (`sync.Mutex[T].Lock`, `arena.Arena[T].Edit`).
 
 ```go
 for n := range a.Edit(root) {
@@ -194,7 +213,7 @@ func Each(xs []int, f func(int)) {
 Each(xs, nil)            // error: the argument for f may be nil
 ```
 
-**mem.nil.invalidate** — A fact about a path is invalidated by an assignment to the path or to any of its prefixes, and by an `inout` access to the path or to any of its prefixes. No other event invalidates it.
+**mem.nil.invalidate** — A fact about a path is invalidated by an assignment to the path or to any of its prefixes, by an `inout` access to the path or to any of its prefixes, and, for a path whose root is an `inout` variable, by a call of a closure that captures that variable (**expr.closure.capture-inout**). No other event invalidates it.
 
 **Note** — Value semantics make this analysis sound even for field paths: no other code can change a local value between the check and the use.
 

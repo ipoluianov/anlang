@@ -124,7 +124,7 @@ func (g *gen) checkStack() {
 					names = append(names, g.stackInfos[p].name)
 				}
 				s := g.stackInfos[l]
-				errs = append(errs, &syntax.Error{Pos: s.pos, Rule: "emb.stack.recursion", Msg: fmt.Sprintf("%s is recursive: %s; the depth of recursion in the core profile must be bounded: a function may call only itself, with an integer parameter that decreases at each such call (rt.stack.core-recursion)", s.name, strings.Join(names, " → "))})
+				errs = append(errs, &syntax.Error{Pos: s.pos, Rule: "emb.stack.recursion", Msg: fmt.Sprintf("%s is recursive: %s; the depth of recursion in the core profile must be bounded: a function may call only itself, with an integer parameter that decreases at each such call and has at most 2^20 values (rt.stack.core-recursion)", s.name, strings.Join(names, " → "))})
 				return 0
 			}
 			return d

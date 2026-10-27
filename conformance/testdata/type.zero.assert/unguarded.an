@@ -1,0 +1,30 @@
+// want: type.zero.assert
+// checks: type.zero.ok-use
+
+// After a failed assertion, s would be the zero value of Shape.
+package main
+
+type Shape enum {
+	Circle{r int}
+	Rect{w, h int}
+}
+
+type Named interface {
+	Name() string
+}
+
+type Label struct{}
+
+func (Label) Name() string { return "label" }
+
+func (Shape) Name() string { return "shape" }
+
+func take(s Shape) {}
+
+func main() {
+	var x Named = Label{}
+	s, ok := x.(Shape)
+	if ok || true {
+		take(s)
+	}
+}

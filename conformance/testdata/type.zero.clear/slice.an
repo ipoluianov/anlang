@@ -1,0 +1,15 @@
+// want: type.zero.clear
+
+// Clearing a slice would set its elements to the zero value, which Shape
+// does not have.
+package main
+
+type Shape enum {
+	Circle{r f64}
+	Rect{w, h f64}
+}
+
+func main() {
+	s := []Shape{Circle(1)}
+	clear(s)
+}

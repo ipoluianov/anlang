@@ -206,6 +206,8 @@ func operation(in Instr) string {
 		return "panic " + name(i.X)
 	case *Defer:
 		return "defer " + operation(i.Call)
+	case *RunDefers:
+		return "run defers"
 	case *Asm:
 		in := ""
 		if i.In != nil {

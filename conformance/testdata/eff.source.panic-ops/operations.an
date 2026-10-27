@@ -122,6 +122,31 @@ type Sq struct {
 
 func (q Sq) Area() int { return 0 }
 
+// effects: count Alloc Panic
+func count(n int) func(yield func(int) bool) {
+	return func(yield func(int) bool) {
+		for i := range n {
+			if !yield(i) {
+				return
+			}
+		}
+	}
+}
+
+// effects: sum Alloc Panic
+func sum(n int) int {
+	t := 0
+	for i := range count(n) {
+		t ^= i
+	}
+	return t
+}
+
+// effects: grow Alloc Panic
+func grow(xs inout []int) {
+	xs = append(xs, 1)
+}
+
 func main() {
 	_ = add(1, 2)
 	_ = wrapAdd(1, 2)
@@ -142,6 +167,9 @@ func main() {
 	_ = compareIface(Sq{}, Sq{})
 	_ = floatToInt(1)
 	callPanic()
+	_ = sum(3)
+	var ys []int
+	grow(ys)
 	_ = incr(1)
 	_ = counter(1)
 }

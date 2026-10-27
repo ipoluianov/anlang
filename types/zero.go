@@ -18,9 +18,13 @@ type zeroReason struct {
 	fn   string     // the generic function or type that requires it
 }
 
+// HasZero reports whether t has a zero value (type.zero.none).
+//
 // hasZero reports whether t has a zero value (type.zero.none). Type
 // parameters have one; mark is called for each type parameter whose zero
 // value t needs (type.zero.param-use).
+func HasZero(t Type) bool { return hasZero(t, func(*TypeParam) {}) }
+
 func hasZero(t Type, mark func(*TypeParam)) bool {
 	return hasZeroIn(t, mark, nil)
 }

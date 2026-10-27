@@ -1,4 +1,4 @@
-// want: type.zero.uses
+// want: type.zero.named-result
 
 package main
 
